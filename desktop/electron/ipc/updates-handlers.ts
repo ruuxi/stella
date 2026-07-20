@@ -16,9 +16,10 @@
  *   - `updates:recordAppliedCommit` — verify against the local git tree
  *     that the install-update agent actually landed the target commit,
  *     then overwrite the manifest's `desktopReleaseCommit`. The agent's
- *     self-reported "completed" outcome is not trusted: git's
- *     `merge-base --is-ancestor` plus the absence of an in-progress
- *     `.git/MERGE_HEAD` is. The local "start" commit
+ *     self-reported "completed" outcome is not trusted: normal updates use
+ *     Git ancestry, while locally promoted builds may use the tracked root
+ *     package version as a release floor. Both paths require a clean tree
+ *     with no merge in progress. The local "start" commit
  *     (`desktopInstallBaseCommit`) is left untouched.
  */
 
@@ -801,6 +802,41 @@ type VerifyResult =
   | { ok: true; headCommit: string }
   | { ok: false; reason: string };
 
+type DesktopVersion = readonly [major: number, minor: number, patch: number];
+
+const parseDesktopVersion = (value: string): DesktopVersion | null => {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim());
+  if (!match) return null;
+  const parts = match.slice(1).map(Number);
+  if (parts.some((part) => !Number.isSafeInteger(part))) return null;
+  return parts as unknown as DesktopVersion;
+};
+
+const desktopVersionFromReleaseTag = (
+  releaseTag: string,
+): DesktopVersion | null => {
+  const match = /^desktop-v(.+)$/.exec(releaseTag.trim());
+  return match ? parseDesktopVersion(match[1]!) : null;
+};
+
+// The tracked root package version is a conservative release floor for local
+// source promotions: bump it only after that published release is contained in
+// DEV. It never replaces commit ancestry for ordinary updater-owned installs.
+export const localDesktopVersionCoversReleaseTag = (
+  localVersion: string,
+  releaseTag: string,
+): boolean => {
+  const local = parseDesktopVersion(localVersion);
+  const published = desktopVersionFromReleaseTag(releaseTag);
+  if (!local || !published) return false;
+  for (let index = 0; index < local.length; index += 1) {
+    if (local[index]! !== published[index]!) {
+      return local[index]! > published[index]!;
+    }
+  }
+  return true;
+};
+
 type DesktopUpdateFastApplyResult =
   | {
       status: "applied";
@@ -1034,6 +1070,60 @@ const hasTrackedWorkingTreeChanges = async (
     );
   }
   return status.stdout.trim().length > 0;
+};
+
+const verifyLocalDesktopVersionCoversRelease = async (
+  stellaAppDir: string,
+  releaseTag: string | null,
+): Promise<VerifyResult & { localVersion?: string }> => {
+  if (!releaseTag) {
+    return { ok: false, reason: "Published release tag is unavailable." };
+  }
+  if (await hasMergeInProgress(stellaAppDir)) {
+    return {
+      ok: false,
+      reason: "A merge is still in progress in the install tree.",
+    };
+  }
+  if (await hasTrackedWorkingTreeChanges(stellaAppDir)) {
+    return {
+      ok: false,
+      reason: "The install tree still has tracked local changes.",
+    };
+  }
+  const rawPackage = await readGitFile(stellaAppDir, "HEAD:package.json");
+  if (!rawPackage) {
+    return {
+      ok: false,
+      reason: "Tracked desktop package metadata is unavailable.",
+    };
+  }
+  let localVersion: string | null = null;
+  try {
+    const parsed = JSON.parse(rawPackage) as Record<string, unknown>;
+    localVersion = asString(parsed.version);
+  } catch {
+    return {
+      ok: false,
+      reason: "Tracked desktop package metadata is invalid.",
+    };
+  }
+  if (
+    !localVersion ||
+    !localDesktopVersionCoversReleaseTag(localVersion, releaseTag)
+  ) {
+    return {
+      ok: false,
+      reason: localVersion
+        ? `Local desktop version ${localVersion} does not cover ${releaseTag}.`
+        : "Tracked desktop package version is unavailable.",
+    };
+  }
+  return {
+    ok: true,
+    headCommit: await readHeadCommit(stellaAppDir),
+    localVersion,
+  };
 };
 
 const listTrackedWorkingTreeChanges = async (
@@ -1762,6 +1852,7 @@ export const recordAppliedDesktopUpdate = async (args: {
   agentRunId?: string | null | undefined;
 }): Promise<InstallManifestSnapshot | null> => {
   const startingHeadCommit = args.startingHeadCommit ?? null;
+  let recordedViaLocalVersion = false;
   if (args.mode === "release-pointer") {
     if (!startingHeadCommit) {
       throw new Error("startingHeadCommit is required.");
@@ -1784,7 +1875,21 @@ export const recordAppliedDesktopUpdate = async (args: {
       args.commit,
     );
     if (!verification.ok) {
-      throw new Error(verification.reason);
+      const localVersionVerification =
+        await verifyLocalDesktopVersionCoversRelease(
+          args.stellaAppDir,
+          args.tag,
+        );
+      if (!localVersionVerification.ok) {
+        throw new Error(verification.reason);
+      }
+      recordedViaLocalVersion = true;
+      logDesktopUpdateProcess("desktop-update.local-version.reconciled", {
+        tag: args.tag ?? undefined,
+        commit: shortCommit(args.commit),
+        localVersion: localVersionVerification.localVersion,
+        headCommit: shortCommit(localVersionVerification.headCommit),
+      });
     }
   }
 
@@ -1795,7 +1900,9 @@ export const recordAppliedDesktopUpdate = async (args: {
     attempt.mode === "agent" &&
     attempt.targetCommit === args.commit;
   const needsFinalizationCheck =
-    isAgentAttempt && (Boolean(args.agentRunId) || attempt.status === "failed");
+    isAgentAttempt &&
+    (Boolean(args.agentRunId) ||
+      (attempt.status === "failed" && !recordedViaLocalVersion));
   if (needsFinalizationCheck) {
     const runner = args.runner ?? (await args.reacquireRunner?.());
     if (!runner) {
@@ -1822,7 +1929,7 @@ export const recordAppliedDesktopUpdate = async (args: {
     }
   }
 
-  return args.mode === "release-pointer"
+  return args.mode === "release-pointer" || recordedViaLocalVersion
     ? await writeAppliedReleasePointer(args.stellaAppDir, args.commit, args.tag)
     : await writeAppliedCommit(args.stellaAppDir, args.commit, args.tag);
 };

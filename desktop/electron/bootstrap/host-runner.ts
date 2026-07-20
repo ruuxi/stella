@@ -3,6 +3,7 @@ import {
   resetDeviceIdentity as resetStoredDeviceIdentity,
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
+import { app } from "electron";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
 import {
   deleteConnectorAccessTokens,
@@ -421,7 +422,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
     createStellaHostRunner({
       initializeParams: {
         clientName: "stella-electron-host",
-        clientVersion: "0.0.0",
+        clientVersion: app.getVersion(),
         isDev: context.config.useDevServer,
         platform: process.platform,
         stellaAppDir,

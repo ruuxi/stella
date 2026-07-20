@@ -19,6 +19,7 @@ import {
 } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
 import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-peer.js";
 import {
+  localDesktopVersionCoversReleaseTag,
   nativeHelperPlatformKey,
   recordAppliedDesktopUpdate,
   reconcileUpdaterOwnedPaths,
@@ -37,6 +38,20 @@ describe("desktop release artifact platform selection", () => {
     ["linux", "x64", "linux-x64"],
   ] as const)("maps %s-%s to %s", (platform, arch, expected) => {
     expect(nativeHelperPlatformKey(platform, arch)).toBe(expected);
+  });
+});
+
+describe("local desktop version coverage", () => {
+  it.each([
+    ["0.0.440", "desktop-v0.0.440", true],
+    ["0.0.441", "desktop-v0.0.440", true],
+    ["0.0.439", "desktop-v0.0.440", false],
+    ["0.0.440-beta.1", "desktop-v0.0.440", false],
+    ["0.0.440", "desktop-preview", false],
+  ])("compares %s with %s", (localVersion, releaseTag, expected) => {
+    expect(localDesktopVersionCoversReleaseTag(localVersion, releaseTag)).toBe(
+      expected,
+    );
   });
 });
 
@@ -772,6 +787,51 @@ describe("recoverInterruptedDesktopUpdate", () => {
       lastUpdateAttempt: { status: "complete", targetCommit },
     });
   });
+
+  it("reconciles a synthetic local build from tracked desktop version metadata", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "-b", "published"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "published target\n");
+    git(repoRoot, ["commit", "-am", "Published target release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(
+      path.join(repoRoot, "package.json"),
+      `${JSON.stringify({ name: "stella", version: "9.9.10" }, null, 2)}\n`,
+    );
+    await writeFile(path.join(repoRoot, "app.txt"), "newer local source\n");
+    git(repoRoot, ["add", "package.json", "app.txt"]);
+    git(repoRoot, ["commit", "-m", "Promote newer local source"]);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not found", { status: 404 })),
+    );
+
+    const manifest = await recordAppliedDesktopUpdate({
+      stellaAppDir: repoRoot,
+      runner: null,
+      commit: targetCommit,
+      tag: "desktop-v9.9.10",
+    });
+
+    expect(manifest).toMatchObject({
+      desktopReleaseTag: "desktop-v9.9.10",
+      desktopReleaseCommit: targetCommit,
+      installState: {
+        desktopReleaseTag: "desktop-v9.9.10",
+        desktopReleaseCommit: targetCommit,
+        localHeadCommit: git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim(),
+      },
+    });
+    expect(
+      git(repoRoot, ["status", "--porcelain", "--untracked-files=no"]).stdout,
+    ).toBe("");
+  }, 15_000);
 
   it("brackets a clean Git update in the external self-mod morph lifecycle", async () => {
     const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
@@ -1760,9 +1820,7 @@ describe("verifyMergeApplied", () => {
     const result = await verifyMergeApplied(repoRoot, sideCommit);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toContain(
-        `still not on ${sideCommit.slice(0, 8)}`,
-      );
+      expect(result.reason).toContain(`still not on ${sideCommit.slice(0, 8)}`);
     }
   }, 15_000);
 });

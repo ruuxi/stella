@@ -1,7 +1,7 @@
 {
   "name": "stella",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.440",
   "type": "module",
   "main": "desktop/dist-electron/desktop/electron/main.js",
   "scripts": {

@@ -122,10 +122,10 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   // If the install-update agent restarted Electron before the renderer's
   // run-finished handler could record the applied commit, the manifest is
   // left stale on next launch and the pill keeps nagging. Reconcile by
-  // asking the main process to record the published commit — the IPC
-  // handler verifies HEAD is at/past that commit via
-  // `git merge-base --is-ancestor` and throws otherwise, so this is a
-  // no-op when the merge really didn't land.
+  // asking the main process to record the published commit. The IPC handler
+  // accepts either real Git ancestry or a clean locally promoted build whose
+  // tracked package version covers the published release; otherwise it
+  // throws and the pill remains visible.
   const reconcileAttemptedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!updateAvailable || !publishedCommit || !currentRelease) return;
