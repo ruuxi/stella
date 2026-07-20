@@ -428,11 +428,19 @@ describe("remote prompt startup sync", () => {
     expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
     expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
     expect(fallbackPrompt).toMatch(/`report` is your only upward channel/i);
-    expect(fallbackPrompt).toMatch(/final: false[\s\S]*sparingly/i);
-    expect(fallbackPrompt).toMatch(/final: true[\s\S]*exactly once/i);
+    expect(fallbackPrompt).toMatch(
+      /final: false[\s\S]*only for a genuine blocker[\s\S]*not a progress-update channel/i,
+    );
+    expect(fallbackPrompt).toMatch(
+      /final: true[\s\S]*exactly once[\s\S]*only after ALL requested work/i,
+    );
+    expect(fallbackPrompt).toMatch(
+      /Never report child or reviewer spawn, start, or completion[\s\S]*partial milestones/i,
+    );
+    expect(fallbackPrompt).toMatch(/No keep-alives/i);
     expect(fallbackPrompt).toMatch(/assistant responses[\s\S]*private/i);
     expect(fallbackPrompt).toMatch(/child and descendant[\s\S]*internal/i);
-    expect(fallbackPrompt).toMatch(/internal coordination by default/i);
+    expect(fallbackPrompt).toMatch(/internal coordination/i);
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
     ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);

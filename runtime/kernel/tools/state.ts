@@ -633,7 +633,7 @@ export const handleSpawnManager = async (
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
-        note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
+        note: "Manager has started but is NOT finished yet. Use send_input with this thread_id only to steer it or provide needed outside input, then wait for a genuine blocker or its consolidated final report.",
       },
     };
   }
@@ -652,7 +652,7 @@ export const handleSpawnManager = async (
       created: true,
       running_in_background: true,
       follow_up_on_completion: true,
-      note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
+      note: "Manager has started but is NOT finished yet. Use send_input with this thread_id only to steer it or provide needed outside input, then wait for a genuine blocker or its consolidated final report.",
     },
   };
 };

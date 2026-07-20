@@ -292,8 +292,17 @@ describe("orchestrator direct tool surface", () => {
     });
     const reportTool = managerTools.find((tool) => tool.name === "report");
     expect(reportTool).toBeDefined();
+    expect(reportTool!.description).toMatch(
+      /final false only for a genuine blocker[\s\S]*never for status, milestones, or child completions/i,
+    );
+    expect(reportTool!.description).toMatch(
+      /final true exactly once after all work and review\/fix rounds are settled/i,
+    );
+    expect(reportTool!.description).not.toMatch(/requested progress/i);
 
-    await reportTool!.execute("call-update", { message: "Still checking." });
+    await reportTool!.execute("call-update", {
+      message: "Blocked: production credentials are required.",
+    });
     await reportTool!.execute("call-final", {
       message: "Checks passed.",
       final: true,
@@ -301,7 +310,7 @@ describe("orchestrator direct tool surface", () => {
     expect(managerReports).toEqual([
       {
         threadId: "manager-thread",
-        message: "Still checking.",
+        message: "Blocked: production credentials are required.",
         final: false,
       },
       {

@@ -105,7 +105,7 @@ export const createAgentTools = (
     name: "report",
     agentTypes: [AGENT_IDS.MANAGER],
     description:
-      "Send a Manager report to the orchestrator. This is the Manager's only upward channel. Use non-final reports sparingly for blockers, questions, or requested progress; call exactly once with final true for the consolidated terminal result.",
+      "Send a Manager report to the orchestrator. This is the Manager's only upward channel. Use final false only for a genuine blocker that prevents progress and requires outside action, never for status, milestones, or child completions. Use final true exactly once after all work and review/fix rounds are settled, for one consolidated terminal result.",
     parameters: {
       type: "object",
       properties: {
@@ -118,7 +118,7 @@ export const createAgentTools = (
           type: "boolean",
           default: false,
           description:
-            "False sends a non-terminal update. True supplies the Manager's terminal completion result.",
+            "False is only for a genuine outside-action blocker. True supplies the exactly-once terminal result after all work is settled.",
         },
       },
       required: ["message"],
