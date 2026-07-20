@@ -60,7 +60,20 @@ const openDatabase = (stellaDataDir: string): DatabaseSync => {
   const db = new DatabaseSync(path.join(stellaDataDir, DATABASE_FILE), {
     timeout: 5_000,
   });
-  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;");
+  // Install the busy handler before asking SQLite to switch journal modes.
+  // `journal_mode=WAL` can still report SQLITE_BUSY immediately while a
+  // sibling process is performing the same first-open migration. That is
+  // harmless: the winner establishes WAL and the serialized BEGIN IMMEDIATE
+  // below observes the migrated schema. Non-contention failures remain fatal.
+  db.exec("PRAGMA busy_timeout=5000");
+  try {
+    db.exec("PRAGMA journal_mode=WAL");
+  } catch (error) {
+    if (!/database is (?:locked|busy)/iu.test(String(error))) {
+      db.close();
+      throw error;
+    }
+  }
   try {
     db.exec("BEGIN IMMEDIATE");
     db.exec(`
