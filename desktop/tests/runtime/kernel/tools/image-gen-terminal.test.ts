@@ -1,7 +1,14 @@
-import { stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMediaToolHandlers } from "../../../../../runtime/kernel/tools/media.js";
+import {
+  attachImageOperationJob,
+  reserveDurableImageOperation,
+} from "../../../../../runtime/kernel/tools/image-operation-store.js";
+import { materializeMediaArtifact } from "../../../../../runtime/kernel/tools/media-artifact-store.js";
+import { executeRuntimeToolCall } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
@@ -75,6 +82,36 @@ const createHandler = (
   }).image_gen!;
 
 describe("image_gen terminal managed-media semantics", () => {
+  it("routes a persisted BYOK image preference through the durable managed gateway", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-byok-routed-");
+    await writeFile(
+      path.join(stellaDataDir, "preferences.json"),
+      JSON.stringify({ imageGeneration: { provider: "openai", model: "gpt-image-1" } }),
+    );
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith("/api/media/v1/generate")) return accepted();
+      if (url.includes("/api/media/v1/job?")) {
+        return jobResponse("succeeded", {
+          output: { images: [{ url: "https://assets.test/image.png" }] },
+        });
+      }
+      if (url === "https://assets.test/image.png") return outputResponse();
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+    const result = await createHandler(fetchImpl)(
+      { prompt: "draw a durable fox" },
+      contextFor(stellaDataDir),
+    );
+    expect(result.error).toBeUndefined();
+    expect(urls.some((url) => url.includes("api.openai.com"))).toBe(false);
+    expect(urls.some((url) => url.includes("openrouter.ai"))).toBe(false);
+    expect(urls.some((url) => url.includes("queue.fal.run"))).toBe(false);
+    expect(urls[0]).toBe("https://stella.test/api/media/v1/generate");
+  });
+
   it("keeps the tool promise pending until delayed success and durable output", async () => {
     const stellaDataDir = tempDirs.create("image-gen-terminal-");
     let resolveJob!: (response: Response) => void;
@@ -245,8 +282,8 @@ describe("image_gen terminal managed-media semantics", () => {
       },
     );
 
-    expect(posts).toBe(2);
-    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+    expect(posts).toBe(1);
+    expect(idempotencyKeys).toHaveLength(1);
     expect(downloads).toBe(1);
     expect(replay.result).toMatchObject({
       jobId: "job-image-1",
@@ -327,6 +364,108 @@ describe("image_gen terminal managed-media semantics", () => {
     });
   });
 
+  it("reattaches an actual persisted operation with a fresh native/Codex call id", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-persisted-operation-");
+    const requestBody = {
+      capability: "text_to_image",
+      prompt: "draw a durable fox",
+    };
+    const reserved = reserveDurableImageOperation({
+      stellaDataDir,
+      conversationId: contextFor(stellaDataDir).conversationId,
+      toolCallId: "old-process-call-id",
+      requestBody,
+    });
+    attachImageOperationJob({
+      stellaDataDir,
+      operationId: reserved.operationId,
+      jobId: "job-image-1",
+    });
+    let posts = 0;
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/generate")) {
+        posts += 1;
+        return accepted(true);
+      }
+      if (url.includes("/job?") && init?.method === "GET") {
+        return jobResponse("succeeded", {
+          output: { images: [{ url: "https://assets.test/image.png" }] },
+        });
+      }
+      if (url === "https://assets.test/image.png") return outputResponse();
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+
+    const result = await createHandler(fetchImpl)(
+      { prompt: "draw a durable fox" },
+      { ...contextFor(stellaDataDir), requestId: "new-process-call-id" },
+    );
+    expect(posts).toBe(0);
+    expect(result.result).toMatchObject({
+      jobId: "job-image-1",
+      status: "succeeded",
+      reattached: true,
+    });
+  });
+
+  it("delivers a cached terminal result through the production adapter after external restart", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-adapter-restart-");
+    let networkCalls = 0;
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      networkCalls += 1;
+      const url = String(input);
+      if (url.endsWith("/generate")) return accepted();
+      if (url.includes("/job?")) {
+        return jobResponse("succeeded", {
+          output: { images: [{ url: "https://assets.test/image.png" }] },
+        });
+      }
+      if (url === "https://assets.test/image.png") return outputResponse();
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+    const handler = createHandler(fetchImpl);
+    const toolExecutor = async (
+      _name: string,
+      args: Record<string, unknown>,
+      context: ToolContext,
+      signal?: AbortSignal,
+    ) => await handler(args, context, signal ? { signal } : undefined);
+    const base = {
+      toolName: "image_gen",
+      args: { prompt: "draw a durable fox" },
+      conversationId: "adapter-restart-conversation",
+      agentType: "orchestrator",
+      deviceId: "adapter-device",
+      stellaAppDir: stellaDataDir,
+      stellaDataDir,
+      deferImageDeliveryAck: true,
+      store: {} as never,
+      toolExecutor,
+    };
+    const first = await executeRuntimeToolCall({
+      ...base,
+      toolCallId: "codex-process-one-call",
+      runId: "codex-process-one-run",
+    });
+    const callsAfterFirst = networkCalls;
+    const recovered = await executeRuntimeToolCall({
+      ...base,
+      toolCallId: "codex-process-two-call",
+      runId: "codex-process-two-run",
+    });
+    expect(networkCalls).toBe(callsAfterFirst);
+    expect(recovered.result).toMatchObject({
+      jobId: (first.result as { jobId: string }).jobId,
+      filePaths: (first.result as { filePaths: string[] }).filePaths,
+    });
+    expect(recovered.details).toMatchObject({
+      jobId: "job-image-1",
+      status: "succeeded",
+      reattached: true,
+    });
+  });
+
   it("waits through succeeded-before-output handoff", async () => {
     const stellaDataDir = tempDirs.create("image-gen-handoff-");
     let now = 0;
@@ -391,5 +530,81 @@ describe("image_gen terminal managed-media semantics", () => {
       error: { code: "timeout" },
     });
     expect(deleteCalls).toBe(1);
+  });
+
+  it("bounds each artifact download inside the grace window and cleans temp state", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-download-timeout-");
+    let now = 0;
+    let downloadAborts = 0;
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/generate")) return accepted();
+      if (url.includes("/job?")) {
+        return jobResponse("succeeded", {
+          output: { images: [{ url: "https://assets.test/hangs.png" }] },
+        });
+      }
+      if (url === "https://assets.test/hangs.png") {
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            downloadAborts += 1;
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+    const result = await createHandler(fetchImpl, {
+      now: () => now,
+      sleep: async (ms: number) => { now += ms; },
+      timeoutMs: 1_000,
+      artifactGraceMs: 40,
+      artifactDownloadTimeoutMs: 10,
+      initialPollMs: 20,
+      maxPollMs: 20,
+    })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir));
+    expect(result.details).toMatchObject({
+      status: "failed",
+      error: { code: "artifact_materialization_failed" },
+    });
+    expect(downloadAborts).toBeGreaterThan(0);
+    const files = await readdir(path.join(stellaDataDir, "media", "outputs"));
+    expect(files.filter((name) => name.includes(".partial-") || name.endsWith(".lock"))).toEqual([]);
+  });
+
+  it("serializes concurrent terminal and renderer writers to one complete payload", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-concurrent-writers-");
+    const filePath = path.join(stellaDataDir, "media", "outputs", "job-race_0.png");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(path.dirname(filePath), { recursive: true }),
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let announceStarted!: () => void;
+    const started = new Promise<void>((resolve) => { announceStarted = resolve; });
+    let producers = 0;
+    const first = materializeMediaArtifact({
+      filePath,
+      producer: async () => {
+        producers += 1;
+        announceStarted();
+        await gate;
+        return Buffer.from("complete-terminal-payload");
+      },
+    });
+    await started;
+    const second = materializeMediaArtifact({
+      filePath,
+      producer: async () => {
+        producers += 1;
+        return Buffer.from("renderer-duplicate");
+      },
+    });
+    expect(producers).toBe(1);
+    release();
+    const [left, right] = await Promise.all([first, second]);
+    expect(producers).toBe(1);
+    expect(left.path).toBe(right.path);
+    expect(await readFile(filePath, "utf8")).toBe("complete-terminal-payload");
   });
 });

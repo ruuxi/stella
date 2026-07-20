@@ -6,39 +6,58 @@ until its managed media job is terminal, every image has been copied into
 Failures return the gateway job ID, terminal status, stable error code, and
 reason when available.
 
-Managed submissions carry an owner-scoped `Idempotency-Key` derived from the
-conversation and persisted model tool-call ID (not the ephemeral run ID). The
-gateway reserves that key in Convex before contacting the provider. Repeating the same logical tool call
-returns the existing job and never starts another generation. Reusing the key
-with a different request is rejected.
+Every `image_gen` provider choice routes through the managed gateway. The old
+direct/BYOK OpenAI, Fal, and OpenRouter submission path is intentionally not
+used because it had no crash-safe identity. The owner-scoped idempotency key is
+derived from a durable local operation ID. That ID, its provider-job
+attachment, terminal result, tool-call aliases, and delivery acknowledgement
+live in `image-tool-operations.sqlite` under the Stella data directory.
+
+The gateway atomically reserves the media job and a scheduled submission
+outbox. Full inputs (including image-edit references) are envelope-encrypted;
+the durable copy lives in Convex file storage while the first scheduled action
+also carries the encrypted payload. A database CAS changes `pending` to
+`dispatching` exactly once immediately before the Fal POST. Concurrent HTTP
+retries and duplicate scheduled actions cannot pass that claim. `succeeded`,
+`failed`, and `canceled` are immutable; late or opposite webhooks are audit-only.
+
+Fal assigns `request_id` only after accepting a queue submission and exposes no
+documented client submission idempotency key or lookup by a Stella key. This
+leaves one irreducible boundary: a crash or connection loss after the durable
+claim may leave it unknown whether Fal accepted the POST. Stella never repeats
+that ambiguous POST. A webhook can still reconcile it; otherwise the job ends
+as `SUBMISSION_OUTCOME_UNKNOWN` after a 15-minute unknown grace. A claim whose
+action disappeared is first classified unknown after two minutes. Rows still in `pending` are
+safe to reschedule because they provably never crossed the provider boundary.
 
 Restart behavior is explicit:
 
-- A renderer reload does not interrupt the runtime worker. The tool promise
-  keeps polling, and the renderer reuses the deterministic job files when it
-  reconnects.
-- An Electron app or runtime-worker restart interrupts the in-memory promise and the original
-  turn is recorded as interrupted; a dead process cannot later return a tool
-  result. The Convex job continues independently and the renderer's existing
-  materializer can still surface its artifact after restart. If an engine
-  continuation replays the persisted tool-call identity, its POST reattaches
-  and can receive the terminal result. A genuinely new tool-call identity is
-  a new logical generation, so restart recovery and prompts must not invent a
-  retry.
-- A relay disconnect is equivalent to a lost submission response. The client
-  retries the POST with the same key and receives the existing job.
-- Previously persisted fire-and-forget `submitted` results remain readable.
-  Their inline card still subscribes by `jobId` and materializes completion;
-  they are not retroactively rewritten into terminal tool results.
+- A renderer reload does not interrupt the runtime worker. The pending promise
+  continues and the renderer reuses the deterministic job-index file.
+- An Electron or runtime-worker restart interrupts the old promise and records
+  the turn as interrupted, but the Convex job continues. A native, Claude, or
+  Codex continuation reopens the operation ledger. It matches a persisted
+  tool-call alias or, when an external process assigned a fresh ID, the same
+  conversation and normalized request while work is pending or its terminal
+  result is not yet persisted. It polls the attached job or returns the cached
+  terminal result without another POST. Claude image identity uses the
+  persisted Stella session key rather than the random MCP transport session.
+- After Stella persists the tool-result transcript row, it acknowledges the
+  operation as delivered. A later identical request with a new tool-call ID is
+  then a genuinely new generation.
+- A relay disconnect retries only the Stella HTTP request with the same durable
+  key; it reattaches to the existing job.
+- Legacy persisted fire-and-forget `submitted` results remain readable. Their
+  existing inline card subscribes by `jobId`; they are not rewritten.
 
-User cancellation sends an independent DELETE using the same idempotency key,
-then stops all polling and artifact work. A Convex cancellation tombstone makes
-abort win even if DELETE reaches the gateway before POST reservation. Late
-provider completion cannot resurrect a canceled job. Timeout is bounded at 20
-minutes client-side; the gateway's image-only stale-job sweep fails abandoned
-jobs after 15 minutes (plus sweep cadence), and the client cancels at its own
-deadline so no later artifact appears.
+Cancellation persists a tombstone before provider cancellation and stops all
+polling and artifact work. Late provider completion cannot resurrect the job.
+The client timeout is 20 minutes; the gateway stale/unknown policy is 15
+minutes plus sweep cadence.
 
-These semantics apply only to the orchestrator/Fashion `image_gen` tool. Other
-media clients do not send the idempotency key and retain their existing
-submission behavior.
+Artifact downloads have their own aborting timeout within a 60-second handoff
+grace. Runtime and renderer share a cross-process lock and publish only a fully
+flushed temporary file through atomic rename, so one job/index produces one
+complete local artifact.
+
+These semantics apply only to `image_gen`. Other media behavior is unchanged.

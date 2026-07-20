@@ -1817,6 +1817,7 @@ class ClaudeCodeSessionRuntime {
     }
     session.mcpHost = await createClaudeCodeToolMcpHost({
       tools: request.tools,
+      identityScope: request.sessionKey,
       getActiveTurn: () => session.activeMcpTurn,
     });
     session.mcpToolCatalogKey = catalogKey;

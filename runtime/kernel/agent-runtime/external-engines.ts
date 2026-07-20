@@ -68,6 +68,7 @@ import type {
   RuntimePromptMessage,
 } from "../../protocol/index.js";
 import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
+import { markImageOperationDelivered } from "../tools/image-operation-store.js";
 
 const EMPTY_USAGE: Usage = {
   input: 0,
@@ -1227,12 +1228,14 @@ const runClaudeHostedTurn = async (args: {
       agentType: args.opts.agentType,
       deviceId: args.opts.deviceId,
       stellaAppDir: args.opts.stellaAppDir,
+      stellaDataDir: args.opts.stellaDataDir,
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
       modelConfigSnapshot: args.opts.agentContext.modelConfigSnapshot,
       connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
       allowedToolNames: args.opts.agentContext.toolsAllowlist,
+      deferImageDeliveryAck: toolName === "image_gen",
       store: args.opts.store,
       toolExecutor: args.opts.toolExecutor,
       hookEmitter: args.opts.hookEmitter,
@@ -1263,6 +1266,13 @@ const runClaudeHostedTurn = async (args: {
         timestamp: now(),
       },
     });
+    if (toolName === "image_gen") {
+      markImageOperationDelivered({
+        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
+        conversationId: args.opts.conversationId,
+        toolCallId,
+      });
+    }
     return toolResult;
   };
 
@@ -1650,12 +1660,14 @@ const runCodexHostedTurn = async (args: {
       agentType: args.opts.agentType,
       deviceId: args.opts.deviceId,
       stellaAppDir: args.opts.stellaAppDir,
+      stellaDataDir: args.opts.stellaDataDir,
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
       modelConfigSnapshot: args.opts.agentContext.modelConfigSnapshot,
       connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
       allowedToolNames: args.opts.agentContext.toolsAllowlist,
+      deferImageDeliveryAck: toolName === "image_gen",
       store: args.opts.store,
       toolExecutor: args.opts.toolExecutor,
       hookEmitter: args.opts.hookEmitter,
@@ -1686,6 +1698,13 @@ const runCodexHostedTurn = async (args: {
         timestamp: now(),
       },
     });
+    if (toolName === "image_gen") {
+      markImageOperationDelivered({
+        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
+        conversationId: args.opts.conversationId,
+        toolCallId,
+      });
+    }
     return toolResult;
   };
   const emitCodexCommandExecution = (

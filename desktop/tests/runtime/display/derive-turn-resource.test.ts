@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildPayloadFromBarePath,
   collectTurnSourceDiffPayloads,
@@ -21,6 +24,16 @@ const officeRef = (sourcePath: string) => ({
   title: sourcePath.split("/").pop()!,
   sourcePath,
 });
+
+const legacyPendingImageEvent = JSON.parse(
+  fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../fixtures/legacy-image-gen-pending-event.json",
+    ),
+    "utf8",
+  ),
+) as EventRecord;
 
 describe("deriveTurnResource", () => {
   it("returns null for empty turns", () => {
@@ -1028,33 +1041,15 @@ describe("deriveTurnInlineImagePayloads", () => {
   });
 
   it("creates a pending inline image payload for submitted orchestrator image_gen jobs", () => {
-    const result = deriveTurnInlineImagePayloads([
-      event({
-        _id: "ig-1",
-        type: "tool_result",
-        timestamp: 100,
-        payload: {
-          toolName: "image_gen",
-          agentType: "orchestrator",
-          result: "image_gen job job-1 submitted.",
-          details: {
-            jobId: "job-1",
-            capability: "text_to_image",
-            prompt: "a product mockup",
-            numImages: 3,
-            status: "submitted",
-          },
-        },
-      }),
-    ]);
+    const result = deriveTurnInlineImagePayloads([legacyPendingImageEvent]);
 
     expect(result).toEqual([
       {
         kind: "media",
         asset: { kind: "image", filePaths: [] },
-        jobId: "job-1",
+        jobId: "job-legacy-pending",
         capability: "text_to_image",
-        prompt: "a product mockup",
+        prompt: "a persisted legacy product mockup",
         numImages: 3,
         presentation: "inline-image",
         createdAt: 100,

@@ -24,7 +24,7 @@ export const createImageGenTool = (
     // both the catalog filter and executeTool via this gate.
     agentTypes: [AGENT_IDS.ORCHESTRATOR, AGENT_IDS.FASHION],
     description:
-      "Generate a still image through Stella's managed media gateway. The call stays pending until generation succeeds or fails. Success returns the terminal job status, artifact metadata, and durable local path(s) under ~/.stella/media/outputs/. Do not poll, download, retry, or open the result yourself. Required: prompt.",
+      "Generate a still image through Stella's durable managed media gateway. The call stays pending until generation succeeds, fails, is canceled, or reaches its bounded timeout, including durable artifact handoff. Success returns terminal job status, artifact metadata, and local path(s) under ~/.stella/media/outputs/. Never retry a pending call or submit a parallel duplicate; Stella reattaches it across relay or desktop restart. Do not poll, download, or open the result yourself. Required: prompt.",
     promptSnippet:
       "Generate a still image and return its terminal artifact result",
     parameters: {

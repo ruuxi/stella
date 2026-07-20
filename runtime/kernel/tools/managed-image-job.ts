@@ -1,8 +1,18 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type { ToolContext, ToolHandlerExtras } from "./types.js";
+import {
+  attachImageOperationJob,
+  markImageOperationDelivered,
+  reserveDurableImageOperation,
+  settleImageOperation,
+} from "./image-operation-store.js";
+import {
+  materializeMediaArtifact,
+  readyMediaArtifactSize,
+} from "./media-artifact-store.js";
 
 export const MANAGED_IMAGE_JOB_TIMEOUT_MS = 20 * 60_000;
 export const MANAGED_IMAGE_ARTIFACT_GRACE_MS = 60_000;
@@ -82,6 +92,8 @@ export type ManagedImageJobOptions = {
   timeoutMs?: number;
   initialPollMs?: number;
   maxPollMs?: number;
+  artifactGraceMs?: number;
+  artifactDownloadTimeoutMs?: number;
 };
 
 const asNonEmptyString = (value: unknown): string | null =>
@@ -132,18 +144,18 @@ const requestHeaders = (
 
 /**
  * Stable across worker/Electron restarts and external-engine continuation.
- * `requestId` is the persisted model tool-call id for native, Claude, and
- * Codex paths. Run ids intentionally do not participate: a resumed engine
- * may assign a new run while replaying the same logical tool call.
+ * The durable operation ledger supplies `operationId`; run and process-local
+ * tool-call ids intentionally do not participate.
  */
 export const createManagedImageIdempotencyKey = (
   context: ToolContext,
+  operationId = context.requestId,
 ): string => {
   const digest = createHash("sha256")
     .update("stella-image-gen-v1\0")
     .update(context.conversationId)
     .update("\0")
-    .update(context.requestId)
+    .update(operationId)
     .digest("hex");
   return `stella-image-gen-v1-${digest}`;
 };
@@ -229,19 +241,10 @@ const existingArtifact = async (
   index: number,
   mimeType: string,
 ): Promise<ManagedImageArtifact | null> => {
-  try {
-    const stat = await fs.stat(filePath);
-    if (!stat.isFile() || stat.size <= 0) return null;
-    return {
-      kind: "image",
-      index,
-      path: filePath,
-      mimeType,
-      sizeBytes: stat.size,
-    };
-  } catch {
-    return null;
-  }
+  const sizeBytes = await readyMediaArtifactSize(filePath);
+  return sizeBytes === null
+    ? null
+    : { kind: "image", index, path: filePath, mimeType, sizeBytes };
 };
 
 const materializeImages = async (args: {
@@ -250,6 +253,7 @@ const materializeImages = async (args: {
   stellaDataDir: string;
   fetchImpl: typeof fetch;
   signal?: AbortSignal;
+  downloadTimeoutMs: number;
 }): Promise<{ filePaths: string[]; artifacts: ManagedImageArtifact[] }> => {
   const outputDir = path.join(args.stellaDataDir, "media", "outputs");
   await fs.mkdir(outputDir, { recursive: true });
@@ -266,36 +270,32 @@ const materializeImages = async (args: {
       continue;
     }
 
-    const response = await args.fetchImpl(image.url, {
+    let mimeType = declaredMimeType;
+    const saved = await materializeMediaArtifact({
+      filePath,
       signal: args.signal,
-      redirect: "follow",
+      producerTimeoutMs: args.downloadTimeoutMs,
+      producer: async (downloadSignal) => {
+        const response = await args.fetchImpl(image.url, {
+          signal: downloadSignal,
+          redirect: "follow",
+        });
+        if (!response.ok) {
+          throw new Error(`Image artifact download failed (${response.status}).`);
+        }
+        mimeType =
+          response.headers.get("content-type")?.split(";")[0]?.trim() ||
+          declaredMimeType;
+        return Buffer.from(await response.arrayBuffer());
+      },
     });
-    if (!response.ok) {
-      throw new Error(`Image artifact download failed (${response.status}).`);
-    }
-    const mimeType =
-      response.headers.get("content-type")?.split(";")[0]?.trim() ||
-      declaredMimeType;
-    const raced = await existingArtifact(filePath, index, mimeType);
-    if (raced) {
-      artifacts.push(raced);
-      continue;
-    }
-
-    const partialPath = `${filePath}.partial-${process.pid}-${randomUUID()}`;
-    try {
-      const bytes = Buffer.from(await response.arrayBuffer());
-      throwIfAborted(args.signal);
-      if (bytes.length === 0) throw new Error("Image artifact was empty.");
-      await fs.writeFile(partialPath, bytes);
-      await fs.rename(partialPath, filePath);
-      const ready = await existingArtifact(filePath, index, mimeType);
-      if (!ready)
-        throw new Error("Image artifact was not durable after write.");
-      artifacts.push(ready);
-    } finally {
-      await fs.unlink(partialPath).catch(() => undefined);
-    }
+    artifacts.push({
+      kind: "image",
+      index,
+      path: saved.path,
+      mimeType,
+      sizeBytes: saved.sizeBytes,
+    });
   }
 
   return {
@@ -347,17 +347,51 @@ export const submitAndWaitForManagedImageJob = async (
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? abortableSleep;
   const timeoutMs = options.timeoutMs ?? MANAGED_IMAGE_JOB_TIMEOUT_MS;
+  const artifactGraceMs =
+    options.artifactGraceMs ?? MANAGED_IMAGE_ARTIFACT_GRACE_MS;
+  const artifactDownloadTimeoutMs =
+    options.artifactDownloadTimeoutMs ?? 30_000;
   const initialPollMs = options.initialPollMs ?? INITIAL_POLL_MS;
   const maxPollMs = options.maxPollMs ?? MAX_POLL_MS;
   const signal = options.extras?.signal;
-  const idempotencyKey = createManagedImageIdempotencyKey(options.context);
+  const stellaDataDir =
+    options.context.stellaDataDir ??
+    options.context.stellaAppDir ??
+    process.cwd();
+  const operation = reserveDurableImageOperation({
+    stellaDataDir,
+    conversationId: options.context.conversationId,
+    toolCallId: options.context.requestId,
+    requestBody: options.requestBody,
+  });
+  if (operation.terminalResult) return operation.terminalResult;
+  const finish = (
+    result: ManagedImageTerminalResult,
+  ): ManagedImageTerminalResult => {
+    settleImageOperation({
+      stellaDataDir,
+      operationId: operation.operationId,
+      result,
+    });
+    return result;
+  };
+  const idempotencyKey = createManagedImageIdempotencyKey(
+    options.context,
+    operation.operationId,
+  );
   const headers = requestHeaders(options, idempotencyKey);
   const deadline = now() + timeoutMs;
-  let accepted: AcceptedJob | null = null;
+  let accepted: AcceptedJob | null = operation.jobId
+    ? { jobId: operation.jobId, reattached: true }
+    : null;
   let lastSubmitError = "";
 
   try {
-    for (let attempt = 0; attempt < SUBMIT_ATTEMPTS; attempt += 1) {
+    for (
+      let attempt = 0;
+      !accepted && attempt < SUBMIT_ATTEMPTS;
+      attempt += 1
+    ) {
       throwIfAborted(signal);
       try {
         const response = await fetchImpl(
@@ -388,15 +422,20 @@ export const submitAndWaitForManagedImageJob = async (
 
     const jobId = asNonEmptyString(accepted?.jobId);
     if (!jobId) {
-      return {
+      return finish({
         ok: false,
         status: "failed",
         code: "submission_failed",
         message: lastSubmitError || "Image generation submission failed.",
         reattached: false,
-      };
+      });
     }
-    const reattached = accepted?.reattached === true;
+    attachImageOperationJob({
+      stellaDataDir,
+      operationId: operation.operationId,
+      jobId,
+    });
+    const reattached = operation.reattached || accepted?.reattached === true;
     let pollMs = initialPollMs;
     let artifactDeadline: number | null = null;
     let lastJob: ManagedMediaJob | null = null;
@@ -413,26 +452,26 @@ export const submitAndWaitForManagedImageJob = async (
         });
         if (!response.ok) {
           if (response.status < 500) {
-            return {
+            return finish({
               ok: false,
               jobId,
               status: "failed",
               code: `job_lookup_${response.status}`,
               message: await parseErrorResponse(response),
               reattached,
-            };
+            });
           }
         } else {
           const value = (await response.json()) as unknown;
           if (!isManagedMediaJob(value)) {
-            return {
+            return finish({
               ok: false,
               jobId,
               status: "failed",
               code: "invalid_job_response",
               message: "Image generation returned an invalid job response.",
               reattached,
-            };
+            });
           }
           lastJob = value;
           options.extras?.onUpdate?.({
@@ -444,7 +483,7 @@ export const submitAndWaitForManagedImageJob = async (
           });
 
           if (value.status === "failed" || value.status === "canceled") {
-            return {
+            return finish({
               ok: false,
               jobId,
               status: value.status,
@@ -456,55 +495,53 @@ export const submitAndWaitForManagedImageJob = async (
                 `Image generation ${value.status}.`,
               ...(value.error?.details ? { reason: value.error.details } : {}),
               reattached,
-            };
+            });
           }
 
           if (value.status === "succeeded") {
+            artifactDeadline ??= Math.min(
+              deadline,
+              now() + artifactGraceMs,
+            );
             const images = extractRemoteImages(value.output);
             if (images.length > 0) {
               try {
                 const materialized = await materializeImages({
                   jobId,
                   images,
-                  stellaDataDir:
-                    options.context.stellaDataDir ??
-                    options.context.stellaAppDir ??
-                    process.cwd(),
+                  stellaDataDir,
                   fetchImpl,
                   signal,
+                  downloadTimeoutMs: Math.max(
+                    1,
+                    Math.min(
+                      artifactDownloadTimeoutMs,
+                      artifactDeadline - now(),
+                    ),
+                  ),
                 });
-                return {
+                return finish({
                   ok: true,
                   job: value,
                   ...materialized,
                   reattached,
-                };
+                });
               } catch (error) {
                 throwIfAborted(signal);
-                if (artifactDeadline === null) {
-                  artifactDeadline = Math.min(
-                    deadline,
-                    now() + MANAGED_IMAGE_ARTIFACT_GRACE_MS,
-                  );
-                }
                 if (now() >= artifactDeadline) {
-                  return {
+                  return finish({
                     ok: false,
                     jobId,
                     status: "failed",
                     code: "artifact_materialization_failed",
                     message: `Image completed but its artifact could not be saved: ${(error as Error).message}`,
                     reattached,
-                  };
+                  });
                 }
               }
             } else {
-              artifactDeadline ??= Math.min(
-                deadline,
-                now() + MANAGED_IMAGE_ARTIFACT_GRACE_MS,
-              );
               if (now() >= artifactDeadline) {
-                return {
+                return finish({
                   ok: false,
                   jobId,
                   status: "failed",
@@ -512,7 +549,7 @@ export const submitAndWaitForManagedImageJob = async (
                   message:
                     "Image generation completed without a downloadable artifact.",
                   reattached,
-                };
+                });
               }
             }
           }
@@ -528,7 +565,7 @@ export const submitAndWaitForManagedImageJob = async (
 
     await cancelRequest({ fetchImpl, baseUrl: options.baseUrl, headers });
     const timeoutMinutes = Math.max(1, Math.ceil(timeoutMs / 60_000));
-    return {
+    return finish({
       ok: false,
       jobId: asNonEmptyString(accepted?.jobId) ?? undefined,
       status: "failed",
@@ -536,10 +573,31 @@ export const submitAndWaitForManagedImageJob = async (
       message: `Image generation timed out after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.`,
       ...(lastJob?.error ? { reason: lastJob.error } : {}),
       reattached: accepted?.reattached === true,
-    };
+    });
   } catch (error) {
     if (signal?.aborted) {
       await cancelRequest({ fetchImpl, baseUrl: options.baseUrl, headers });
+      settleImageOperation({
+        stellaDataDir,
+        operationId: operation.operationId,
+        result: {
+          ok: false,
+          ...(asNonEmptyString(accepted?.jobId)
+            ? { jobId: asNonEmptyString(accepted?.jobId)! }
+            : {}),
+          status: "canceled",
+          code: "canceled",
+          message: "Image generation was canceled.",
+          reattached: operation.reattached || accepted?.reattached === true,
+        },
+      });
+      // Cancellation is itself the terminal delivery. Do not let a later,
+      // intentional identical request attach to the canceled operation.
+      markImageOperationDelivered({
+        stellaDataDir,
+        conversationId: options.context.conversationId,
+        toolCallId: options.context.requestId,
+      });
       throw abortError(signal);
     }
     throw error;

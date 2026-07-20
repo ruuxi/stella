@@ -65,6 +65,8 @@ export type ClaudeCodeToolMcpHost = {
 
 export type CreateClaudeCodeToolMcpHostOptions = {
   tools: readonly ToolMetadata[];
+  /** Persisted Stella session identity, not an MCP transport session id. */
+  identityScope?: string;
   /**
    * Resolved for every native MCP call. The host is session-scoped while the
    * execution callback and cancellation boundary are turn-scoped.
@@ -268,8 +270,19 @@ export const createClaudeCodeToolMcpHost = async (
           );
         }
         const clientSessionId = extra.sessionId ?? "stateless";
-        const toolCallId = `mcp:${clientSessionId}:${String(extra.requestId)}`;
-        const ledgerKey = `${clientSessionId}:${String(extra.requestId)}:${request.params.name}`;
+        const durableScope = crypto
+          .createHash("sha256")
+          .update(options.identityScope ?? "unscoped")
+          .digest("hex")
+          .slice(0, 24);
+        const toolCallId =
+          request.params.name === "image_gen"
+            ? `mcp:${durableScope}:${String(extra.requestId)}`
+            : `mcp:${clientSessionId}:${String(extra.requestId)}`;
+        const ledgerKey =
+          request.params.name === "image_gen"
+            ? `${durableScope}:${String(extra.requestId)}:${request.params.name}`
+            : `${clientSessionId}:${String(extra.requestId)}:${request.params.name}`;
         const previous = callLedger.get(ledgerKey);
         if (previous) return await previous;
 

@@ -29,6 +29,18 @@ const tools = [
   },
 ];
 
+const imageTools = [
+  {
+    name: "image_gen",
+    description: "Generate an image and wait for its terminal result.",
+    parameters: {
+      type: "object" as const,
+      properties: { prompt: { type: "string" } },
+      required: ["prompt"],
+    },
+  },
+];
+
 const connect = async (host: ClaudeCodeToolMcpHost) => {
   const client = new Client(
     { name: "stella-claude-mcp-test", version: "1.0.0" },
@@ -236,6 +248,95 @@ describe("claude-code-tool-mcp-host", () => {
       { type: "text", text: "weather:Phoenix" },
     ]);
     expect(executeTool).toHaveBeenCalledOnce();
+  });
+
+  it("keeps image_gen identity stable across a real MCP host/process restart", async () => {
+    const callIds: string[] = [];
+    const create = async () => {
+      const host = await createClaudeCodeToolMcpHost({
+        tools: imageTools,
+        identityScope: "persisted-claude-session-key",
+        getActiveTurn: () => ({
+          executeTool: async (id) => {
+            callIds.push(id);
+            return {
+              result: { jobId: "job-stable", status: "succeeded" },
+              details: { jobId: "job-stable", status: "succeeded" },
+            };
+          },
+        }),
+      });
+      hosts.add(host);
+      return host;
+    };
+
+    const firstHost = await create();
+    const firstClient = await connect(firstHost);
+    await firstClient.callTool({
+      name: "image_gen",
+      arguments: { prompt: "durable fox" },
+    });
+    await firstClient.close();
+    await firstHost.close();
+    hosts.delete(firstHost);
+
+    const restartedHost = await create();
+    const restartedClient = await connect(restartedHost);
+    clients.add(restartedClient);
+    await restartedClient.callTool({
+      name: "image_gen",
+      arguments: { prompt: "durable fox" },
+    });
+
+    expect(callIds).toHaveLength(2);
+    expect(callIds[1]).toBe(callIds[0]);
+    expect(callIds[0]).toMatch(/^mcp:[a-f0-9]{24}:/);
+  });
+
+  it("delivers structured image failure and preserves image cancellation", async () => {
+    let mode: "failure" | "cancel" = "failure";
+    const host = await createClaudeCodeToolMcpHost({
+      tools: imageTools,
+      identityScope: "failure-cancel-session",
+      getActiveTurn: () => ({
+        executeTool: async (_id, _name, _args, signal) => {
+          if (mode === "failure") {
+            return {
+              error: "Image request was blocked.",
+              details: {
+                jobId: "job-failed",
+                status: "failed",
+                error: { code: "policy", message: "Image request was blocked." },
+              },
+            };
+          }
+          return await new Promise((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("canceled")), {
+              once: true,
+            });
+          });
+        },
+      }),
+    });
+    hosts.add(host);
+    const client = await connect(host);
+    clients.add(client);
+    const failed = await client.callTool({
+      name: "image_gen",
+      arguments: { prompt: "blocked" },
+    });
+    expect(failed.isError).toBe(true);
+    expect(JSON.stringify(failed.content)).toContain("Image request was blocked");
+
+    mode = "cancel";
+    const controller = new AbortController();
+    const pending = client.callTool(
+      { name: "image_gen", arguments: { prompt: "cancel me" } },
+      undefined,
+      { signal: controller.signal },
+    );
+    controller.abort();
+    await expect(pending).rejects.toThrow();
   });
 
   it("drops stale client sessions on process reset while keeping the host alive", async () => {

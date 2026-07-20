@@ -1,0 +1,17 @@
+{
+  "_id": "legacy-image-gen-pending-1",
+  "type": "tool_result",
+  "timestamp": 100,
+  "payload": {
+    "toolName": "image_gen",
+    "agentType": "orchestrator",
+    "result": "image_gen job job-legacy-pending submitted.",
+    "details": {
+      "jobId": "job-legacy-pending",
+      "capability": "text_to_image",
+      "prompt": "a persisted legacy product mockup",
+      "numImages": 3,
+      "status": "submitted"
+    }
+  }
+}

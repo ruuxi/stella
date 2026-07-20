@@ -22,6 +22,7 @@ import {
   IPC_MEDIA_GET_DIR,
   IPC_MEDIA_SAVE_OUTPUT,
 } from "../../src/shared/contracts/ipc-channels.js";
+import { materializeMediaArtifact } from "../../../runtime/kernel/tools/media-artifact-store.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -206,29 +207,33 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         // jobId-based filename before the renderer sees completion. Reuse the
         // durable file so the sidebar/inline materializers do not download or
         // create a second artifact for the same media job.
-        const existing = await fs.stat(destPath).catch(() => null);
-        if (existing?.isFile() && existing.size > 0) {
-          return { ok: true, path: destPath };
-        }
         const dataUriMatch = payload.url.match(/^data:([^;,]+);base64,(.+)$/is);
         if (dataUriMatch) {
-          await fs.writeFile(destPath, Buffer.from(dataUriMatch[2], "base64"));
-          return { ok: true, path: destPath };
+          const saved = await materializeMediaArtifact({
+            filePath: destPath,
+            producer: async () => Buffer.from(dataUriMatch[2], "base64"),
+          });
+          return { ok: true, path: saved.path };
         }
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(
           payload.url,
         );
-        const res = await fetch(safeUrl, {
-          headers: { "User-Agent": "StellaDesktop/1.0" },
-          redirect: "follow",
-          signal: AbortSignal.timeout(PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS),
+        const saved = await materializeMediaArtifact({
+          filePath: destPath,
+          producerTimeoutMs: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
+          producer: async (signal) => {
+            const res = await fetch(safeUrl, {
+              headers: { "User-Agent": "StellaDesktop/1.0" },
+              redirect: "follow",
+              signal,
+            });
+            if (!res.ok) {
+              throw new Error(`Download failed (${res.status})`);
+            }
+            return Buffer.from(await res.arrayBuffer());
+          },
         });
-        if (!res.ok) {
-          return { ok: false, error: `Download failed (${res.status})` };
-        }
-        const buffer = Buffer.from(await res.arrayBuffer());
-        await fs.writeFile(destPath, buffer);
-        return { ok: true, path: destPath };
+        return { ok: true, path: saved.path };
       } catch (error) {
         return { ok: false, error: (error as Error).message };
       }

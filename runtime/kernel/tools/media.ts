@@ -6,7 +6,6 @@ import type {
   ToolHandlerExtras,
   ToolResult,
 } from "./types.js";
-import { runLocalImageGeneration } from "./local-image-generation.js";
 import {
   submitAndWaitForManagedImageJob,
   type ManagedImageJobOptions,
@@ -25,6 +24,8 @@ type MediaToolOptions = {
       | "timeoutMs"
       | "initialPollMs"
       | "maxPollMs"
+      | "artifactGraceMs"
+      | "artifactDownloadTimeoutMs"
     >
   >;
 };
@@ -173,17 +174,6 @@ const createImageGenHandler =
       input.image_urls = imageUrls;
     }
     const capability = useImageEdit ? "image_edit" : "text_to_image";
-
-    const localResult = await runLocalImageGeneration({
-      args,
-      context,
-      extras,
-      prompt,
-      aspectRatio,
-      referenceImagePaths: referencePaths,
-      referenceImageUrls: referenceUrls,
-    });
-    if (localResult) return localResult;
 
     if (!options.getStellaSiteAuth) {
       return {
