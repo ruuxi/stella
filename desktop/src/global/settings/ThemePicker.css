@@ -46,6 +46,15 @@
   border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
+[data-slot="theme-picker-section"][data-disabled] {
+  opacity: 0.58;
+}
+
+[data-slot="theme-picker-section"][data-disabled]
+  [data-slot="theme-picker-option-button"] {
+  cursor: not-allowed;
+}
+
 [data-slot="theme-picker-label"] {
   padding: 4px 8px;
   margin-top: 4px;

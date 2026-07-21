@@ -159,10 +159,17 @@ export function ThemePicker({
             </div>
 
             {/* Flat themes (the stock Default, plus any forcedMode-pinned
-                theme) render a solid surface, so the gradient controls would
-                be no-ops — hide them to keep the panel honest. */}
-            {!flat && (
-            <div data-slot="theme-picker-section" data-bordered>
+                theme) render a solid surface. Keep the controls visible so
+                the panel layout and the user's saved gradient choices remain
+                stable, but make their inactive state explicit. */}
+            <div
+              data-slot="theme-picker-section"
+              data-bordered
+              data-disabled={flat || undefined}
+              role="group"
+              aria-label="Gradient controls"
+              aria-disabled={flat || undefined}
+            >
               <div data-slot="theme-picker-label">Gradient Style</div>
               <div data-slot="theme-picker-button-row">
                 {(["soft", "flat"] as const).map((value) => (
@@ -172,6 +179,8 @@ export function ThemePicker({
                     variant={gradientMode === value ? "secondary" : "ghost"}
                     data-slot="theme-picker-option-button"
                     onClick={() => setGradientMode(value)}
+                    disabled={flat}
+                    aria-disabled={flat || undefined}
                   >
                     {value === "soft" ? "Soft" : "Flat"}
                   </Button>
@@ -187,13 +196,14 @@ export function ThemePicker({
                     variant={gradientColor === value ? "secondary" : "ghost"}
                     data-slot="theme-picker-option-button"
                     onClick={() => setGradientColor(value)}
+                    disabled={flat}
+                    aria-disabled={flat || undefined}
                   >
                     {value === "relative" ? "Relative" : "Strong"}
                   </Button>
                 ))}
               </div>
             </div>
-            )}
 
             <div
               data-slot="theme-picker-theme-list"
