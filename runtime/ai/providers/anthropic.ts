@@ -1678,7 +1678,16 @@ export function convertTools(
 		const schema = structuredClone(tool.parameters) as {
 			properties?: unknown;
 			required?: string[];
+			oneOf?: unknown;
+			allOf?: unknown;
+			anyOf?: unknown;
 		};
+		// Anthropic requires every tool input schema to be a root object and
+		// rejects root combinators even when `type: "object"` is also present.
+		// Stella still validates the full original schema before execution.
+		delete schema.oneOf;
+		delete schema.allOf;
+		delete schema.anyOf;
 
 		return {
 			name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,

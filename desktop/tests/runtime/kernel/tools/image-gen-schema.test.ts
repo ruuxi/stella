@@ -93,9 +93,16 @@ describe("image_gen advertised reference schema", () => {
       false,
       false,
     )[0]?.input_schema as Record<string, unknown>;
-    expect(anthropicSchema).toEqual(serialized);
+    const anthropicCompatibleSchema = structuredClone(serialized);
+    delete anthropicCompatibleSchema.oneOf;
+    delete anthropicCompatibleSchema.allOf;
+    delete anthropicCompatibleSchema.anyOf;
+    expect(anthropicSchema).toEqual(anthropicCompatibleSchema);
+    expect(anthropicSchema).not.toHaveProperty("oneOf");
+    expect(anthropicSchema).not.toHaveProperty("allOf");
+    expect(anthropicSchema).not.toHaveProperty("anyOf");
     expect(() =>
-      validate({ ...imageTool, parameters: anthropicSchema }, 3, 2),
+      validate({ ...imageTool, parameters: anthropicSchema }, 5, 0),
     ).toThrow();
 
     const dynamicTool = buildCodexThreadStartParams({
