@@ -3,7 +3,10 @@
 .text-shimmer {
   --text-shimmer-from: var(--text-strong);
   --text-shimmer-via: var(--text-weaker);
-  --text-shimmer-window: 28%;
+  /* The pre-optimization gradient's soft shoulder covered roughly a third of
+   * its 200% track. A wider window keeps that luminous character without
+   * animating paint-affecting gradient properties. */
+  --text-shimmer-window: 44%;
   display: inline-block;
   position: relative;
   max-width: 100%;
@@ -29,17 +32,23 @@
   pointer-events: none;
   -webkit-mask-image: linear-gradient(
     90deg,
-    transparent,
-    #000 38%,
-    #000 62%,
-    transparent
+    transparent 0%,
+    rgb(0 0 0 / 20%) 12%,
+    rgb(0 0 0 / 72%) 32%,
+    #000 50%,
+    rgb(0 0 0 / 72%) 68%,
+    rgb(0 0 0 / 20%) 88%,
+    transparent 100%
   );
   mask-image: linear-gradient(
     90deg,
-    transparent,
-    #000 38%,
-    #000 62%,
-    transparent
+    transparent 0%,
+    rgb(0 0 0 / 20%) 12%,
+    rgb(0 0 0 / 72%) 32%,
+    #000 50%,
+    rgb(0 0 0 / 72%) 68%,
+    rgb(0 0 0 / 20%) 88%,
+    transparent 100%
   );
   transform: translate3d(-100%, 0, 0);
   will-change: transform;
@@ -47,11 +56,11 @@
 
 .text-shimmer__sweep-text {
   display: block;
-  width: calc(100% / 0.28);
+  width: calc(100% / 0.44);
   overflow: hidden;
   text-overflow: inherit;
   white-space: inherit;
-  transform: translate3d(28%, 0, 0);
+  transform: translate3d(44%, 0, 0);
   will-change: transform;
 }
 

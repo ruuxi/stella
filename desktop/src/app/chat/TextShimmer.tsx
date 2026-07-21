@@ -23,6 +23,7 @@ interface TextShimmerProps {
 }
 
 export const CHAT_ACTIVITY_SHIMMER_GROUP = "chat-activity";
+const SHIMMER_WINDOW_FRACTION = 0.44;
 
 export function TextShimmer({
   text,
@@ -61,7 +62,10 @@ export function TextShimmer({
     ) {
       return;
     }
-    const sweepDuration = Math.min(900, Math.max(650, duration * 0.35));
+    // The old background-position shimmer crossed the phrase over nearly the
+    // full duration. Keep that deliberate pace while retaining a bounded rest
+    // between compositor-only transform bursts.
+    const sweepDuration = Math.min(2200, Math.max(1400, duration * 0.85));
     const restDuration = Math.max(3000, duration * 1.5);
     let stopped = false;
     let timerId: number | undefined;
@@ -73,13 +77,17 @@ export function TextShimmer({
         sweep.animate(
           [
             { transform: "translate3d(-100%, 0, 0)" },
-            { transform: "translate3d(calc(100% / 0.28), 0, 0)" },
+            {
+              transform: `translate3d(calc(100% / ${SHIMMER_WINDOW_FRACTION}), 0, 0)`,
+            },
           ],
           { duration: sweepDuration, easing: "ease-in-out" },
         ),
         sweepText.animate(
           [
-            { transform: "translate3d(28%, 0, 0)" },
+            {
+              transform: `translate3d(${SHIMMER_WINDOW_FRACTION * 100}%, 0, 0)`,
+            },
             { transform: "translate3d(-100%, 0, 0)" },
           ],
           { duration: sweepDuration, easing: "ease-in-out" },

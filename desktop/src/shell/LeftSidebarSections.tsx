@@ -77,10 +77,7 @@ import { displayTabKindForPayload } from "@/features/workspace-display/payload-k
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
-import {
-  CHAT_ACTIVITY_SHIMMER_GROUP,
-  TextShimmer,
-} from "@/app/chat/TextShimmer";
+import { ActivityTaskShimmer } from "@/shell/ActivityTaskShimmer";
 import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
 import { selectLatestAgentAssistantMessage } from "@/features/chat/lib/agent-assistant-summary";
 import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
@@ -322,6 +319,7 @@ const TaskRow = memo(function TaskRow({
   childContent,
   compactChildren,
   compactFailurePriority = false,
+  isTopLevel,
 }: {
   task: TaskItem;
   expanded: boolean;
@@ -340,6 +338,8 @@ const TaskRow = memo(function TaskRow({
   compactChildren?: readonly ActivityRow[];
   /** Keep a child failure at the front while its Manager is still active. */
   compactFailurePriority?: boolean;
+  /** Nested owned rows stay static; the visible top-level row owns motion. */
+  isTopLevel: boolean;
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
   const rowRef = useRef<HTMLLIElement>(null);
@@ -414,17 +414,11 @@ const TaskRow = memo(function TaskRow({
                   <TaskStatusIcon status={task.status} />
                 </span>
                 <span className="chat-workspace-strip__task-label">
-                  {task.status === "running" ? (
-                    <TextShimmer
-                      text={label}
-                      durationMs={2000}
-                      syncPhase
-                      exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
-                      exclusivePriority={40}
-                    />
-                  ) : (
-                    label
-                  )}
+                  <ActivityTaskShimmer
+                    task={task}
+                    text={label}
+                    isTopLevel={isTopLevel}
+                  />
                 </span>
               </span>
               <CompactChildState
@@ -441,17 +435,11 @@ const TaskRow = memo(function TaskRow({
                 <TaskStatusIcon status={task.status} />
               </span>
               <span className="chat-workspace-strip__task-label">
-                {task.status === "running" ? (
-                  <TextShimmer
-                    text={label}
-                    durationMs={2000}
-                    syncPhase
-                    exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
-                    exclusivePriority={40}
-                  />
-                ) : (
-                  label
-                )}
+                <ActivityTaskShimmer
+                  task={task}
+                  text={label}
+                  isTopLevel={isTopLevel}
+                />
               </span>
               {metaText ? (
                 <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
@@ -590,6 +578,7 @@ const TasksList = memo(function TasksList({
               files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
               onOpenFile={onOpenFile}
               orderIndex={index}
+              isTopLevel={!nested}
             />
           ) : (
             <TaskRow
@@ -605,6 +594,7 @@ const TasksList = memo(function TasksList({
               files={agentFiles.get(row.hierarchy.owner.id) ?? EMPTY_FILES}
               onOpenFile={onOpenFile}
               orderIndex={index}
+              isTopLevel={!nested}
               compactChildren={row.hierarchy.children}
               compactFailurePriority={row.hierarchy.owner.status === "running"}
               childContent={

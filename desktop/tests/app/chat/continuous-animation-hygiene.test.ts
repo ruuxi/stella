@@ -125,7 +125,10 @@ describe("continuous animation hygiene", () => {
 
     expect(shimmerCss).not.toContain("background-position");
     expect(shimmerCss).not.toContain("animation:");
+    expect(shimmerCss).toContain("--text-shimmer-window: 44%");
+    expect(shimmerCss).toContain("#000 50%");
     expect(shimmer).toContain("sweep.animate(");
+    expect(shimmer).toContain("Math.max(1400, duration * 0.85)");
     expect(shimmer).toContain("window.setTimeout(runSweep, restDuration)");
     expect(shimmer).toContain("animation.cancel()");
     expect(activityCss).toContain('data-continuous-animation="true"');
