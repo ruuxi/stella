@@ -1,11 +1,45 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 import type { ManagedImageTerminalResult } from "./managed-image-job.js";
 
 const DATABASE_FILE = "image-tool-operations.sqlite";
+
+type ImageSqliteStatement = {
+  run(...params: unknown[]): { changes: number };
+  all(...params: unknown[]): unknown[];
+  get(...params: unknown[]): unknown;
+};
+
+type ImageSqliteDatabase = {
+  exec(sql: string): void;
+  prepare(sql: string): ImageSqliteStatement;
+  close(): void;
+};
+
+type SqliteDatabaseCtor = new (path: string) => ImageSqliteDatabase;
+
+/**
+ * This store is used by both Node-based tests and Stella's detached Bun
+ * worker. Resolve the native SQLite implementation at runtime so a static
+ * `node:sqlite` import cannot make the lazy runner chunk fail under Bun.
+ */
+const loadSqliteDatabaseCtor = (): SqliteDatabaseCtor => {
+  const runtimeRequire = createRequire(import.meta.url);
+  const sqliteModule = runtimeRequire(
+    process.versions.bun ? "bun:sqlite" : "node:sqlite",
+  ) as {
+    Database?: SqliteDatabaseCtor;
+    DatabaseSync?: SqliteDatabaseCtor;
+  };
+  const Database = sqliteModule.Database ?? sqliteModule.DatabaseSync;
+  if (!Database) {
+    throw new Error("No compatible SQLite runtime is available.");
+  }
+  return Database;
+};
 
 const stableJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -46,7 +80,7 @@ export type DurableImageOperation = {
   submissionState: "pending" | "dispatching" | "submitted";
 };
 
-const tableColumns = (db: DatabaseSync, table: string): Set<string> =>
+const tableColumns = (db: ImageSqliteDatabase, table: string): Set<string> =>
   new Set(
     (
       db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
@@ -55,11 +89,10 @@ const tableColumns = (db: DatabaseSync, table: string): Set<string> =>
     ).map((column) => column.name),
   );
 
-const openDatabase = (stellaDataDir: string): DatabaseSync => {
+const openDatabase = (stellaDataDir: string): ImageSqliteDatabase => {
   fs.mkdirSync(stellaDataDir, { recursive: true });
-  const db = new DatabaseSync(path.join(stellaDataDir, DATABASE_FILE), {
-    timeout: 5_000,
-  });
+  const Database = loadSqliteDatabaseCtor();
+  const db = new Database(path.join(stellaDataDir, DATABASE_FILE));
   // Install the busy handler before asking SQLite to switch journal modes.
   // `journal_mode=WAL` can still report SQLITE_BUSY immediately while a
   // sibling process is performing the same first-open migration. That is
