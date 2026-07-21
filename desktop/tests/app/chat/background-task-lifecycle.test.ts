@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import {
   buildBackgroundTaskLifecycleIndex,
+  followUpReplacesActivePredecessor,
   resolveBackgroundTaskCardLifecycle,
 } from "@/features/chat/lib/background-task-lifecycle";
 import {
@@ -75,6 +76,130 @@ const resolveCard = (starts: EventRecord[], allEvents: EventRecord[]) => {
 };
 
 describe("spawn-anchored background task lifecycle", () => {
+  it.each(["general", "manager"])(
+    "replaces an active %s predecessor when a follow-up starts",
+    (agentType) => {
+      const original = started({
+        id: `${agentType}-original`,
+        at: 100,
+        agentId: `${agentType}-thread`,
+        rootRunId: `${agentType}-run`,
+        description: "Original work",
+        agentType,
+        attemptGeneration: 1,
+      });
+      const followUp = started({
+        id: `${agentType}-follow-up`,
+        at: 200,
+        agentId: `${agentType}-thread`,
+        rootRunId: `${agentType}-run`,
+        description: "Original work",
+        statusText: "Apply the new direction",
+        isFollowUp: true,
+        agentType,
+        attemptGeneration: 2,
+      });
+      const index = buildBackgroundTaskLifecycleIndex([original, followUp]);
+
+      expect(
+        followUpReplacesActivePredecessor(
+          original._id,
+          followUp._id,
+          index,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each(["general", "manager"])(
+    "keeps a settled %s predecessor beside a later follow-up",
+    (agentType) => {
+      const original = started({
+        id: `${agentType}-original`,
+        at: 100,
+        agentId: `${agentType}-thread`,
+        rootRunId: `${agentType}-run-1`,
+        description: "Original work",
+        agentType,
+        attemptGeneration: 1,
+      });
+      const originalDone = completed({
+        id: `${agentType}-done`,
+        at: 150,
+        agentId: `${agentType}-thread`,
+        rootRunId: `${agentType}-run-1`,
+        attemptGeneration: 1,
+      });
+      const followUp = started({
+        id: `${agentType}-follow-up`,
+        at: 200,
+        agentId: `${agentType}-thread`,
+        rootRunId: `${agentType}-run-2`,
+        description: "Original work",
+        statusText: "Apply the new direction",
+        isFollowUp: true,
+        agentType,
+        attemptGeneration: 2,
+      });
+      const index = buildBackgroundTaskLifecycleIndex([
+        original,
+        originalDone,
+        followUp,
+      ]);
+
+      expect(
+        followUpReplacesActivePredecessor(
+          original._id,
+          followUp._id,
+          index,
+        ),
+      ).toBe(false);
+      expect(index.byStartEventId.get(original._id)?.status).toBe("completed");
+      expect(index.byStartEventId.get(followUp._id)?.status).toBe("running");
+    },
+  );
+
+  it("replaces a predecessor whose stale terminal arrives after the follow-up", () => {
+    const original = started({
+      id: "original-start",
+      at: 100,
+      agentId: "ordinary-thread",
+      rootRunId: "run-1",
+      description: "Original work",
+      attemptGeneration: 1,
+    });
+    const followUp = started({
+      id: "follow-up-start",
+      at: 200,
+      agentId: "ordinary-thread",
+      rootRunId: "run-2",
+      description: "Original work",
+      statusText: "Continue with corrections",
+      isFollowUp: true,
+      attemptGeneration: 2,
+    });
+    const lateOriginalDone = completed({
+      id: "late-original-done",
+      at: 250,
+      agentId: "ordinary-thread",
+      rootRunId: "run-1",
+      attemptGeneration: 1,
+    });
+    const index = buildBackgroundTaskLifecycleIndex([
+      original,
+      followUp,
+      lateOriginalDone,
+    ]);
+
+    expect(
+      followUpReplacesActivePredecessor(
+        original._id,
+        followUp._id,
+        index,
+      ),
+    ).toBe(true);
+  });
+
   it("settles a spawn_manager card through the shared completion lifecycle", () => {
     const start = started({
       id: "manager-start",

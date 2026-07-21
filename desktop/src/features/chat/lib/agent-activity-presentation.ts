@@ -1,4 +1,5 @@
 import type { TaskLifecycleStatus } from "../../../../../runtime/contracts/agent-runtime.js";
+import type { ThreadActivityRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 export type AgentAttemptPresentation = {
   status?: TaskLifecycleStatus;
@@ -79,6 +80,96 @@ export const deriveLatestAgentPresentationStatus = (
   return latestAttemptSupersedesAuthoritative(authoritative, latestAttempt)
     ? (latestAttempt.status ?? "running")
     : authoritative.status;
+};
+
+/**
+ * A terminal owner is only visually complete once its currently-owned work
+ * has settled. Running owners stay running; paused/failed owners keep their
+ * explicit terminal state even if a stale child row still says running.
+ */
+export const deriveOwnedAgentPresentationStatus = (
+  ownerStatus: TaskLifecycleStatus,
+  ownedStatuses: readonly TaskLifecycleStatus[],
+): TaskLifecycleStatus => {
+  if (ownerStatus === "running") return "running";
+  if (ownerStatus === "error" || ownerStatus === "canceled") {
+    return ownerStatus;
+  }
+  if (ownedStatuses.includes("running")) return "running";
+  if (ownedStatuses.includes("error")) return "error";
+  return "completed";
+};
+
+const isRecordCurrentForCard = (
+  record: ThreadActivityRecord,
+  options: {
+    attemptGeneration?: number;
+    rootRunId?: string;
+    startedAtMs?: number;
+  },
+): boolean => {
+  if (
+    options.attemptGeneration !== undefined &&
+    record.attemptGeneration !== undefined
+  ) {
+    if (record.attemptGeneration < options.attemptGeneration) return false;
+    if (
+      record.attemptGeneration === options.attemptGeneration &&
+      options.rootRunId &&
+      record.rootRunId &&
+      record.rootRunId !== options.rootRunId
+    ) {
+      return false;
+    }
+    return true;
+  }
+  if (options.rootRunId && record.rootRunId === options.rootRunId) return true;
+  const cardStartedAt = options.startedAtMs ?? 0;
+  return record.startedAt >= cardStartedAt || record.updatedAt >= cardStartedAt;
+};
+
+/**
+ * Resolve the current durable status of one thread plus everything it owns.
+ * Ownership is transitive and comes from the same authoritative Activity
+ * rows used by the sidebar. Cycles fail closed on the owner's own status.
+ */
+export const deriveThreadAndOwnedPresentationStatus = (
+  records: readonly ThreadActivityRecord[],
+  threadId: string,
+  options: {
+    attemptGeneration?: number;
+    rootRunId?: string;
+    startedAtMs?: number;
+  } = {},
+): TaskLifecycleStatus | undefined => {
+  const recordById = new Map(records.map((record) => [record.threadId, record]));
+  const childrenByParent = new Map<string, ThreadActivityRecord[]>();
+  for (const record of records) {
+    if (!record.parentAgentId || record.parentAgentId === record.threadId) {
+      continue;
+    }
+    const children = childrenByParent.get(record.parentAgentId);
+    if (children) children.push(record);
+    else childrenByParent.set(record.parentAgentId, [record]);
+  }
+
+  const derive = (
+    id: string,
+    ancestors: ReadonlySet<string>,
+  ): TaskLifecycleStatus | undefined => {
+    const record = recordById.get(id);
+    if (!record || ancestors.has(id)) return undefined;
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(id);
+    const childStatuses = (childrenByParent.get(id) ?? [])
+      .map((child) => derive(child.threadId, nextAncestors))
+      .filter((status): status is TaskLifecycleStatus => status !== undefined);
+    return deriveOwnedAgentPresentationStatus(record.status, childStatuses);
+  };
+
+  const owner = recordById.get(threadId);
+  if (!owner || !isRecordCurrentForCard(owner, options)) return undefined;
+  return derive(threadId, new Set());
 };
 
 /** Group/card state uses active-first precedence so a mixed card can never

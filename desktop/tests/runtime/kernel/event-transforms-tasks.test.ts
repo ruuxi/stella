@@ -269,12 +269,63 @@ describe("top-level Activity work-unit counts", () => {
   });
 
   it("does not promote an active child beneath a paused Manager", () => {
-    expect(
-      countActiveTopLevelActivityWorkUnits([
-        task({ id: "manager", agentType: "manager", status: "canceled" }),
-        task({ id: "child", parentAgentId: "manager" }),
-      ]),
-    ).toBe(0);
+    const tasks = [
+      task({ id: "manager", agentType: "manager", status: "canceled" }),
+      task({ id: "child", parentAgentId: "manager" }),
+    ];
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(0);
+    expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
+      { id: "hierarchy:manager", status: "canceled" },
+    ]);
+  });
+
+  it("keeps an active Manager running when one owned child completes", () => {
+    const tasks = [
+      task({ id: "manager", agentType: "manager" }),
+      task({
+        id: "finished-child",
+        parentAgentId: "manager",
+        status: "completed",
+      }),
+    ];
+    expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
+      { id: "hierarchy:manager", status: "running" },
+    ]);
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
+  });
+
+  it("keeps a terminal-looking Manager active while owned work is running", () => {
+    const tasks = [
+      task({
+        id: "manager",
+        agentType: "manager",
+        status: "completed",
+      }),
+      task({ id: "active-child", parentAgentId: "manager" }),
+    ];
+    expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
+      { id: "hierarchy:manager", status: "running" },
+    ]);
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
+  });
+
+  it("settles a Manager row only after the owner and descendants settle", () => {
+    const tasks = [
+      task({
+        id: "manager",
+        agentType: "manager",
+        status: "completed",
+      }),
+      task({
+        id: "finished-child",
+        parentAgentId: "manager",
+        status: "completed",
+      }),
+    ];
+    expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
+      { id: "hierarchy:manager", status: "completed" },
+    ]);
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(0);
   });
 
   it("counts a nested Manager tree as one top-level unit", () => {

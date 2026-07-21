@@ -22,6 +22,7 @@ import {
 } from "@/features/chat/lib/derive-turn-resource";
 import {
   buildBackgroundTaskLifecycleIndex,
+  followUpReplacesActivePredecessor,
   resolveBackgroundTaskCardLifecycle,
   type BackgroundTaskLifecycleIndex,
 } from "@/features/chat/lib/background-task-lifecycle";
@@ -906,10 +907,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     // copies share the canonical `agent-started` event id. A different start
     // id is a genuine later activation of the durable thread.
     //
-    //  - Genuine re-activation: a LATER turn spawns or updates (send_input)
-    //    the same thread, carrying a strictly newer `agent-started`. The
-    //    later card owns the thread; earlier cards are marked superseded so
-    //    they read as settled breadcrumbs instead of re-animating.
+    //  - Follow-up while active: the newer card replaces the predecessor.
+    //    There is no synthetic completed breadcrumb for the interrupted
+    //    occurrence; only the current follow-up remains visible.
+    //
+    //  - Follow-up after settlement: both cards remain. The predecessor keeps
+    //    its real terminal state/prose and the follow-up owns its own status.
     //
     //  - Exact duplicate: the SAME `agent-started` event (identical
     //    `spawnedAtMs`) projected onto two rows — e.g. a fire-and-forget
@@ -924,33 +927,52 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         latestOwnerByThread.set(id, index);
       }
     });
-    const ownerStartEventIdForThread = (id: string): string | undefined => {
+    const ownerBackgroundWorkForThread = (id: string) => {
       const ownerIndex = latestOwnerByThread.get(id);
       if (ownerIndex === undefined) return undefined;
       const owner = computed[ownerIndex];
       if (owner?.kind !== "assistant" || !owner.backgroundWork)
         return undefined;
-      return owner.backgroundWork.startEventIdsByThread[id];
+      return owner.backgroundWork;
     };
     const droppedRowIndices = new Set<number>();
     computed.forEach((row, index) => {
       if (row.kind !== "assistant" || !row.backgroundWork) return;
       const superseded: string[] = [];
       const duplicated = new Set<string>();
+      const replaced = new Set<string>();
       for (const id of row.backgroundWork.threadIds) {
         if (latestOwnerByThread.get(id) === index) continue;
-        const ownerStartEventId = ownerStartEventIdForThread(id);
+        const owner = ownerBackgroundWorkForThread(id);
+        const ownerStartEventId = owner?.startEventIdsByThread[id];
         const selfStartEventId = row.backgroundWork.startEventIdsByThread[id];
         if (
           ownerStartEventId !== undefined &&
           selfStartEventId === ownerStartEventId
         ) {
           duplicated.add(id);
+        } else if (
+          ownerStartEventId &&
+          selfStartEventId &&
+          owner?.followUpThreadIds?.includes(id) &&
+          followUpReplacesActivePredecessor(
+            selfStartEventId,
+            ownerStartEventId,
+            lifecycleIndex,
+          )
+        ) {
+          replaced.add(id);
+        } else if (owner?.followUpThreadIds?.includes(id)) {
+          // The predecessor had already settled before this follow-up. Keep
+          // its terminal card, but fence it from the durable thread's newer
+          // attempt so only the follow-up can become the current live unit.
+          superseded.push(id);
         } else {
           superseded.push(id);
         }
       }
-      if (duplicated.size === 0) {
+      const removed = new Set([...duplicated, ...replaced]);
+      if (removed.size === 0) {
         if (superseded.length > 0) {
           row.backgroundWork = {
             ...row.backgroundWork,
@@ -960,15 +982,15 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         return;
       }
       const remainingThreadIds = row.backgroundWork.threadIds.filter(
-        (id) => !duplicated.has(id),
+        (id) => !removed.has(id),
       );
       if (remainingThreadIds.length === 0) {
         if (assistantRowHasNonBackgroundContent(row)) {
           const { backgroundWork: _omit, ...rest } = row;
           computed[index] = rest;
         } else {
-          // Synthetic card-only row whose sole receipt was a duplicate —
-          // drop it so the canonical copy is the only render.
+          // Synthetic card-only row whose sole receipt was duplicated or
+          // replaced by an in-flight follow-up — keep only the current card.
           droppedRowIndices.add(index);
         }
         return;
@@ -988,7 +1010,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       const terminalEventIdsByThread = {
         ...(row.backgroundWork.terminalEventIdsByThread ?? {}),
       };
-      for (const id of duplicated) {
+      for (const id of removed) {
         delete descriptions[id];
         delete spawnedAtMs[id];
         delete statusTexts[id];
@@ -1004,24 +1026,24 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       );
       const followUpThreadIds = (
         row.backgroundWork.followUpThreadIds ?? []
-      ).filter((id) => !duplicated.has(id));
+      ).filter((id) => !removed.has(id));
       row.backgroundWork = {
         ...row.backgroundWork,
         threadIds: remainingThreadIds,
         completedThreadIds: row.backgroundWork.completedThreadIds.filter(
-          (id) => !duplicated.has(id),
+          (id) => !removed.has(id),
         ),
         ...(row.backgroundWork.pausedThreadIds
           ? {
               pausedThreadIds: row.backgroundWork.pausedThreadIds.filter(
-                (id) => !duplicated.has(id),
+                (id) => !removed.has(id),
               ),
             }
           : {}),
         ...(row.backgroundWork.failedThreadIds
           ? {
               failedThreadIds: row.backgroundWork.failedThreadIds.filter(
-                (id) => !duplicated.has(id),
+                (id) => !removed.has(id),
               ),
             }
           : {}),
@@ -1039,7 +1061,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         ).filter(
           (section) =>
             !section.startEventId ||
-            !duplicated.has(section.agentId) ||
+            !removed.has(section.agentId) ||
             startEventIdsByThread[section.agentId] === section.startEventId,
         ),
         cardId: `agent-activity:${remainingThreadIds

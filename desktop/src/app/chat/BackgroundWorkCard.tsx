@@ -20,12 +20,11 @@
  *     distinct update breadcrumb. See `getBackgroundWork`.
  *
  * Presence/identity and the captured descriptions come from the spawning
- * turn's tool events (`useEventRows`). The running/settled tell is derived
- * from the reload-safe completion/superseded sets plus a stale-spawn timer
- * (no live task context is needed — the card resolves "still working" from
- * the props threaded through the row).
+ * turn's tool events (`useEventRows`). Current status comes from the durable
+ * thread Activity projection, with the occurrence lifecycle as its loading
+ * fallback; elapsed time is never treated as evidence of completion.
  */
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
 import { Eye } from "@/ui/icons";
 import {
@@ -37,82 +36,15 @@ import { selectLatestThreadAssistantSummary } from "@/features/chat/lib/agent-as
 import {
   agentPresentationFallback,
   deriveAgentCardPresentationStatus,
+  deriveThreadAndOwnedPresentationStatus,
 } from "@/features/chat/lib/agent-activity-presentation";
 import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { openAgentThreadTab } from "@/features/workspace-display/open-payload";
 import "./background-work-card.css";
 
-/** A thread with no completion signal that was spawned longer ago than this
- *  is presumed settled (its lifecycle aged out of the loaded windows) rather
- *  than pinned as forever-working. Comfortably longer than the spawn →
- *  first-signal latency, so a genuinely fresh spawn still reads as working
- *  until its completion lands. */
-const STALE_NO_SIGNAL_MS = 5 * 60_000;
-
 /** Sweep duration for the title shimmer — a touch quicker than the base
  *  TextShimmer so the in-progress state reads as lively. */
 const TITLE_SHIMMER_MS = 1900;
-
-/** Whether any thread the card covers is still working, plus the earliest
- *  stale deadline the card should re-evaluate itself on. A thread reads as
- *  working until its `agent-completed` lands (`completedThreadIds`), a later
- *  turn's card takes it over (`supersededThreadIds`), or it ages past the
- *  stale threshold with no completion signal. */
-function computeWorking(
-  threadIds: string[],
-  completedThreadIds: readonly string[],
-  pausedThreadIds: readonly string[],
-  failedThreadIds: readonly string[],
-  supersededThreadIds: readonly string[],
-  spawnedAtMs: Record<string, number>,
-): { working: boolean; paused: boolean; nextStaleDeadlineMs?: number } {
-  const completedSet = new Set(completedThreadIds);
-  const pausedSet = new Set(pausedThreadIds);
-  const failedSet = new Set(failedThreadIds);
-  const supersededSet = new Set(supersededThreadIds);
-  const now = Date.now();
-  let working = false;
-  let paused = false;
-  let nextStaleDeadlineMs: number | undefined;
-
-  for (const id of threadIds) {
-    // A later turn's card owns this thread's live status now — treat it as
-    // settled here so this (earlier) card doesn't shimmer on revival.
-    if (supersededSet.has(id)) continue;
-    // Its `agent-completed` has landed in the message stream.
-    if (completedSet.has(id)) continue;
-    if (failedSet.has(id)) continue;
-    // Paused (its latest `agent-canceled` postdates this card's spawn):
-    // not working — the shimmer stops — but flagged so the card can label
-    // itself "Paused" instead of reading as settled.
-    if (pausedSet.has(id)) {
-      paused = true;
-      continue;
-    }
-    // No completion signal: a fresh spawn reads as working; one whose
-    // lifecycle aged out of the loaded windows is presumed settled so the
-    // card doesn't shimmer "working" forever after a reload.
-    const spawnedAt = spawnedAtMs[id];
-    if (spawnedAt && now - spawnedAt > STALE_NO_SIGNAL_MS) continue;
-    working = true;
-    if (spawnedAt) {
-      const deadline = spawnedAt + STALE_NO_SIGNAL_MS;
-      if (nextStaleDeadlineMs === undefined || deadline < nextStaleDeadlineMs) {
-        nextStaleDeadlineMs = deadline;
-      }
-    }
-  }
-
-  return {
-    working,
-    paused,
-    // Only arm a timer while the card is still shimmering — once settled,
-    // crossing a deadline wouldn't change anything.
-    ...(working && nextStaleDeadlineMs !== undefined
-      ? { nextStaleDeadlineMs }
-      : {}),
-  };
-}
 
 /** Per-thread descriptions in spawn order, from the reload-safe
  *  descriptions captured on the spawning row at spawn time. */
@@ -171,32 +103,50 @@ export function BackgroundWorkCard({
   terminalEventIdsByThread?: Record<string, string>;
   conversationId: string;
 }) {
-  // Bumped by the stale-deadline timer so the working check re-evaluates its
-  // time-based branch on its own rather than waiting for an unrelated render.
-  const [tick, setTick] = useState(0);
-  const { working, paused, nextStaleDeadlineMs } = useMemo(
-    () =>
-      computeWorking(
-        threadIds,
-        completedThreadIds ?? [],
-        pausedThreadIds ?? [],
-        failedThreadIds ?? [],
-        supersededThreadIds ?? [],
-        spawnedAtMs ?? {},
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      threadIds,
-      completedThreadIds,
-      pausedThreadIds,
-      failedThreadIds,
-      supersededThreadIds,
-      spawnedAtMs,
-      tick,
-    ],
-  );
-
   const { records: threadActivity } = useThreadActivity(conversationId);
+
+  const presentationStatus = useMemo(() => {
+    const completed = new Set(completedThreadIds ?? []);
+    const paused = new Set(pausedThreadIds ?? []);
+    const failed = new Set(failedThreadIds ?? []);
+    const superseded = new Set(supersededThreadIds ?? []);
+    const statuses = threadIds
+      .filter((threadId) => !superseded.has(threadId))
+      .map((threadId) => {
+        const authoritative = deriveThreadAndOwnedPresentationStatus(
+          threadActivity,
+          threadId,
+          {
+            attemptGeneration: attemptGenerationsByThread?.[threadId],
+            rootRunId: rootRunIdsByThread?.[threadId],
+            startedAtMs: spawnedAtMs?.[threadId],
+          },
+        );
+        if (authoritative) return authoritative;
+        if (failed.has(threadId)) return "error" as const;
+        if (paused.has(threadId)) return "canceled" as const;
+        if (completed.has(threadId)) return "completed" as const;
+        // Missing lifecycle rows are not proof of completion. The durable
+        // Activity projection will settle this once it loads/catches up.
+        return "running" as const;
+      });
+    return deriveAgentCardPresentationStatus({
+      working: statuses.includes("running"),
+      failed: statuses.includes("error"),
+      paused: statuses.includes("canceled"),
+    });
+  }, [
+    attemptGenerationsByThread,
+    completedThreadIds,
+    failedThreadIds,
+    pausedThreadIds,
+    rootRunIdsByThread,
+    spawnedAtMs,
+    supersededThreadIds,
+    threadActivity,
+    threadIds,
+  ]);
+  const working = presentationStatus === "running";
 
   // The card mounting grows its row outside the streaming-text notify path
   // (a spawn lands as a tool event, not a text chunk) — tell the scroll
@@ -205,16 +155,6 @@ export function BackgroundWorkCard({
   useLayoutEffect(() => {
     notifyChatContentGrowth();
   }, []);
-
-  // While a thread reads as working only because it hasn't yet crossed the
-  // stale threshold, arm a one-shot timer for that deadline so the card
-  // settles itself even if no further signal ever arrives.
-  useEffect(() => {
-    if (nextStaleDeadlineMs === undefined) return;
-    const delay = Math.max(0, nextStaleDeadlineMs - Date.now()) + 100;
-    const timer = window.setTimeout(() => setTick((value) => value + 1), delay);
-    return () => window.clearTimeout(timer);
-  }, [nextStaleDeadlineMs]);
 
   const resolved = resolveDescriptions(threadIds, descriptions ?? {});
   const multi = threadIds.length > 1;
@@ -237,20 +177,31 @@ export function BackgroundWorkCard({
       ? resolved[0] || `${threadIds.length} tasks`
       : resolved[0] || "Background work";
 
+  // Attempt/root fencing keeps modern historical cards scoped to their own
+  // prose. Legacy cards without a generation still need the coarse exclusion
+  // so a newer follow-up cannot bleed text into the predecessor.
+  const assistantSummaryExcludedThreadIds = useMemo(
+    () =>
+      (supersededThreadIds ?? []).filter(
+        (threadId) => attemptGenerationsByThread?.[threadId] === undefined,
+      ),
+    [attemptGenerationsByThread, supersededThreadIds],
+  );
+
   const latestAssistantSummary = useMemo(
     () =>
       selectLatestThreadAssistantSummary(threadActivity, {
         threadIds,
-        excludedThreadIds: supersededThreadIds,
+        excludedThreadIds: assistantSummaryExcludedThreadIds,
         attemptGenerationsByThread,
         rootRunIdsByThread,
         startedAtMsByThread: spawnedAtMs,
       }),
     [
+      assistantSummaryExcludedThreadIds,
       attemptGenerationsByThread,
       rootRunIdsByThread,
       spawnedAtMs,
-      supersededThreadIds,
       threadActivity,
       threadIds,
     ],
@@ -261,11 +212,6 @@ export function BackgroundWorkCard({
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
   // and a settled card keeps its plain historical label.
-  const presentationStatus = deriveAgentCardPresentationStatus({
-    working,
-    paused,
-    failed: (failedThreadIds?.length ?? 0) > 0,
-  });
   const failed = presentationStatus === "error";
   const showPaused = presentationStatus === "canceled";
   const semanticFallback = agentPresentationFallback(presentationStatus);

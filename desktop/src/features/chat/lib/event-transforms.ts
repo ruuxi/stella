@@ -21,6 +21,7 @@ import type {
 import { selectLatestAgentAssistantMessage } from './agent-assistant-summary'
 import {
   deriveLatestAgentPresentationStatus,
+  deriveOwnedAgentPresentationStatus,
   latestAttemptSupersedesAuthoritative,
 } from './agent-activity-presentation'
 
@@ -725,7 +726,7 @@ export const deriveTopLevelActivityWorkUnits = (
   }
   return groupActivityTasks([...latestById.values()]).map((row) => ({
     id: activityRowKey(row),
-    status: row.kind === 'task' ? row.task.status : row.hierarchy.owner.status,
+    status: getActivityRowStatus(row),
   }))
 }
 
@@ -802,14 +803,10 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
         const nextAncestors = new Set(ancestors)
         nextAncestors.add(task.id)
         const childRows = buildRows(children, nextAncestors)
-        const statuses = [task.status, ...childRows.map(getActivityRowStatus)]
-        const status: TaskLifecycleStatus = statuses.includes('running')
-          ? 'running'
-          : statuses.includes('error')
-            ? 'error'
-            : statuses.includes('completed')
-              ? 'completed'
-              : 'canceled'
+        const status = deriveOwnedAgentPresentationStatus(
+          task.status,
+          childRows.map(getActivityRowStatus),
+        )
         rows.push({
           kind: 'hierarchy',
           hierarchy: {

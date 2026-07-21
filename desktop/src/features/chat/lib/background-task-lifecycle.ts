@@ -372,6 +372,25 @@ export const buildBackgroundTaskLifecycleIndex = (
   };
 };
 
+/**
+ * A follow-up replaces its predecessor only when that predecessor was still
+ * active as the follow-up began. If the prior occurrence had already settled,
+ * both cards remain: the finished historical receipt and the new follow-up.
+ * A terminal event arriving after the newer start still means the predecessor
+ * was active at the handoff, even if the final folded state is terminal.
+ */
+export const followUpReplacesActivePredecessor = (
+  predecessorStartEventId: string,
+  followUpStartEventId: string,
+  index: BackgroundTaskLifecycleIndex,
+): boolean => {
+  const predecessor = index.byStartEventId.get(predecessorStartEventId);
+  const followUp = index.byStartEventId.get(followUpStartEventId);
+  if (!followUp?.isFollowUp || !predecessor) return false;
+  if (predecessor.status === "running") return true;
+  return predecessor.latestEventAtMs > followUp.startedAtMs;
+};
+
 /** Project canonical lifecycle state onto one spawn/group card descriptor. */
 export const resolveBackgroundTaskCardLifecycle = (
   threadIds: readonly string[],

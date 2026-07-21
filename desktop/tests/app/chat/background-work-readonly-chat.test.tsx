@@ -222,6 +222,227 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
   });
 
+  it("keeps Rahul's long-running resumed Manager card active past the old timeout", async () => {
+    records = [
+      {
+        ...records[0]!,
+        threadId: "v2-parity-manager",
+        agentType: "manager",
+        description: "Resume v2 parity reconciliation after empty Manager turn",
+        status: "running",
+        attemptGeneration: 19,
+        rootRunId: "v2-parity-run",
+        startedAt: Date.now() - 60_000,
+        updatedAt: Date.now(),
+        assistantMessages: undefined,
+        assistantMessagesUpdatedAt: undefined,
+        assistantMessagesUpdatedSequence: undefined,
+      },
+      {
+        ...records[0]!,
+        threadId: "finished-child",
+        agentType: "general",
+        description: "Return the current ledger",
+        status: "completed",
+        attemptGeneration: 3,
+        rootRunId: "v2-parity-run",
+        parentAgentId: "v2-parity-manager",
+        startedAt: Date.now() - 120_000,
+        completedAt: Date.now() - 30_000,
+        updatedAt: Date.now() - 30_000,
+      },
+      {
+        ...records[0]!,
+        threadId: "active-child",
+        agentType: "general",
+        description: "Implement Batch 1",
+        status: "running",
+        attemptGeneration: 15,
+        rootRunId: "v2-parity-run",
+        parentAgentId: "v2-parity-manager",
+        startedAt: Date.now() - 45_000,
+        updatedAt: Date.now(),
+      },
+    ];
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["v2-parity-manager"]}
+          spawnedAtMs={{
+            "v2-parity-manager": Date.now() - 10 * 60_000,
+          }}
+          descriptions={{
+            "v2-parity-manager":
+              "Resume v2 parity reconciliation after empty Manager turn",
+          }}
+          followUpThreadIds={["v2-parity-manager"]}
+          statusTexts={{
+            "v2-parity-manager":
+              "Resume v2 parity reconciliation after empty Manager turn",
+          }}
+          cardId="v2-parity-follow-up"
+          startEventIdsByThread={{ "v2-parity-manager": "manager-start-3" }}
+          attemptGenerationsByThread={{ "v2-parity-manager": 3 }}
+          rootRunIdsByThread={{ "v2-parity-manager": "v2-parity-run" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const card = container.querySelector(".background-work-card");
+    expect(card?.textContent).toContain("Working…");
+    expect(card?.getAttribute("data-lifecycle-status")).toBe("running");
+    expect(card?.querySelector(".stella-icon-circle-dot")).not.toBeNull();
+    expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
+  });
+
+  it("does not complete a Manager while an owned descendant remains active", async () => {
+    records = [
+      {
+        ...records[0]!,
+        threadId: "manager-thread",
+        agentType: "manager",
+        status: "completed",
+        attemptGeneration: 4,
+        rootRunId: "manager-run",
+        completedAt: 4_000,
+        updatedAt: 4_000,
+        assistantMessages: undefined,
+        assistantMessagesUpdatedAt: undefined,
+        assistantMessagesUpdatedSequence: undefined,
+      },
+      {
+        ...records[0]!,
+        threadId: "manager-child",
+        parentAgentId: "manager-thread",
+        status: "running",
+        attemptGeneration: 2,
+        rootRunId: "manager-run",
+        updatedAt: 4_100,
+      },
+    ];
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["manager-thread"]}
+          completedThreadIds={["manager-thread"]}
+          spawnedAtMs={{ "manager-thread": 1_000 }}
+          descriptions={{ "manager-thread": "Coordinate the migration" }}
+          cardId="manager-active-descendant"
+          startEventIdsByThread={{ "manager-thread": "manager-start" }}
+          attemptGenerationsByThread={{ "manager-thread": 4 }}
+          rootRunIdsByThread={{ "manager-thread": "manager-run" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      container
+        .querySelector(".background-work-card")
+        ?.getAttribute("data-lifecycle-status"),
+    ).toBe("running");
+    expect(container.textContent).toContain("Working…");
+  });
+
+  it("lets an ordinary General follow-up clear stale completion immediately", async () => {
+    records = [
+      {
+        ...records[0]!,
+        status: "running",
+        attemptGeneration: 3,
+        rootRunId: "general-follow-up-run",
+        startedAt: 5_000,
+        updatedAt: 5_100,
+        assistantMessages: undefined,
+        assistantMessagesUpdatedAt: undefined,
+        assistantMessagesUpdatedSequence: undefined,
+      },
+    ];
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["agent-thread-1"]}
+          completedThreadIds={["agent-thread-1"]}
+          spawnedAtMs={{ "agent-thread-1": 5_000 }}
+          descriptions={{ "agent-thread-1": "Reconcile the final diff" }}
+          followUpThreadIds={["agent-thread-1"]}
+          statusTexts={{ "agent-thread-1": "Recheck the final diff" }}
+          cardId="general-follow-up"
+          startEventIdsByThread={{ "agent-thread-1": "general-start-3" }}
+          attemptGenerationsByThread={{ "agent-thread-1": 3 }}
+          rootRunIdsByThread={{
+            "agent-thread-1": "general-follow-up-run",
+          }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      container
+        .querySelector(".background-work-card")
+        ?.getAttribute("data-lifecycle-status"),
+    ).toBe("running");
+    expect(container.textContent).toContain("Working…");
+  });
+
+  it("shows Completed once the resumed Manager and its descendants settle", async () => {
+    records = [
+      {
+        ...records[0]!,
+        threadId: "settled-manager",
+        agentType: "manager",
+        status: "completed",
+        attemptGeneration: 6,
+        rootRunId: "settled-run",
+        completedAt: 7_000,
+        updatedAt: 7_000,
+        assistantMessages: undefined,
+        assistantMessagesUpdatedAt: undefined,
+        assistantMessagesUpdatedSequence: undefined,
+      },
+      {
+        ...records[0]!,
+        threadId: "settled-child",
+        parentAgentId: "settled-manager",
+        status: "completed",
+        attemptGeneration: 2,
+        rootRunId: "settled-run",
+        completedAt: 6_900,
+        updatedAt: 6_900,
+      },
+    ];
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["settled-manager"]}
+          completedThreadIds={["settled-manager"]}
+          spawnedAtMs={{ "settled-manager": 6_000 }}
+          descriptions={{ "settled-manager": "Finish reconciliation" }}
+          cardId="settled-manager-card"
+          startEventIdsByThread={{ "settled-manager": "manager-start-6" }}
+          attemptGenerationsByThread={{ "settled-manager": 6 }}
+          rootRunIdsByThread={{ "settled-manager": "settled-run" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const card = container.querySelector(".background-work-card");
+    expect(card?.getAttribute("data-lifecycle-status")).toBe("completed");
+    expect(container.textContent).toContain("Completed");
+    expect(card?.querySelector(".stella-icon-check-circle")).not.toBeNull();
+  });
+
   it("shows the latest stable accumulated assistant text while it streams", async () => {
     await act(async () => {
       root.render(
@@ -288,6 +509,11 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(container.textContent).not.toContain(
       "I traced the durable routing boundary.",
     );
+    expect(
+      container
+        .querySelector(".background-work-card")
+        ?.getAttribute("data-lifecycle-status"),
+    ).toBe("completed");
 
     await act(async () => {
       root.render(
