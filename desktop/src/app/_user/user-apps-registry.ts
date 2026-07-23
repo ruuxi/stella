@@ -30,6 +30,16 @@ import type { ComponentType } from "react";
 export type UserAppMeta = {
   label: string;
   createdAt: string;
+  /**
+   * Opt-in: keep this app's window/document input listeners (keyboard,
+   * pointer, clipboard, …) live while the app is retained-hidden by the
+   * keep-alive host. Default (absent/false): a hidden app cannot receive
+   * global input events — its listeners no-op until it is the active
+   * `/apps/<slug>` route again. Set `true` only for apps that must watch
+   * input in the background (typing trackers, global-keybind launchers).
+   * Input gating only: teardown timing and retention are unaffected.
+   */
+  backgroundInput?: boolean;
 };
 
 export type UserAppModule = {

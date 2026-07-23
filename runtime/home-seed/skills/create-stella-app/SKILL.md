@@ -35,6 +35,14 @@ That file exports:
 - `export const meta = { label, createdAt }` — read by the `/apps`
   page to render the list and sort by recency.
 
+Optional `meta` flag: `backgroundInput: true`. Apps stay mounted but
+hidden for a while after the user navigates away; by default a hidden
+app's window/document input listeners (keyboard, pointer, clipboard)
+are gated off so it can't react to typing elsewhere. Set
+`backgroundInput: true` only when the app must keep watching global
+input while hidden (typing trackers, global-keybind launchers). The
+flag affects input gating only, never teardown timing.
+
 Then fill in the body. If you need a new dependency, `bun add <pkg>`
 from the repo root (never `npm` or `pnpm`). Validate from the install
 root:

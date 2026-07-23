@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,6 +19,17 @@ import {
   clearLastUserAppSlug,
   recordLastUserAppSlug,
 } from "./last-user-app-location";
+import {
+  installUserAppInputGate,
+  setInputActiveUserApp,
+} from "./user-app-input-gate";
+
+// Patch window/document global-input listener registration before any user
+// app module can run (apps are lazy children of this host, so this module
+// always evaluates first). Retained-hidden apps' global input listeners
+// no-op unless the app opts in via `meta.backgroundInput` — see
+// `user-app-input-gate.ts` for the full contract.
+installUserAppInputGate();
 
 /**
  * How long a user app stays mounted (hidden) after the user navigates away
@@ -80,6 +92,14 @@ export function PersistentUserAppsHost() {
 
   const [retained, setRetained] = useState<readonly string[]>([]);
   const teardownTimersRef = useRef(new Map<string, number>());
+
+  // Tell the input gate which app is visible. Layout effect so the flip
+  // happens synchronously with the route commit — the returning app's
+  // bindings work immediately; the hidden app's go quiet immediately.
+  useLayoutEffect(() => {
+    setInputActiveUserApp(isActiveApp && activeSlug !== null ? activeSlug : null);
+  }, [activeSlug, isActiveApp]);
+  useEffect(() => () => setInputActiveUserApp(null), []);
 
   // Remember the most recent apps-area location so the sidebar Apps entry
   // can return to the app the user was inside. Visiting the library clears
