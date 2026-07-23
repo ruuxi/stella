@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -8,9 +7,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
-import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
-import { BrowserSession } from "../../../runtime/kernel/browser-use/client.js";
-import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
+import { getBrowserCookieHeader } from "./browser-fetch-session.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
   PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
@@ -36,11 +33,6 @@ type BrowserFetchInit = {
   body?: string;
 };
 
-type BrowserCookie = {
-  name: string;
-  value: string;
-};
-
 type BrowserHandlersOptions = {
   getStellaAppDir: () => string | null;
   getStellaDataDir: () => string | null;
@@ -54,33 +46,6 @@ type BrowserHandlersOptions = {
   // user-data-dir) still get the bridge — and thus the native-messaging host
   // registration — without needing to restart Stella.
   ensureBrowserBridgeStarted?: () => void;
-};
-
-const getBrowserCookieHeader = async (
-  targetUrl: string,
-): Promise<string | null> => {
-  const stellaBrowserRoot = resolveStellaBrowserRoot();
-  const extensionEnv: Record<string, string> = {
-    ...getStellaBrowserBridgeEnv(),
-  };
-  const session = new BrowserSession({
-    sessionId: randomUUID(),
-    cwd: stellaBrowserRoot,
-    binaryPath: path.join(stellaBrowserRoot, "bin", "stella-browser.js"),
-    env: extensionEnv,
-    commandTimeoutMs: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
-  });
-  try {
-    const response = await session.command<{ cookies?: BrowserCookie[] }>(
-      "cookies_get",
-      { url: targetUrl },
-    );
-    const cookies = response.result.data?.cookies ?? [];
-    if (cookies.length === 0) return null;
-    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
-  } finally {
-    await session.dispose();
-  }
 };
 
 const fetchWithBrowserSession = async (payload: {

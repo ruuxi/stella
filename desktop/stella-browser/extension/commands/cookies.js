@@ -3,9 +3,22 @@
  */
 import { getActiveTab } from './tabs.js';
 
-export async function handleCookiesGet(command) {
+/**
+ * Resolve the URL a cookie command applies to. Cookie commands frequently
+ * arrive from owners that have no tabs (e.g. the desktop app's privileged
+ * fetch bridge sends `cookies_get` with an explicit `url`); falling back to
+ * `getActiveTab()` in that case would create a blank owner tab purely as a
+ * side effect of a read-only cookie query. Only touch the active tab when
+ * the command did not specify a URL itself.
+ */
+async function resolveCookieUrl(command) {
+  if (command.url) return command.url;
   const tab = await getActiveTab(command);
-  const url = command.url || tab.url;
+  return tab.url;
+}
+
+export async function handleCookiesGet(command) {
+  const url = await resolveCookieUrl(command);
 
   if (!url || url.startsWith('chrome://')) {
     return {
@@ -41,8 +54,7 @@ export async function handleCookiesGet(command) {
 }
 
 export async function handleCookiesSet(command) {
-  const tab = await getActiveTab(command);
-  const url = command.url || tab.url;
+  const url = await resolveCookieUrl(command);
 
   if (!url) throw new Error('URL is required for cookies_set');
 
@@ -68,8 +80,7 @@ export async function handleCookiesSet(command) {
 }
 
 export async function handleCookiesClear(command) {
-  const tab = await getActiveTab(command);
-  const url = command.url || tab.url;
+  const url = await resolveCookieUrl(command);
 
   if (!url || url.startsWith('chrome://')) {
     return {
