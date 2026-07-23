@@ -1,4 +1,4 @@
-import { Link, useMatchRoute } from "@tanstack/react-router";
+import { Link, useMatchRoute, useRouter } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
@@ -47,6 +47,7 @@ const NavItem = ({
   const showBadge = badgeCount > 0;
   const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
   const showHint = showHintDot && !showBadge;
+  const router = useRouter();
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -55,9 +56,19 @@ const NavItem = ({
       if (active && app.onActiveClick) {
         event.preventDefault();
         app.onActiveClick();
+        return;
+      }
+      // Entering from outside: the app may redirect its nav click (e.g.
+      // Apps returning to the user's last-used app instead of the library).
+      if (!active && app.resolveClickRoute) {
+        const to = app.resolveClickRoute();
+        if (to !== app.route) {
+          event.preventDefault();
+          void router.navigate({ to });
+        }
       }
     },
-    [active, app, showHint, onHintDismiss],
+    [active, app, router, showHint, onHintDismiss],
   );
 
   return (

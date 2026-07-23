@@ -62,6 +62,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
     default: m.SubscriptionUpgradeDialog,
   })),
 );
+import { PersistentUserAppsHost } from "@/app/apps/PersistentUserAppsHost";
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { WindowControls } from "@/shell/WindowControls";
 import { LeftSidebar } from "@/shell/LeftSidebar";
@@ -651,6 +652,10 @@ function RootChrome() {
           >
             <Outlet />
           </div>
+          {/* Keep-alive surfaces for user apps (/apps/$slug). Rendered after
+              the route outlet so the active app paints (and receives pointer
+              events) above the outlet's empty render for that route. */}
+          <PersistentUserAppsHost />
         </div>
       </StellaContextMenu>
 

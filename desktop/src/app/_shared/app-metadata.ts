@@ -60,6 +60,14 @@ export type AppMetadata = {
    * also `preventDefault()`s the underlying `<Link>` navigation.
    */
   onActiveClick?: () => void;
+  /**
+   * Optional resolver consulted when the user clicks the nav entry while
+   * it is *not* the active route. Returning a route different from
+   * `route` redirects the navigation there (e.g. Apps returning to the
+   * user's last-used app instead of the library); returning `route`
+   * keeps the default `<Link>` navigation.
+   */
+  resolveClickRoute?: () => string;
   /** When true, the nav never paints the active/selected row styling. */
   suppressActiveState?: boolean;
 };

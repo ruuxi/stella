@@ -12,7 +12,7 @@
  */
 
 import { useMemo, useSyncExternalStore } from "react";
-import { Link, useMatchRoute } from "@tanstack/react-router";
+import { Link, useMatchRoute, useRouter } from "@tanstack/react-router";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
 import {
   getSnapshot as getAppRegistrySnapshot,
@@ -42,6 +42,7 @@ export function LeftSidebar({
 }: LeftSidebarProps) {
   const allApps = useRegisteredApps();
   const matchRoute = useMatchRoute();
+  const router = useRouter();
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
@@ -87,6 +88,17 @@ export function LeftSidebar({
                       if (active && app.onActiveClick) {
                         event.preventDefault();
                         app.onActiveClick();
+                        return;
+                      }
+                      // Entering from outside: the app may redirect its nav
+                      // click (e.g. Apps returning to the user's last-used
+                      // app instead of the library).
+                      if (!active && app.resolveClickRoute) {
+                        const to = app.resolveClickRoute();
+                        if (to !== app.route) {
+                          event.preventDefault();
+                          void router.navigate({ to });
+                        }
                       }
                     }}
                   >
