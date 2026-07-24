@@ -116,6 +116,16 @@ export function deriveConversationFiles(
         : producedDenoised;
 
     for (const record of [...fileChanges, ...produced]) {
+      // A delete retires the entry, and a move retires the source path —
+      // otherwise a file the agent removed or renamed lingers in the list
+      // forever because `resolvedPathForChange` only ever adds.
+      if (record.kind.type === "delete") {
+        seen.delete(record.path);
+        continue;
+      }
+      if (record.kind.type === "update" && record.kind.move_path) {
+        seen.delete(record.path);
+      }
       const path = resolvedPathForChange(record);
       if (!path) continue;
       const filePayload = buildPayloadFromBarePath(path, event.timestamp, {
