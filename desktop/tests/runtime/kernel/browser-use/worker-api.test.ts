@@ -501,6 +501,36 @@ describe("browser worker API", () => {
     ).rejects.toThrow("at most 100");
   });
 
+  it("allows network observation but not response rewriting or cookie reads", async () => {
+    const callBrowser = vi.fn<BrowserWorkerCall>(async () => ({
+      success: true,
+      data: { completed: 1 },
+    }));
+    const browser = installBrowserWorkerApi(callBrowser);
+
+    const observations = [
+      { action: "har_start", params: { tabId: 4 } },
+      { action: "har_stop", params: { tabId: 4 } },
+      { action: "requests", params: { tabId: 4, filter: "/api/" } },
+      { action: "responsebody", params: { tabId: 4, url: "/api/carts" } },
+    ];
+    for (const step of observations) {
+      await expect(browser.chain([step])).resolves.toBeDefined();
+    }
+
+    // Traffic capture must not imply the ability to forge responses or read
+    // raw session credentials.
+    for (const action of ["route", "unroute", "cookies_get", "cookies_set"]) {
+      await expect(
+        browser.chain([{ action, params: { tabId: 4 } }]),
+      ).rejects.toThrow("unsupported action");
+    }
+
+    await expect(
+      browser.chain([{ action: "har_stop", params: { tabId: 4, bogus: 1 } }]),
+    ).rejects.toThrow();
+  });
+
   it("finalizes owned tabs with explicit handoff statuses", async () => {
     const callBrowser = vi.fn<BrowserWorkerCall>(async () => ({
       success: true,

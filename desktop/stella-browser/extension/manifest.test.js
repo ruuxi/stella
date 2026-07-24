@@ -17,5 +17,6 @@ test('manifest key preserves the production native-messaging extension ID', asyn
     await readFile(new URL('./manifest.json', import.meta.url), 'utf8'),
   );
   assert.equal(extensionIdFromKey(manifest.key), EXPECTED_EXTENSION_ID);
-  assert.equal(manifest.version, '1.2.6');
+  // 1.2.7 adds request/response body capture to HAR recording.
+  assert.equal(manifest.version, '1.2.7');
 });

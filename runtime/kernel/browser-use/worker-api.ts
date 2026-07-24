@@ -1487,6 +1487,16 @@ const title = await tab.title();`;
     isvisible: ["tabId", "selector"],
     isenabled: ["tabId", "selector"],
     ischecked: ["tabId", "selector"],
+    // Network observation. These read traffic the tab was already going to
+    // make, which is what lets a caller derive a direct API client for a site
+    // instead of re-driving the UI on every run. Deliberately excluded:
+    // `route`/`unroute` (they rewrite responses) and `cookies_*` (raw session
+    // secrets). Authenticated calls are made from the page's own origin with
+    // `evaluate`, so no credential ever has to cross into the worker.
+    requests: ["tabId", "filter", "clear"],
+    responsebody: ["tabId", "url", "timeout"],
+    har_start: ["tabId"],
+    har_stop: ["tabId", "path"],
   });
   const NON_TAB_ACTIONS = Object.freeze(
     new Set(["tab_list", "tab_new", "finalize_tabs"]),

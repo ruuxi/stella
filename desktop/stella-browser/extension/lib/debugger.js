@@ -4,8 +4,57 @@
  */
 
 const debuggerAttachments = new Map(); // tabId -> true
+/**
+ * Tabs that must stay attached regardless of idle time. A long-running capture
+ * (HAR recording) receives CDP events without issuing commands, so the idle
+ * timer would otherwise detach mid-recording and silently end it.
+ */
+const detachHolds = new Set(); // tabId
 let detachTimer = null;
 const DETACH_TIMEOUT = 300000; // Auto-detach after 5min idle
+
+function scheduleIdleDetach() {
+  // The handle is a bare number in the service worker, where `unref` is absent
+  // and the optional call is a no-op; under Node (tests) it keeps this idle
+  // timer from holding the process open for five minutes.
+  clearTimeout(detachTimer);
+  detachTimer = setTimeout(() => detachIdleDebuggers(), DETACH_TIMEOUT);
+  detachTimer.unref?.();
+}
+
+/**
+ * Keep a tab attached until the matching release. Safe to call repeatedly.
+ * @param {number} tabId
+ */
+export function holdDebugger(tabId) {
+  detachHolds.add(tabId);
+}
+
+/**
+ * Drop a hold taken by `holdDebugger` and let the tab idle out again.
+ * @param {number} tabId
+ */
+export function releaseDebugger(tabId) {
+  detachHolds.delete(tabId);
+}
+
+/**
+ * Detach every tab that is not explicitly held, then keep watching if any hold
+ * remains so a released tab still idles out later.
+ */
+async function detachIdleDebuggers() {
+  detachTimer = null;
+  for (const [tabId] of [...debuggerAttachments]) {
+    if (detachHolds.has(tabId)) continue;
+    try {
+      await chrome.debugger.detach({ tabId });
+    } catch {
+      // Tab may have closed
+    }
+    debuggerAttachments.delete(tabId);
+  }
+  if (detachHolds.size > 0) scheduleIdleDetach();
+}
 
 /**
  * Ensure chrome.debugger is attached to the given tab.
@@ -16,9 +65,7 @@ export async function ensureDebugger(tabId) {
     await chrome.debugger.attach({ tabId }, '1.3');
     debuggerAttachments.set(tabId, true);
   }
-  // Reset auto-detach timer
-  clearTimeout(detachTimer);
-  detachTimer = setTimeout(() => detachAllDebuggers(), DETACH_TIMEOUT);
+  scheduleIdleDetach();
 }
 
 /**
@@ -72,6 +119,9 @@ export async function detachAllDebuggers() {
     }
   }
   debuggerAttachments.clear();
+  // An explicit teardown overrides every hold; leaving them would keep the
+  // idle timer rescheduling forever against tabs that are no longer attached.
+  detachHolds.clear();
 }
 
 /**
@@ -129,7 +179,10 @@ export function clearCdpEvents(tabId) {
   }
 }
 
-// Global CDP event listener - dispatches to registered per-tab listeners
+// Global CDP event listener - dispatches to registered per-tab listeners.
+// `source` is forwarded as a second argument because auto-attached targets
+// (cross-origin iframes, workers) deliver events under the same tabId with a
+// `sessionId`, and commands about those requests must carry it back.
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (!source.tabId) return;
   const key = `${source.tabId}:${method}`;
@@ -137,7 +190,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   if (listeners) {
     for (const cb of listeners) {
       try {
-        cb(params);
+        cb(params, source);
       } catch (err) {
         console.error(`[debugger] Event listener error for ${method}:`, err);
       }
@@ -145,9 +198,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
-// Clean up on tab close
+// Clean up on tab close. Dropping the hold matters: a closed tab that stayed
+// held would keep the idle timer rescheduling against an attachment that can
+// never be satisfied again.
 chrome.tabs.onRemoved.addListener((tabId) => {
   debuggerAttachments.delete(tabId);
+  releaseDebugger(tabId);
   clearCdpEvents(tabId);
 });
 
@@ -155,5 +211,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) {
     debuggerAttachments.delete(source.tabId);
+    releaseDebugger(source.tabId);
   }
 });

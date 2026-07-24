@@ -359,6 +359,12 @@ pub struct HarEntry {
     pub redirect_url: String,
     /// Updated by `Network.loadingFinished` for final accuracy.
     pub response_body_size: i64,
+    /// Response payload, captured only for API-shaped requests. Without it a
+    /// HAR records that a call happened but not what it returned, which is not
+    /// enough to derive a client from.
+    pub response_body: Option<String>,
+    pub response_body_base64: bool,
+    pub response_body_truncated: bool,
     /// Raw CDP `ResourceTiming` object from `Network.responseReceived`.
     pub cdp_timing: Option<Value>,
     /// Monotonic timestamp (seconds) from `Network.loadingFinished`; used to
@@ -422,6 +428,13 @@ pub struct DaemonState {
     pub pending_confirmation: Option<PendingConfirmation>,
     pub har_recording: bool,
     pub har_entries: Vec<HarEntry>,
+    /// Request IDs whose response bodies still need to be pulled from CDP.
+    /// Bodies cannot be read from inside the synchronous event drain, and they
+    /// are evicted from the CDP buffer on navigation, so they are collected
+    /// here and fetched on the next command tick.
+    pub har_pending_bodies: Vec<String>,
+    /// Running total of captured body bytes for the open recording.
+    pub har_body_bytes: usize,
     pub confirm_actions: Option<ConfirmActions>,
     pub inspect_server: Option<InspectServer>,
     pub routes: Vec<RouteEntry>,
@@ -462,6 +475,8 @@ impl DaemonState {
             pending_confirmation: None,
             har_recording: false,
             har_entries: Vec::new(),
+            har_pending_bodies: Vec::new(),
+            har_body_bytes: 0,
             confirm_actions: ConfirmActions::from_env(),
             inspect_server: None,
             routes: Vec::new(),
@@ -700,6 +715,9 @@ impl DaemonState {
                                         mime_type: String::new(),
                                         redirect_url: String::new(),
                                         response_body_size: -1,
+                                        response_body: None,
+                                        response_body_base64: false,
+                                        response_body_truncated: false,
                                         cdp_timing: None,
                                         loading_finished_timestamp: None,
                                     });
@@ -789,6 +807,7 @@ impl DaemonState {
                                 .params
                                 .get("encodedDataLength")
                                 .and_then(|v| v.as_i64());
+                            let mut wants_body = false;
                             if let Some(entry) = self
                                 .har_entries
                                 .iter_mut()
@@ -801,6 +820,11 @@ impl DaemonState {
                                 if let Some(len) = encoded_data_length {
                                     entry.response_body_size = len;
                                 }
+                                wants_body =
+                                    har_is_api_shaped(&entry.resource_type, &entry.mime_type);
+                            }
+                            if wants_body {
+                                self.har_pending_bodies.push(request_id.to_string());
                             }
                         }
                         "Page.screencastFrame" => {
@@ -892,6 +916,9 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
 
     // Drain pending CDP events (console, errors, screencast frames, target lifecycle, fetch)
     let (pending_acks, new_targets, destroyed_targets, fetch_paused) = state.drain_cdp_events();
+    // Bodies are read here rather than at har_stop because a navigation clears
+    // the CDP buffer, which would silently drop every payload recorded before it.
+    har_collect_pending_bodies(state).await;
     if !pending_acks.is_empty() {
         if let Some(ref browser) = state.browser {
             if let Ok(session_id) = browser.active_session_id() {
@@ -5001,16 +5028,28 @@ async fn handle_har_start(state: &mut DaemonState) -> Result<Value, String> {
         .await?;
     state.har_recording = true;
     state.har_entries.clear();
+    state.har_pending_bodies.clear();
+    state.har_body_bytes = 0;
     Ok(json!({ "started": true }))
 }
 
 async fn handle_har_stop(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
     let path = har_output_path(cmd.get("path").and_then(|v| v.as_str()));
 
+    // Requests that finished during the very last tick have not had their
+    // bodies pulled yet; do it before the recording is torn down.
+    har_collect_pending_bodies(state).await;
     state.har_recording = false;
 
+    let bodies_captured = state
+        .har_entries
+        .iter()
+        .filter(|e| e.response_body.is_some())
+        .count();
     let entries: Vec<Value> = state.har_entries.drain(..).map(har_entry_to_json).collect();
     let request_count = entries.len();
+    state.har_pending_bodies.clear();
+    state.har_body_bytes = 0;
     let browser = har_browser_metadata(state).await;
 
     let mut log = json!({
@@ -5030,7 +5069,11 @@ async fn handle_har_stop(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
         .map_err(|e| format!("Failed to serialize HAR: {}", e))?;
     std::fs::write(&path, har_str).map_err(|e| format!("Failed to write HAR: {}", e))?;
 
-    Ok(json!({ "path": path, "requestCount": request_count }))
+    Ok(json!({
+        "path": path,
+        "requestCount": request_count,
+        "bodiesCaptured": bodies_captured,
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -5104,6 +5147,20 @@ fn har_entry_to_json(e: HarEntry) -> Value {
         request["postData"] = json!({ "mimeType": post_content_type, "text": body });
     }
 
+    let mut content = json!({
+        "size": e.response_body_size,
+        "mimeType": mime_type,
+    });
+    if let Some(body) = e.response_body {
+        content["text"] = json!(body);
+        if e.response_body_base64 {
+            content["encoding"] = json!("base64");
+        }
+        if e.response_body_truncated {
+            content["_truncated"] = json!(true);
+        }
+    }
+
     json!({
         "startedDateTime": started_date_time,
         "time": total_time,
@@ -5114,10 +5171,7 @@ fn har_entry_to_json(e: HarEntry) -> Value {
             "httpVersion": e.http_version,
             "cookies": resp_cookies,
             "headers": resp_headers,
-            "content": {
-                "size": e.response_body_size,
-                "mimeType": mime_type,
-            },
+            "content": content,
             "redirectURL": e.redirect_url,
             "headersSize": -1,
             "bodySize": e.response_body_size,
@@ -5126,6 +5180,91 @@ fn har_entry_to_json(e: HarEntry) -> Value {
         "timings": timings,
         "_resourceType": e.resource_type,
     })
+}
+
+/// Per-body and per-recording caps. Copying every response would mean holding
+/// bundles, fonts and images in memory for a recording that only needs the JSON.
+const HAR_MAX_BODY_BYTES: usize = 512 * 1024;
+const HAR_MAX_TOTAL_BODY_BYTES: usize = 8 * 1024 * 1024;
+
+/// Whether a recorded exchange is an API call worth keeping the body of. The
+/// CDP resource type is the reliable signal; the MIME check catches JSON served
+/// under an unexpected type.
+fn har_is_api_shaped(resource_type: &str, mime_type: &str) -> bool {
+    if resource_type == "XHR" || resource_type == "Fetch" {
+        return true;
+    }
+    let mime = mime_type.to_ascii_lowercase();
+    mime.contains("json") || mime.contains("graphql")
+}
+
+/// Pull queued response bodies out of the CDP buffer into their HAR entries.
+/// Best-effort throughout: an evicted buffer or a detached target degrades the
+/// report but must never fail the command that happened to trigger the drain.
+async fn har_collect_pending_bodies(state: &mut DaemonState) {
+    if state.har_pending_bodies.is_empty() {
+        return;
+    }
+
+    let pending: Vec<String> = std::mem::take(&mut state.har_pending_bodies);
+    let session_id = match state.browser.as_ref().and_then(|mgr| mgr.active_session_id().ok()) {
+        Some(id) => id.to_string(),
+        None => return,
+    };
+
+    for request_id in pending {
+        if state.har_body_bytes >= HAR_MAX_TOTAL_BODY_BYTES {
+            break;
+        }
+        if state
+            .har_entries
+            .iter()
+            .rev()
+            .find(|e| e.request_id == request_id)
+            .map(|e| e.response_body.is_some())
+            .unwrap_or(true)
+        {
+            continue;
+        }
+
+        let client = match state.browser.as_ref() {
+            Some(mgr) => &mgr.client,
+            None => return,
+        };
+        let result: Result<Value, String> = client
+            .send_command(
+                "Network.getResponseBody",
+                Some(json!({ "requestId": request_id })),
+                Some(&session_id),
+            )
+            .await;
+        let Ok(value) = result else { continue };
+        let Some(body) = value.get("body").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let base64_encoded = value
+            .get("base64Encoded")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let mut text = body.to_string();
+        let truncated = text.len() > HAR_MAX_BODY_BYTES;
+        if truncated {
+            text.truncate(HAR_MAX_BODY_BYTES);
+        }
+        state.har_body_bytes += text.len();
+
+        if let Some(entry) = state
+            .har_entries
+            .iter_mut()
+            .rev()
+            .find(|e| e.request_id == request_id)
+        {
+            entry.response_body = Some(text);
+            entry.response_body_base64 = base64_encoded;
+            entry.response_body_truncated = truncated;
+        }
+    }
 }
 
 fn har_extract_headers(headers_val: Option<&Value>) -> Vec<(String, String)> {
@@ -6348,6 +6487,63 @@ mod tests {
         assert_eq!(state.session_id, "default");
         assert!(!state.tracing_state.active);
         assert!(!state.recording_state.active);
+    }
+
+    #[test]
+    fn test_har_body_capture_targets_api_responses_only() {
+        // Resource type is the primary signal.
+        assert!(har_is_api_shaped("XHR", "text/plain"));
+        assert!(har_is_api_shaped("Fetch", ""));
+        // JSON served under an unexpected resource type still counts.
+        assert!(har_is_api_shaped("Other", "application/json"));
+        assert!(har_is_api_shaped("Document", "application/graphql+json"));
+        // Page furniture must never have its body copied into the recording.
+        assert!(!har_is_api_shaped("Script", "application/javascript"));
+        assert!(!har_is_api_shaped("Image", "image/png"));
+        assert!(!har_is_api_shaped("Stylesheet", "text/css"));
+        assert!(!har_is_api_shaped("Document", "text/html"));
+        assert!(!har_is_api_shaped("Font", "font/woff2"));
+    }
+
+    #[test]
+    fn test_har_entry_serializes_captured_response_body() {
+        let build = |body: Option<String>| HarEntry {
+            request_id: "req-1".into(),
+            wall_time: 1_700_000_000.0,
+            method: "POST".into(),
+            url: "https://example.test/api/cart".into(),
+            request_headers: vec![("content-type".into(), "application/json".into())],
+            post_data: Some(r#"{"sku":"a"}"#.into()),
+            request_body_size: 11,
+            resource_type: "XHR".into(),
+            status: Some(200),
+            status_text: "OK".into(),
+            http_version: "HTTP/2.0".into(),
+            response_headers: Vec::new(),
+            mime_type: "application/json".into(),
+            redirect_url: String::new(),
+            response_body_size: 21,
+            response_body: body,
+            response_body_base64: false,
+            response_body_truncated: true,
+            cdp_timing: None,
+            loading_finished_timestamp: None,
+        };
+
+        let json = har_entry_to_json(build(Some(r#"{"cart":{"count":1}}"#.into())));
+        assert_eq!(
+            json["response"]["content"]["text"],
+            json!(r#"{"cart":{"count":1}}"#)
+        );
+        assert_eq!(json["response"]["content"]["_truncated"], json!(true));
+        assert_eq!(json["request"]["postData"]["text"], json!(r#"{"sku":"a"}"#));
+        // Absent encoding means the text is usable as-is.
+        assert!(json["response"]["content"].get("encoding").is_none());
+
+        // An entry whose body could not be read still serializes cleanly.
+        let without = har_entry_to_json(build(None));
+        assert!(without["response"]["content"].get("text").is_none());
+        assert_eq!(without["response"]["status"], json!(200));
     }
 
     #[test]
