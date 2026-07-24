@@ -44,6 +44,7 @@ import {
   type ShellState,
 } from "./shell.js";
 import { createStateContext, type StateContext } from "./state.js";
+import { joinWithTimeout } from "../shared/join-timeout.js";
 import {
   createShellToolHandlers,
   mergeToolHandlers,
@@ -388,9 +389,45 @@ export const createToolHost = ({
     }
   };
 
-  const shutdown = async () => {
-    killAllShells();
-    await nodeReplRegistry.dispose();
+  /**
+   * Idempotent, bounded, JOINED teardown (finalizer ordering: shells →
+   * repl kernels). `killAllShells` alone only *starts* the TERM→1s→KILL
+   * ladders on unref'd timers — a worker that exits right after would
+   * strand TERM-ignoring children as orphans. Shutdown therefore joins
+   * every running shell's actual exit, bounded at 3s (comfortably past
+   * the ladder) so a wedged process can never hang worker stop; anything
+   * still alive at the bound is logged and left to the OS as the ladder's
+   * KILL already fired. Conversation-scoped shells are deliberately
+   * worker-lifetime resources: they die here, never earlier.
+   */
+  let shutdownPromise: Promise<void> | null = null;
+  const shutdown = () => {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = (async () => {
+      const exits: Array<Promise<void>> = [];
+      for (const shell of shellState.shells.values()) {
+        if (!shell.running || !shell.child) continue;
+        const child = shell.child;
+        if (child.exitCode !== null) continue;
+        exits.push(
+          new Promise<void>((resolve) => {
+            child.once("close", () => resolve());
+            child.once("error", () => resolve());
+          }),
+        );
+      }
+      killAllShells();
+      if (exits.length > 0) {
+        const joined = await joinWithTimeout(Promise.allSettled(exits), 3_000);
+        if (joined === "timeout") {
+          console.warn(
+            "[tool-host] shell teardown exceeded the shutdown bound; SIGKILL was already dispatched",
+          );
+        }
+      }
+      await nodeReplRegistry.dispose();
+    })();
+    return shutdownPromise;
   };
 
   const getToolCatalog = (
