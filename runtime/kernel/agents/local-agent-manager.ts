@@ -969,7 +969,53 @@ export class LocalAgentManager implements AgentToolApi {
     }
   }
 
+  /**
+   * Wake-up seam for blocking waiters. Purely a notification: waiters
+   * re-read the durable record and decide for themselves, so SQLite stays
+   * the only truth and a missed wakeup (e.g. a record rehydrated by
+   * another writer) is covered by the caller's fallback timeout.
+   */
+  private readonly updateWaiters = new Map<string, Set<() => void>>();
+
+  private notifyAgentUpdated(threadId: string): void {
+    const waiters = this.updateWaiters.get(threadId);
+    if (!waiters?.size) return;
+    this.updateWaiters.delete(threadId);
+    for (const wake of waiters) wake();
+  }
+
+  /**
+   * Resolve on the next persisted update for `threadId`, or after
+   * `timeoutMs` as a rehydration-safe fallback. Replaces fixed-interval
+   * completion polling: terminal transitions wake blocking callers
+   * immediately instead of on the next 250ms tick.
+   */
+  waitForAgentUpdate(threadId: string, timeoutMs = 2_000): Promise<void> {
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const wake = () => {
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      const waiters = this.updateWaiters.get(threadId) ?? new Set();
+      waiters.add(wake);
+      this.updateWaiters.set(threadId, waiters);
+      if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          const current = this.updateWaiters.get(threadId);
+          current?.delete(wake);
+          if (current && current.size === 0) {
+            this.updateWaiters.delete(threadId);
+          }
+          resolve();
+        }, timeoutMs);
+        timer.unref?.();
+      }
+    });
+  }
+
   private persistTask(task: RuntimeAgentRecord): void {
+    this.notifyAgentUpdated(task.threadId);
     this.opts.saveAgentRecord?.({
       threadId: task.threadId,
       conversationId: task.conversationId,

@@ -1404,7 +1404,11 @@ export const createAgentOrchestration = (
           threadId,
         };
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      // Event-driven settlement: terminal transitions wake this loop
+      // immediately via the manager's update notifier; the 2s fallback
+      // covers rehydrated records and out-of-band writers (SQLite stays
+      // the only truth — every wake re-reads the snapshot above).
+      await context.state.localAgentManager.waitForAgentUpdate(threadId);
     }
   };
 
