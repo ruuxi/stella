@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { StringDecoder } from "node:string_decoder";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
@@ -499,6 +500,12 @@ type PendingClaudeCodePrompt = {
 type ClaudeCodeStreamingProcess = {
   child: ChildProcessWithoutNullStreams;
   stdoutBuffer: string;
+  /**
+   * Stateful UTF-8 decoder for stdout chunking: a multi-byte character
+   * split across chunk boundaries must not be corrupted into U+FFFD
+   * (plain `chunk.toString("utf8")` decodes each chunk independently).
+   */
+  stdoutDecoder: StringDecoder;
   stderrText: string;
   finalSessionId: string;
   pending: PendingClaudeCodePrompt[];
@@ -753,8 +760,18 @@ const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
 };
 
+/**
+ * True only when the child has actually terminated. `child.killed` must
+ * NOT be used for ladder guards: it flips true as soon as any signal was
+ * SENT, which previously made every later rung unreachable — after the
+ * SIGINT in `abortProcess`, neither SIGTERM nor SIGKILL could ever fire,
+ * so a signal-ignoring CLI survived cancellation.
+ */
+const processIsDead = (child: ChildProcessWithoutNullStreams): boolean =>
+  child.exitCode !== null || child.signalCode !== null;
+
 const killProcess = (child: ChildProcessWithoutNullStreams) => {
-  if (child.killed || child.exitCode !== null) return;
+  if (processIsDead(child)) return;
   try {
     child.kill("SIGTERM");
   } catch {
@@ -762,12 +779,11 @@ const killProcess = (child: ChildProcessWithoutNullStreams) => {
   }
 
   const sigkillTimer = setTimeout(() => {
-    if (!child.killed && child.exitCode === null) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Process may have already exited.
-      }
+    if (processIsDead(child)) return;
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Process may have already exited.
     }
   }, SIGKILL_TIMEOUT_MS);
 
@@ -775,7 +791,7 @@ const killProcess = (child: ChildProcessWithoutNullStreams) => {
 };
 
 const abortProcess = (child: ChildProcessWithoutNullStreams) => {
-  if (child.killed || child.exitCode !== null) return;
+  if (processIsDead(child)) return;
   try {
     child.kill("SIGINT");
   } catch {
@@ -2060,7 +2076,18 @@ class ClaudeCodeSessionRuntime {
       effectiveSystemPrompt,
       mcpHost,
     );
-    if (session.process && !session.process.closed) {
+    if (
+      session.process &&
+      !session.process.closed &&
+      // Dying-process fence: a child that has been signaled (`killed` is
+      // "signal sent") or already terminated must never take new prompts —
+      // a late reuse would write into a process the kill ladder is tearing
+      // down. Its exit handler rejects the pendings and clears
+      // `session.process`; respawning below (same resume id) is the
+      // correct successor.
+      !session.process.child.killed &&
+      !processIsDead(session.process.child)
+    ) {
       if (session.process.launchConfig === launchConfig) {
         return session.process;
       }
@@ -2122,6 +2149,7 @@ class ClaudeCodeSessionRuntime {
     const processState: ClaudeCodeStreamingProcess = {
       child,
       stdoutBuffer: "",
+      stdoutDecoder: new StringDecoder("utf8"),
       stderrText: "",
       finalSessionId: session.sessionId,
       pending: [],
@@ -2310,7 +2338,7 @@ class ClaudeCodeSessionRuntime {
     };
 
     child.stdout.on("data", (chunk: Buffer) => {
-      processState.stdoutBuffer += chunk.toString("utf8");
+      processState.stdoutBuffer += processState.stdoutDecoder.write(chunk);
       refreshPendingIdleTimers(true);
       consumeStdout(false);
     });
