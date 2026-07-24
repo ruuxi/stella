@@ -1,4 +1,5 @@
 import os from "os";
+import path from "path";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../agent-core/agent.js";
 import type {
@@ -59,18 +60,41 @@ export const AnyToolArgsSchema = Type.Object(
 
 export const now = () => Date.now();
 
+const expandWorkingDirectory = (
+  value: string,
+  homeDirectory: string,
+): string => {
+  if (value === "~") return homeDirectory;
+  if (value.startsWith(`~${path.sep}`) || value.startsWith("~/")) {
+    return path.join(homeDirectory, value.slice(2));
+  }
+  return value;
+};
+
+/**
+ * Resolve the filesystem root an agent should operate from. The install root
+ * remains a separate absolute path for bundled assets; it is only selected
+ * here for the legacy `frontend` mode or as a last-resort fallback when the
+ * platform does not expose a home directory.
+ */
 export const resolveLocalCliCwd = ({
   agentType,
   stellaAppDir,
+  workingDirectory,
 }: {
   agentType: string;
   stellaAppDir?: string;
+  workingDirectory?: string;
 }): string | undefined => {
-  if (getLocalCliWorkingDirectory(agentType) === "home") {
-    const homeDirectory = os.homedir().trim();
-    if (homeDirectory) {
-      return homeDirectory;
-    }
+  const homeDirectory = os.homedir().trim();
+  const explicitWorkingDirectory = workingDirectory?.trim();
+  if (explicitWorkingDirectory) {
+    return path.resolve(
+      expandWorkingDirectory(explicitWorkingDirectory, homeDirectory),
+    );
+  }
+  if (getLocalCliWorkingDirectory(agentType) !== "frontend" && homeDirectory) {
+    return path.resolve(homeDirectory);
   }
   const normalizedStellaAppDir = stellaAppDir?.trim();
   return normalizedStellaAppDir && normalizedStellaAppDir.length > 0
