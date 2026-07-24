@@ -7,6 +7,13 @@ export type AttachmentRef = {
   mimeType?: string
   /** Downscaled data URL used for display; `url` stays full-resolution for the model. */
   previewUrl?: string
+  /** Original filename; sent-message file chips render it verbatim. */
+  name?: string
+  size?: number
+  /** Attachment discriminator; composer file attachments persist `"file"`. */
+  kind?: string
+  /** On-disk source path so the sent file chip can open the original. */
+  path?: string
 }
 
 export type SendMessageArgs = {

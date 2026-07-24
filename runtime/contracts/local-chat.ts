@@ -154,6 +154,12 @@ export type Attachment = {
   name?: string;
   size?: number;
   kind?: string;
+  /**
+   * On-disk source path when the attachment came from a disk-backed File
+   * (picker / drag-drop). Sent-message file chips use it to open the
+   * original in its default app; absent for synthetic files.
+   */
+  path?: string;
   providerMeta?: unknown;
 };
 

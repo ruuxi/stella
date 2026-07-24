@@ -28,9 +28,16 @@ const buildLocalScreenshotAttachments = (
 const buildLocalFileAttachments = (
   chatContext: ChatContext | null,
 ): AttachmentRef[] =>
+  // Name/size/kind/path ride along so the sent-message row can render a
+  // real file chip (and open the original); the runtime worker only
+  // reads `url` + `mimeType`.
   (chatContext?.files ?? []).map((file) => ({
     url: file.dataUrl,
     mimeType: file.mimeType,
+    name: file.name,
+    size: file.size,
+    kind: 'file',
+    ...(file.path ? { path: file.path } : {}),
   }))
 
 /** Builds all local attachments (screenshots + files) from chat context. */

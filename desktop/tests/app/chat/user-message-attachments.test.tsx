@@ -24,6 +24,35 @@ const row: UserRowViewModel = {
   ],
 };
 
+const pdfRow: UserRowViewModel = {
+  kind: "user",
+  id: "user-with-pdf",
+  text: "Here is my resume",
+  attachments: [
+    {
+      id: "pdf-1",
+      url: "data:application/pdf;base64,cGRm",
+      mimeType: "application/pdf",
+      name: "old-league-coaching-resume.pdf",
+      size: 48_128,
+      kind: "file",
+    },
+  ],
+};
+
+const legacyPdfRow: UserRowViewModel = {
+  kind: "user",
+  id: "user-with-legacy-pdf",
+  text: "Older message without file metadata",
+  attachments: [
+    {
+      id: "pdf-legacy",
+      url: "data:application/pdf;base64,cGRm",
+      mimeType: "application/pdf",
+    },
+  ],
+};
+
 describe("sent user image attachments", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -92,5 +121,46 @@ describe("sent user image attachments", () => {
     expect(preview).not.toBeNull();
     expect(preview!.getAttribute("src")).toBe(row.attachments[0].url);
     expect(preview!.getAttribute("alt")).toBe("example.png");
+  });
+
+  it("renders non-image attachments as the composer's document chip, not an <img>", async () => {
+    await act(async () => {
+      root.render(<UserMessageRow row={pdfRow} />);
+    });
+
+    const chip = container.querySelector<HTMLButtonElement>(
+      ".event-context-chips .chat-composer-file-chip",
+    );
+    expect(chip).not.toBeNull();
+    // No broken <img>: the PDF must never be fed to an image element.
+    expect(container.querySelector(".event-context-chips img")).toBeNull();
+    // File-type glyph present.
+    expect(chip!.querySelector(".chat-composer-file-icon svg")).not.toBeNull();
+    // Real filename with extension survives truncation; full name in title.
+    const name = chip!.querySelector(".chat-composer-file-name");
+    expect(name!.textContent).toMatch(/\.pdf$/);
+    expect(name!.textContent).not.toContain("Attachme");
+    expect(chip!.getAttribute("title")).toBe("old-league-coaching-resume.pdf");
+    // Size renders when persisted.
+    expect(
+      chip!.querySelector(".chat-composer-file-size")!.textContent,
+    ).toBe("47 KB");
+    // Sent chips expose no remove affordance.
+    expect(container.querySelector(".composer-chip-remove")).toBeNull();
+  });
+
+  it("falls back to a type label when older payloads lack the filename", async () => {
+    await act(async () => {
+      root.render(<UserMessageRow row={legacyPdfRow} />);
+    });
+
+    const chip = container.querySelector<HTMLButtonElement>(
+      ".event-context-chips .chat-composer-file-chip",
+    );
+    expect(chip).not.toBeNull();
+    expect(container.querySelector(".event-context-chips img")).toBeNull();
+    expect(
+      chip!.querySelector(".chat-composer-file-name")!.textContent,
+    ).toBe("PDF");
   });
 });

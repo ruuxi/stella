@@ -34,7 +34,6 @@ import {
   ClipboardList,
   ClipboardPaste,
   Crop,
-  Paperclip,
 } from "@/ui/icons";
 import {
   describePastedText,
@@ -67,7 +66,11 @@ import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import { MessageActions } from "@/app/chat/MessageActions";
-import { ImageAttachmentChip } from "@/app/chat/ComposerContextChips";
+import {
+  FileAttachmentChip,
+  ImageAttachmentChip,
+  fileAttachmentTypeLabel,
+} from "@/app/chat/ComposerContextChips";
 import { eventRowEqual } from "@/features/chat/lib/row-equality";
 import { assistantRowHasVisibleContent } from "@/features/chat/lib/assistant-row-content";
 import type {
@@ -85,6 +88,40 @@ const getAttachmentLabel = (attachment: Attachment, index: number) => {
   }
   if (attachment.mimeType) return attachment.mimeType;
   return `Attachment ${index + 1}`;
+};
+
+const IMAGE_FILE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico|tiff?|heic|heif)$/i;
+
+/**
+ * Whether a sent attachment should render as an image thumbnail. Routing
+ * mistakes here previously fed PDFs into an `<img>`, producing a broken
+ * image plus clipped alt text.
+ */
+const isImageAttachment = (attachment: Attachment, safeUrl: string): boolean => {
+  if (attachment.kind === "file") return false;
+  const mimeType = attachment.mimeType?.trim().toLowerCase();
+  if (mimeType) return mimeType.startsWith("image/");
+  if (safeUrl.startsWith("data:")) {
+    return /^data:image\//i.test(safeUrl);
+  }
+  // Legacy remote payloads often lack a mimeType; keep the historical
+  // image treatment unless the filename clearly says otherwise.
+  if (attachment.name && /\.[a-z0-9]+$/i.test(attachment.name)) {
+    return IMAGE_FILE_EXT_RE.test(attachment.name);
+  }
+  return true;
+};
+
+/** Display name for a sent non-image attachment chip. */
+const getFileAttachmentName = (attachment: Attachment): string => {
+  if (attachment.name) return attachment.name;
+  if (attachment.kind && attachment.kind !== "file") {
+    const normalized = attachment.kind.replace(/[_-]+/g, " ").trim();
+    if (normalized.length > 0) {
+      return normalized[0].toUpperCase() + normalized.slice(1);
+    }
+  }
+  return fileAttachmentTypeLabel(attachment.mimeType);
 };
 
 const formatChannelKind = (kind: ChannelEnvelope["kind"]) => {
@@ -463,7 +500,7 @@ export const UserMessageRow = memo(
     attachments.forEach((attachment, index) => {
       const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
       const key = attachment.id ?? `attachment-${index}`;
-      if (safeUrl) {
+      if (safeUrl && isImageAttachment(attachment, safeUrl)) {
         chips.push({
           key,
           node: (
@@ -476,20 +513,18 @@ export const UserMessageRow = memo(
         });
         return;
       }
+      // Non-image attachments (pdf, docs, audio, …) reuse the composer's
+      // document chip: file-type glyph + real filename, opening the
+      // original on disk when a source path was captured at attach time.
       chips.push({
         key,
         node: (
-          <div className="event-attachment-fallback">
-            <Paperclip
-              className="event-attachment-fallback__icon"
-              size={13}
-              strokeWidth={1.75}
-              aria-hidden="true"
-            />
-            <span className="event-attachment-fallback__label">
-              {getAttachmentLabel(attachment, index)}
-            </span>
-          </div>
+          <FileAttachmentChip
+            name={getFileAttachmentName(attachment)}
+            size={attachment.size}
+            mimeType={attachment.mimeType}
+            path={attachment.path}
+          />
         ),
       });
     });

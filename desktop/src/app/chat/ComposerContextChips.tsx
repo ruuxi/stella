@@ -464,6 +464,97 @@ function truncateFileName(name: string, max: number = FILE_NAME_MAX_CHARS): stri
   return `${name.slice(0, max)}…`;
 }
 
+const FILE_CATEGORY_LABELS: Record<
+  ReturnType<typeof resolveFileCategory>,
+  string
+> = {
+  pdf: "PDF",
+  document: "Document",
+  spreadsheet: "Spreadsheet",
+  code: "Code file",
+  archive: "Archive",
+  audio: "Audio",
+  video: "Video",
+  file: "File",
+};
+
+/**
+ * Human type label for a file attachment whose real filename is missing
+ * (older persisted payloads). Never a generic "Attachment" string that a
+ * narrow chip would clip into nonsense.
+ */
+export function fileAttachmentTypeLabel(mimeType?: string): string {
+  return FILE_CATEGORY_LABELS[resolveFileCategory(mimeType ?? "", "")];
+}
+
+type FileAttachmentChipProps = {
+  name: string;
+  size?: number;
+  mimeType?: string;
+  /**
+   * On-disk source path. When present the chip opens the original in its
+   * default app — the same preview convention as the composer.
+   */
+  path?: string;
+  chipClassName?: string;
+  removeLabel?: string;
+  onRemove?: () => void;
+};
+
+/**
+ * Canonical document/file chip used before and after send: file-type
+ * glyph, real filename (extension-preserving truncation), optional size.
+ * Composer callers add removal; sent-message callers keep the same
+ * visual body without a remove affordance.
+ */
+export function FileAttachmentChip({
+  name,
+  size,
+  mimeType,
+  path,
+  chipClassName,
+  removeLabel,
+  onRemove,
+}: FileAttachmentChipProps) {
+  const category = resolveFileCategory(mimeType ?? "", name);
+  // Disk-backed attachments open in their default app for preview;
+  // synthetic files (no on-disk path) have no preview target.
+  const canOpen = Boolean(path);
+  return (
+    <span className="composer-chip-shell">
+      <button
+        type="button"
+        className={cn(
+          "chat-composer-file-chip",
+          chipClassName,
+          canOpen && "composer-chip-previewable",
+        )}
+        title={canOpen ? `${name} — click to open` : name}
+        onClick={
+          canOpen
+            ? () => {
+                void getElectronApi()?.system?.openPath?.(path!);
+              }
+            : undefined
+        }
+      >
+        <div className="chat-composer-file-icon">
+          <FileIcon category={category} />
+        </div>
+        <div className="chat-composer-file-info">
+          <span className="chat-composer-file-name">{truncateFileName(name)}</span>
+          {typeof size === "number" && size > 0 ? (
+            <span className="chat-composer-file-size">{formatFileSize(size)}</span>
+          ) : null}
+        </div>
+      </button>
+      {onRemove && removeLabel ? (
+        <ChipRemoveButton label={removeLabel} onRemove={onRemove} />
+      ) : null}
+    </span>
+  );
+}
+
 function FileContextChip({
   file,
   index,
@@ -475,41 +566,16 @@ function FileContextChip({
   setChatContext: SetChatContext;
   chipClassName?: string;
 }) {
-  const category = resolveFileCategory(file.mimeType, file.name);
-  // Disk-backed attachments open in their default app for preview;
-  // synthetic files (no on-disk path) have no preview target.
-  const canOpen = Boolean(file.path);
   return (
-    <span className="composer-chip-shell">
-      <button
-        type="button"
-        className={cn(
-          "chat-composer-file-chip",
-          chipClassName,
-          canOpen && "composer-chip-previewable",
-        )}
-        title={canOpen ? `${file.name} — click to open` : file.name}
-        onClick={
-          canOpen
-            ? () => {
-                void getElectronApi()?.system?.openPath?.(file.path!);
-              }
-            : undefined
-        }
-      >
-        <div className="chat-composer-file-icon">
-          <FileIcon category={category} />
-        </div>
-        <div className="chat-composer-file-info">
-          <span className="chat-composer-file-name">{truncateFileName(file.name)}</span>
-          <span className="chat-composer-file-size">{formatFileSize(file.size)}</span>
-        </div>
-      </button>
-      <ChipRemoveButton
-        label={`Remove ${file.name}`}
-        onRemove={() => removeComposerFileContext(index, setChatContext)}
-      />
-    </span>
+    <FileAttachmentChip
+      name={file.name}
+      size={file.size}
+      mimeType={file.mimeType}
+      path={file.path}
+      chipClassName={chipClassName}
+      removeLabel={`Remove ${file.name}`}
+      onRemove={() => removeComposerFileContext(index, setChatContext)}
+    />
   );
 }
 
