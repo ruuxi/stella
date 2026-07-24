@@ -1630,6 +1630,21 @@ export const handleExecCommand = async (
       signal,
     );
   } catch (error) {
+    // Ownership classification (run-owned vs conversation-scoped): this
+    // call STARTED the shell and is aborting before the session id ever
+    // reaches the model — nothing can address the shell later, so it is
+    // run-owned and would otherwise orphan until toolHost shutdown. Kill
+    // it through the TERM→1s→KILL ladder as the aborted call's finalizer.
+    // Session shells whose id was already delivered (later write_stdin
+    // polls) are conversation-scoped and deliberately exempt: aborting a
+    // poll never kills the shell.
+    if (record.running) {
+      try {
+        record.kill();
+      } catch {
+        // Best effort; the process may already be exiting.
+      }
+    }
     return { error: (error as Error).message };
   }
   await settleCompletedShell(record, signal);
