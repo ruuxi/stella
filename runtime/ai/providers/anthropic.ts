@@ -397,6 +397,16 @@ async function* iterateSseMessages(
 			yield trailingEvent;
 		}
 	} finally {
+		// Close the transport exactly once on every exit path. An early
+		// consumer exit (error/break mid-iteration without an abort) would
+		// otherwise leave the response body — and its connection — open
+		// until GC; cancel on an already-finished stream is a no-op. Same
+		// pattern as openai-codex-responses.
+		try {
+			await reader.cancel();
+		} catch {
+			// The stream may already be closed or errored.
+		}
 		reader.releaseLock();
 	}
 }
