@@ -5,13 +5,38 @@ import {
   resolveStellaAnnotationTarget,
   type SelectionTarget,
 } from "./context-select";
-import {
-  primeReactGrabSource,
-  resolveReactGrabSource,
-} from "./react-grab-source";
+import type { ReactSource } from "./react-fiber-source";
 import "./composer-area-select.css";
 
 type AnnotationSelection = NonNullable<ChatContext["appSelection"]>;
+
+/**
+ * Source resolution reads React's dev-only debug fields (`_debugOwner`,
+ * `_debugStack`), which a production build does not emit — there is nothing to
+ * find, and the component names that survive minification are mangled, so a
+ * production answer would be noise rather than context. Gating on
+ * `import.meta.env.DEV` also lets the resolver and its source-map decoder drop
+ * out of the production bundle entirely.
+ */
+let sourceModule: Promise<typeof import("./react-fiber-source")> | null = null;
+
+const loadSourceModule = () => {
+  if (!import.meta.env.DEV) return null;
+  sourceModule ??= import("./react-fiber-source");
+  return sourceModule;
+};
+
+/** Starts the module fetch when the picker opens, so the click doesn't wait. */
+const primeSelectionSource = (): void => {
+  void loadSourceModule();
+};
+
+const resolveSelectionSource = async (
+  element: Element,
+): Promise<ReactSource | null> => {
+  const loaded = await loadSourceModule();
+  return loaded ? loaded.resolveReactSource(element) : null;
+};
 
 type ComposerAreaSelectOverlayProps = {
   active: boolean;
@@ -30,7 +55,7 @@ type ComposerAreaSelectOverlayProps = {
 
 const withResolvedSource = (
   base: AnnotationSelection,
-  resolved: Awaited<ReturnType<typeof resolveReactGrabSource>>,
+  resolved: ReactSource | null,
 ): AnnotationSelection => {
   if (!resolved) return base;
   const hasSource =
@@ -103,7 +128,7 @@ export function ComposerAreaSelectOverlay({
       // Lock the ring in place while we resolve source info, then add the
       // selection to the composer as a chip and close the overlay.
       setSelection(baseSelection);
-      void resolveReactGrabSource(selected.element)
+      void resolveSelectionSource(selected.element)
         .then((resolved) => withResolvedSource(baseSelection, resolved))
         .catch(() => baseSelection)
         .then((finalSelection) => {
@@ -115,7 +140,7 @@ export function ComposerAreaSelectOverlay({
 
   useEffect(() => {
     if (!active || selection) return;
-    primeReactGrabSource();
+    primeSelectionSource();
     const previousCursor = document.body.style.cursor;
     document.body.style.cursor = "crosshair";
 
