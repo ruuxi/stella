@@ -42,7 +42,8 @@ export type DisplayTabKind =
  * replace its props and re-activate, never stack.
  *
  * Convention for ids:
- *   - `media:generated` (all generated media in one gallery)
+ *   - `canvas:<filePath>`
+ *   - `image:<filePath>` / `video:<filePath>` / … (one per generated asset)
  *   - `office:<sourcePath>`
  *   - `pdf:<filePath>`
  */

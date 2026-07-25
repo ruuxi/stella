@@ -9,6 +9,7 @@ import {
   useDisplayPanelOpen,
   useDisplayTabList,
 } from "../features/workspace-display/tab-store";
+import { sidebarSections } from "../features/workspace-display/sidebar-sections";
 import { DisplayTabIcon } from "../features/workspace-display/icons";
 import {
   normalizeDisplayPayload,
@@ -43,36 +44,15 @@ function MiniDisplayHomeTab() {
           <button
             type="button"
             className="chat-home-launcher__entry"
-            onClick={() => {
-              void openMiniCanvasDisplayTab();
-            }}
-          >
-            <span className="chat-home-launcher__entry-icon" aria-hidden="true">
-              <DisplayTabIcon kind="canvas" size={20} />
-            </span>
-            <span className="chat-home-launcher__entry-text">
-              <span className="chat-home-launcher__entry-label">Canvas</span>
-              <span className="chat-home-launcher__entry-description">
-                Pages Stella has put together
-              </span>
-            </span>
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            className="chat-home-launcher__entry"
-            onClick={() => {
-              void openMiniMediaDisplayTab();
-            }}
+            onClick={() => sidebarSections.openLocation("files", null)}
           >
             <span className="chat-home-launcher__entry-icon" aria-hidden="true">
               <DisplayTabIcon kind="media" size={20} />
             </span>
             <span className="chat-home-launcher__entry-text">
-              <span className="chat-home-launcher__entry-label">Media</span>
+              <span className="chat-home-launcher__entry-label">Files</span>
               <span className="chat-home-launcher__entry-description">
-                Generated images, video, and audio
+                Pages, images, video, and documents
               </span>
             </span>
           </button>
@@ -112,38 +92,6 @@ function openMiniHomeDisplayTab(opts?: MiniDisplayOpenOptions) {
     },
     opts,
   );
-}
-
-async function openMiniCanvasDisplayTab() {
-  const [{ CanvasTabContent }, { getCanvasHtmlItems }] = await Promise.all([
-    import("../shell/display/canvas-tab/CanvasTabContent"),
-    import("../shell/display/canvas-tab/canvas-items"),
-  ]);
-  const items = getCanvasHtmlItems();
-  displayTabs.openTab({
-    id: "canvas:html",
-    kind: "canvas",
-    title: "Canvas",
-    tooltip: "HTML canvases Stella has shown you",
-    metadata: { kind: "canvas-html", items },
-    render: () => <CanvasTabContent items={items} />,
-  });
-}
-
-async function openMiniMediaDisplayTab() {
-  const [{ MediaTabContent }, { getGeneratedMediaItems }] = await Promise.all([
-    import("../shell/display/media-tab"),
-    import("../shell/display/payload-to-tab-spec"),
-  ]);
-  const items = getGeneratedMediaItems();
-  displayTabs.openTab({
-    id: "media:generated",
-    kind: "media",
-    title: "Media",
-    tooltip: "Generated media",
-    metadata: { kind: "media", items },
-    render: () => <MediaTabContent items={items} />,
-  });
 }
 
 async function openMiniTrashDisplayTab() {

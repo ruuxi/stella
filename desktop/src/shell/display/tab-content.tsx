@@ -7,8 +7,8 @@
  * `createElement(Component, props)` call — no per-call branching, no
  * `kind` discriminator inside the render path.
  *
- * The Media tab is its own world (drag/drop, generation submission,
- * tile rail, etc.) and lives in `./media-tab/`.
+ * The media viewer is its own world (preview, prompt, action bar) and
+ * lives in `./media-tab/`.
  */
 
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";

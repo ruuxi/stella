@@ -28,7 +28,6 @@ vi.mock("@/shell/display/illustrations/CanvasIllustration", () => ({
 import { CanvasTabContent } from "@/shell/display/canvas-tab/CanvasTabContent";
 import {
   addCanvasHtmlItem,
-  setSelectedCanvasHtmlId,
   type CanvasHtmlItem,
 } from "@/shell/display/canvas-tab/canvas-items";
 
@@ -63,7 +62,6 @@ describe("Canvas iframe startup", () => {
       createdAt: 1,
     });
     item = items.find((candidate) => candidate.filePath === path)!;
-    setSelectedCanvasHtmlId(item.id);
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -76,9 +74,9 @@ describe("Canvas iframe startup", () => {
     vi.unstubAllGlobals();
   });
 
-  const renderCanvas = async (items: ReadonlyArray<CanvasHtmlItem>) => {
+  const renderCanvas = async (current: CanvasHtmlItem) => {
     await act(async () => {
-      root.render(<CanvasTabContent items={items} selectedItemId={item.id} />);
+      root.render(<CanvasTabContent item={current} />);
     });
   };
 
@@ -89,8 +87,7 @@ describe("Canvas iframe startup", () => {
   };
 
   it("paints loading before starting a file read, including a kept-alive refresh", async () => {
-    let items = [item];
-    await renderCanvas(items);
+    await renderCanvas(item);
 
     expect(container.textContent).toContain("Loading");
     expect(probe.fileReads).not.toHaveBeenCalled();
@@ -101,21 +98,21 @@ describe("Canvas iframe startup", () => {
     expect(probe.fileReads).toHaveBeenCalledTimes(1);
 
     probe.panelOpen = false;
-    await renderCanvas(items);
+    await renderCanvas(item);
     const readsBeforeRefresh = probe.fileReads.mock.calls.length;
 
     // Model clicking an overwritten artifact while the old iframe is still
     // mounted in the closed panel's keep-alive host. The version change must
     // synchronously replace it with loading, not begin another file read.
     await act(async () => {
-      items = addCanvasHtmlItem({
+      const refreshed = addCanvasHtmlItem({
         kind: "canvas-html",
         filePath: item.filePath,
         title: item.title,
         createdAt: 2,
-      });
+      }).find((candidate) => candidate.filePath === item.filePath)!;
       probe.panelOpen = true;
-      root.render(<CanvasTabContent items={items} selectedItemId={item.id} />);
+      root.render(<CanvasTabContent item={refreshed} />);
     });
 
     expect(container.textContent).toContain("Loading");

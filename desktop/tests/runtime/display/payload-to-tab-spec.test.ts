@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/shell/display/tab-content", () => ({
   UrlTabContent: () => null,
@@ -38,9 +38,20 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
 const { createAgentThreadTabSpec, payloadToTabSpec } = await import(
   "../../../src/shell/display/payload-to-tab-spec"
 );
-const { getSelectedCanvasHtmlId } = await import(
-  "../../../src/shell/display/canvas-tab/canvas-items"
+const { getFileEntries } = await import(
+  "../../../src/features/workspace-display/files-index"
 );
+const { sidebarSections } = await import(
+  "../../../src/features/workspace-display/sidebar-sections"
+);
+const { displayTabs } = await import(
+  "../../../src/features/workspace-display/tab-store"
+);
+
+beforeEach(() => {
+  displayTabs.reset();
+  sidebarSections.reset();
+});
 
 describe("payloadToTabSpec", () => {
   it("creates a stable exact-thread read-only chat tab", () => {
@@ -176,7 +187,7 @@ describe("payloadToTabSpec", () => {
     expect(second.id).toBe("source-diff");
   });
 
-  it("merges generated images into one stable gallery tab", () => {
+  it("splits a multi-image job into one tab per asset", () => {
     const first = payloadToTabSpec({
       kind: "media",
       asset: { kind: "image", filePaths: ["/out/a.png"] },
@@ -188,21 +199,19 @@ describe("payloadToTabSpec", () => {
       createdAt: 2,
     });
 
-    expect(first.id).toBe("media:generated");
-    expect(second.id).toBe("media:generated");
-    expect(second.metadata?.items).toEqual(
+    // The tab of a multi-image job points at the first image, which is the
+    // one the user clicked through to.
+    expect(first.id).toBe("image:/out/a.png");
+    expect(second.id).toBe("image:/out/b.png");
+    expect(getFileEntries()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          asset: { kind: "image", filePaths: ["/out/a.png"] },
-        }),
-        expect.objectContaining({
-          asset: { kind: "image", filePaths: ["/out/b.png"] },
-        }),
+        expect.objectContaining({ id: "image:/out/a.png", kind: "image" }),
+        expect.objectContaining({ id: "image:/out/b.png", kind: "image" }),
       ]),
     );
   });
 
-  it("passes the clicked canvas id to the singleton Canvas tab", () => {
+  it("gives every canvas its own tab and renders that one item", () => {
     const spec = payloadToTabSpec({
       kind: "canvas-html",
       filePath: "/tmp/flow.html",
@@ -210,21 +219,63 @@ describe("payloadToTabSpec", () => {
       createdAt: 3,
     });
 
-    const element = spec.render() as { props: { selectedItemId?: string } };
-    expect(spec.id).toBe("canvas:html");
-    expect(element.props.selectedItemId).toBe("/tmp/flow.html");
-    expect(getSelectedCanvasHtmlId()).toBe("/tmp/flow.html");
+    const element = spec.render() as { props: { item: { id: string } } };
+    expect(spec.id).toBe("canvas:/tmp/flow.html");
+    expect(spec.title).toBe("Flow");
+    expect(element.props.item.id).toBe("/tmp/flow.html");
   });
 
-  it("passes the clicked media id to the singleton Media tab", () => {
+  it("renders the clicked asset in the media tab", () => {
     const spec = payloadToTabSpec({
       kind: "media",
       asset: { kind: "image", filePaths: ["/out/selected.png"] },
       createdAt: 3,
     });
 
-    const element = spec.render() as { props: { selectedItemId?: string } };
-    expect(spec.id).toBe("media:generated");
-    expect(element.props.selectedItemId).toBe("image:/out/selected.png");
+    const element = spec.render() as { props: { item: { id: string } } };
+    expect(spec.id).toBe("image:/out/selected.png");
+    expect(spec.title).toBe("selected.png");
+    expect(element.props.item.id).toBe("image:/out/selected.png");
+  });
+});
+
+describe("payloadToTabSpec — Files retargeting", () => {
+  it("indexes every artifact kind and points Files at the newest one", () => {
+    payloadToTabSpec({
+      kind: "pdf",
+      filePath: "/tmp/report.pdf",
+      title: "report.pdf",
+    });
+
+    expect(sidebarSections.getSnapshot().locations.files).toBe(
+      "pdf:/tmp/report.pdf",
+    );
+    expect(getFileEntries()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pdf:/tmp/report.pdf",
+          source: "artifact",
+          kind: "pdf",
+          filePath: "/tmp/report.pdf",
+        }),
+      ]),
+    );
+  });
+
+  it("leaves the panel closed — mapping remembers, it never focuses", () => {
+    payloadToTabSpec({
+      kind: "markdown",
+      filePath: "/tmp/plan.md",
+      title: "plan.md",
+    });
+
+    expect(displayTabs.getLayoutSnapshot().panelOpen).toBe(false);
+  });
+
+  it("keeps deferred-delete trash out of the Files index", () => {
+    const spec = payloadToTabSpec({ kind: "trash", createdAt: 1 });
+
+    expect(sidebarSections.getSnapshot().locations.files).not.toBe(spec.id);
+    expect(getFileEntries().some((entry) => entry.id === spec.id)).toBe(false);
   });
 });

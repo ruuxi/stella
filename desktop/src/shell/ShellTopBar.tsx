@@ -5,7 +5,6 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
-import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
 import { ShellTopBarPrimaryNav } from "@/shell/sidebar/ShellTopBarNav";
 import { WindowControls } from "@/shell/WindowControls";
 
@@ -54,7 +53,6 @@ export const ShellTopBar = () => {
       {panelOpen ? (
         <div className="shell-topbar-tabs">
           <DisplayTabSwitcher />
-          <CanvasTopBarTabs />
         </div>
       ) : isMobileWebView ? (
         <ShellTopBarPrimaryNav />

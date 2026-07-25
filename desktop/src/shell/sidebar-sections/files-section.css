@@ -1,0 +1,140 @@
+/* Files list — the section's default view. The list is also the drop target
+   for local media imports, so it owns the positioning context `DropOverlay`
+   needs. */
+
+.files-list {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.files-list__head {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.files-list__import {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
+  cursor: default;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.files-list__import:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.files-list__import:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.files-list__file-input {
+  display: none;
+}
+
+.files-list__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.files-list__item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.files-list__item:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.files-list__open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: var(--font-size-base);
+  text-align: left;
+  cursor: default;
+}
+
+.files-list__open:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.files-list__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.files-list__title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The remove affordance only appears on hover/focus so a long list reads as
+   titles rather than as a column of buttons. */
+.files-list__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  opacity: 0;
+  cursor: default;
+}
+
+.files-list__item:hover .files-list__remove,
+.files-list__remove:focus-visible {
+  opacity: 1;
+}
+
+.files-list__remove:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.files-list__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

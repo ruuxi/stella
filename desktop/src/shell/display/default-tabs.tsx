@@ -5,28 +5,20 @@ import { useChatMessages } from "@/context/use-chat-messages";
 import { StoreSidePanel } from "@/features/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { HomeLauncherTab } from "./HomeLauncherTab";
-import { MediaTabContent } from "./tab-content";
-import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
-import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
 import { displayTabs, useDisplayPanelExpanded } from "@/features/workspace-display/tab-store";
 import { engineOverlay } from "./engine-overlay-store";
 import {
-  CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,
   HOME_DISPLAY_TAB_ID,
-  MEDIA_DISPLAY_TAB_ID,
   STORE_DISPLAY_TAB_ID,
   TRASH_DISPLAY_TAB_ID,
   registerWorkspaceDefaultTabs,
 } from "@/features/workspace-display/default-tabs";
-import { getGeneratedMediaItems } from "./payload-to-tab-spec";
 import type { OpenTabOptions } from "@/features/workspace-display/types";
 
 export {
-  CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,
   HOME_DISPLAY_TAB_ID,
-  MEDIA_DISPLAY_TAB_ID,
   STORE_DISPLAY_TAB_ID,
   TRASH_DISPLAY_TAB_ID,
 } from "@/features/workspace-display/default-tabs";
@@ -91,17 +83,16 @@ export function openChatDisplayTab(
 }
 
 /**
- * Open the Home launcher tab — the quiet launcher of other display
- * surfaces (Canvas / Media / Trash) shown when the user summons the panel
- * while on home. Home itself is the chat, so the panel never opens to a
- * duplicate chat there.
+ * Open the Home launcher tab — the quiet launcher of the other display
+ * surfaces shown when the user summons the panel while on home. Home itself
+ * is the chat, so the panel never opens to a duplicate chat there.
  */
 export function openHomeDisplayTab(): void {
   displayTabs.openTab({
     id: HOME_DISPLAY_TAB_ID,
     kind: "home",
     title: "Home",
-    tooltip: "Jump into Canvas, Media, Store, and more",
+    tooltip: "Jump into Files, Store, and more",
     render: () => createElement(HomeLauncherTab),
   });
 }
@@ -145,38 +136,6 @@ export function openEngineDisplayTab(): void {
   engineOverlay.setOpen(true);
 }
 
-export function openMediaDisplayTab(selectedItemId?: string): void {
-  const items = getGeneratedMediaItems();
-  displayTabs.openTab({
-    id: MEDIA_DISPLAY_TAB_ID,
-    kind: "media",
-    title: "Media",
-    tooltip: "Generated media",
-    metadata: { kind: "media", items },
-    render: () =>
-      createElement(MediaTabContent, {
-        items,
-        ...(selectedItemId ? { selectedItemId } : {}),
-      }),
-  });
-}
-
-export function openCanvasDisplayTab(selectedItemId?: string): void {
-  const items = getCanvasHtmlItems();
-  displayTabs.openTab({
-    id: CANVAS_DISPLAY_TAB_ID,
-    kind: "canvas",
-    title: "Canvas",
-    tooltip: "HTML canvases Stella has shown you",
-    metadata: { kind: "canvas-html", items },
-    render: () =>
-      createElement(CanvasTabContent, {
-        items,
-        ...(selectedItemId ? { selectedItemId } : {}),
-      }),
-  });
-}
-
 registerWorkspaceDefaultTabs({
   openChatDisplayTab: (openRequest, opts) =>
     openChatDisplayTab(openRequest as ChatPanelOpenRequest | null, opts),
@@ -185,6 +144,4 @@ registerWorkspaceDefaultTabs({
   openStoreDisplayTab,
   openTrashDisplayTab,
   openEngineDisplayTab,
-  openMediaDisplayTab,
-  openCanvasDisplayTab,
 });

@@ -11,7 +11,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/features/chat/services/local-chat-store";
 import { Compass, LogIn, Smartphone } from "@/ui/icons";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { openCanvasDisplayTab } from "@/features/workspace-display/default-tabs";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import { uiState } from "@/platform/ui-state";
 import "./welcome-dialog.css";
 
@@ -84,7 +84,7 @@ export function WelcomeDialog({
 
   const handleOpenWorkspacePanel = useCallback(() => {
     handleClose();
-    openCanvasDisplayTab();
+    sidebarSections.openLocation("files", null);
   }, [handleClose]);
 
   if (!open) return null;

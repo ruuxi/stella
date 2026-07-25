@@ -3,21 +3,15 @@
  * (`/chat`) route.
  *
  * Home itself IS the chat, so this surface never hosts a duplicate
- * conversation. Instead it's a quiet launcher of the other display
- * surfaces the user might want (Canvas, Media, Store, Trash) — click one and that
- * tab takes over. Activity / files / schedules already live in the left
- * sidebar, so this launcher doesn't repeat them, and Models lives in the
- * sidebar footer rather than here.
+ * conversation. Instead it's a quiet launcher of the other display surfaces
+ * the user might want (Files, Store, Trash) — click one and that surface
+ * takes over. Models lives in the sidebar footer rather than here.
  */
 import type { ReactNode } from "react";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import type { DisplayTabKind } from "@/features/workspace-display/types";
-import {
-  openCanvasDisplayTab,
-  openMediaDisplayTab,
-  openStoreDisplayTab,
-  openTrashDisplayTab,
-} from "./default-tabs";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
+import { openStoreDisplayTab, openTrashDisplayTab } from "./default-tabs";
 import "./chat-home-overview.css";
 
 type LauncherEntry = {
@@ -30,18 +24,13 @@ type LauncherEntry = {
 
 const ENTRIES: ReadonlyArray<LauncherEntry> = [
   {
-    id: "canvas",
-    label: "Canvas",
-    description: "Pages Stella has put together",
-    kind: "canvas",
-    onSelect: openCanvasDisplayTab,
-  },
-  {
-    id: "media",
-    label: "Media",
-    description: "Generated images, video, and audio",
+    id: "files",
+    label: "Files",
+    description: "Pages, images, video, and documents",
     kind: "media",
-    onSelect: openMediaDisplayTab,
+    // A launcher entry is a jump to the top of a surface, so this lands on
+    // the list rather than on whichever file the section was last showing.
+    onSelect: () => sidebarSections.openLocation("files", null),
   },
   {
     id: "store",
