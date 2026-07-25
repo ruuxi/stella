@@ -711,28 +711,6 @@ export const createRunnerContext = ({
           reason,
         );
       },
-      adoptAgent: async (agentId, parentAgentId) => {
-        if (!context.state.localAgentManager) {
-          return { adopted: false };
-        }
-        return await context.state.localAgentManager.adoptAgent(
-          agentId,
-          parentAgentId,
-        );
-      },
-      submitManagerReport: (threadId, message, final) => {
-        if (!context.state.localAgentManager) {
-          return {
-            accepted: false,
-            reason: "Local task manager not initialized",
-          };
-        }
-        return context.state.localAgentManager.submitManagerReport(
-          threadId,
-          message,
-          final,
-        );
-      },
       sendAgentMessage: async (agentId, message, from, options) => {
         if (
           !context.state.localAgentManager ||
@@ -914,7 +892,7 @@ export type BuildAgentContextArgs = {
   spawnEngine?: SpawnEngineSelection;
   /** Per-spawn reasoning override from spawn_agent's model suffix. */
   spawnReasoningEffort?: SpawnReasoningEffort;
-  /** Effective Orchestrator route inherited by a durable Manager thread. */
+  /** Effective Orchestrator route inherited by a durable subagent thread. */
   modelConfigSnapshot?: AgentModelConfigSnapshot;
   toolWorkspaceRoot?: string;
   selfModMetadata?: {

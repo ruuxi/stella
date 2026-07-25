@@ -52,10 +52,9 @@ const truncateAgentEventField = (value: string): string =>
 
 export const buildAgentEventPrompt = (
   event: AgentLifecycleEvent,
-  options?: { recipient?: "orchestrator" | "manager" },
+  options?: { recipient?: "orchestrator" | "parent_agent" },
 ): string | null => {
   if (
-    event.type !== "agent-message" &&
     event.type !== "agent-completed" &&
     event.type !== "agent-failed" &&
     event.type !== "agent-canceled"
@@ -64,42 +63,31 @@ export const buildAgentEventPrompt = (
   }
 
   const lines: string[] = [];
-  const isUserPausedManagedChild =
+  const toParentAgent = options?.recipient === "parent_agent";
+  const isUserPausedChild =
     event.type === "agent-canceled" &&
     event.error === AGENT_PAUSE_CANCEL_REASON &&
-    options?.recipient === "manager";
-  if (event.type === "agent-message") {
-    lines.push("[Agent update]");
-    if (event.description) {
-      lines.push(`description: ${event.description}`);
-    }
-  } else if (event.type === "agent-completed") {
+    toParentAgent;
+  if (event.type === "agent-completed") {
     lines.push("[Agent completed]");
     if (event.description) {
       lines.push(`description: ${event.description}`);
     }
   } else if (event.type === "agent-canceled") {
-    lines.push(
-      isUserPausedManagedChild ? "[Managed child paused]" : "[Task canceled]",
-    );
+    lines.push(isUserPausedChild ? "[Subagent paused]" : "[Task canceled]");
   } else {
     lines.push("[Task failed]");
   }
 
   if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
-  if (
-    event.type !== "agent-message" &&
-    event.type !== "agent-completed" &&
-    event.description
-  ) {
+  if (event.type !== "agent-completed" && event.description) {
     lines.push(`description: ${event.description}`);
   }
   if (
     event.type === "agent-canceled" &&
     (event.error === AGENT_SHUTDOWN_CANCEL_REASON ||
-      (event.error === AGENT_PAUSE_CANCEL_REASON &&
-        options?.recipient !== "manager"))
+      (event.error === AGENT_PAUSE_CANCEL_REASON && !toParentAgent))
   ) {
     return null;
   }
@@ -109,9 +97,6 @@ export const buildAgentEventPrompt = (
     // end-of-task report (the "what changed / outcome / blockers" section),
     // which makes the orchestrator relay false "done" summaries to the user.
     lines.push(`result: ${event.result}`);
-  }
-  if (event.type === "agent-message" && event.result) {
-    lines.push(`message: ${event.result}`);
   }
   if (event.type === "agent-completed" && event.fileChanges?.length) {
     lines.push("explicit file changes:");
@@ -149,9 +134,9 @@ export const buildAgentEventPrompt = (
     lines.push(
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
-    if (options?.recipient === "manager") {
+    if (toParentAgent) {
       lines.push(
-        "routing: this is a managed child report. Continue the instructed process, including any next stage or fresh-review loop, and report upstream only according to your manager reporting rules.",
+        "routing: this is a report from a subagent you started. It is delivered to you alone — it does not reach the user. Continue your own task with this result, and fold anything the user needs into your own final report.",
       );
     } else {
       lines.push(
@@ -160,21 +145,12 @@ export const buildAgentEventPrompt = (
     }
   }
 
-  if (options?.recipient === "manager") {
+  if (toParentAgent) {
     return [
       "<system_reminder>",
-      isUserPausedManagedChild
-        ? "A managed child was paused by the user. Reassess the process now: wait, respawn, or report according to the instructions. Do not remain parked waiting for that child."
-        : "A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process and follow the manager reporting rules.",
-      "</system_reminder>",
-      "",
-      ...lines,
-    ].join("\n");
-  }
-  if (event.type === "agent-message") {
-    return [
-      "<system_reminder>",
-      "A running manager sent a non-terminal update. Relay the update to the user without treating the manager or its work as completed.",
+      isUserPausedChild
+        ? "A subagent you started was paused by the user. Reassess now: wait, respawn, or finish without it. Do not stay blocked on that subagent."
+        : "A subagent you started reached a terminal state. This report is for you, not an automatic update to the user. Continue your own task.",
       "</system_reminder>",
       "",
       ...lines,

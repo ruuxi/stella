@@ -394,16 +394,6 @@ const buildLifecycleEventPayload = (
           ? { producedFiles: event.producedFiles }
           : {}),
       };
-    case "agent-message":
-      return {
-        agentId: event.agentId,
-        ...runFields,
-        ...(typeof event.attemptGeneration === "number"
-          ? { attemptGeneration: event.attemptGeneration }
-          : {}),
-        result: event.result ?? "",
-        ...(event.description ? { description: event.description } : {}),
-      };
     case "agent-failed":
     case "agent-canceled":
       return {
@@ -443,17 +433,6 @@ const appendAgentLifecycleChatEvent = (
     payload: buildLifecycleEventPayload(event),
   });
 };
-
-const isCardLifecycleEvent = (
-  event: AgentLifecycleEvent,
-): event is AgentLifecycleEvent & {
-  type:
-    | "agent-started"
-    | "agent-progress"
-    | "agent-completed"
-    | "agent-failed"
-    | "agent-canceled";
-} => event.type !== "agent-message";
 
 const buildThreadLifecycleEvent = (
   event: AgentLifecycleEvent,
@@ -506,15 +485,15 @@ export const createAgentOrchestration = (
   },
 ) => {
   const handleAgentLifecycleEvent = (event: AgentLifecycleEvent) => {
-    const managerOwner =
-      context.state.localAgentManager?.resolveOwningManagerThread(
+    const parentOwner =
+      context.state.localAgentManager?.resolveOwningParentThread(
         event.agentId,
         event.parentAgentId,
       );
-    const managerParentId =
-      typeof managerOwner === "string" ? managerOwner : undefined;
-    const isManagerOwned = managerParentId !== undefined;
-    const hasUnresolvedManagedAncestry = managerOwner === null;
+    const parentThreadId =
+      typeof parentOwner === "string" ? parentOwner : undefined;
+    const isParentOwned = parentThreadId !== undefined;
+    const hasUnresolvedParentAncestry = parentOwner === null;
     // Interjection-turn completions arrive twice (see
     // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
     // display surface (persisted activity row, renderer/run callbacks,
@@ -523,14 +502,14 @@ export const createAgentOrchestration = (
     // orchestrator follow-up that already went out.
     if (
       event.audience !== "orchestrator-only" &&
-      !isManagerOwned &&
-      !hasUnresolvedManagedAncestry
+      !isParentOwned &&
+      !hasUnresolvedParentAncestry
     ) {
       // Progress ticks are ephemeral decoration: they stream to the renderer
       // below but are never persisted — thread state lives in
       // `runtime_agents` (see `listThreadActivity`), and persisting every
       // tick grew the message table without bound.
-      if (event.type !== "agent-progress" && event.type !== "agent-message") {
+      if (event.type !== "agent-progress") {
         appendAgentLifecycleChatEvent(context, event);
       }
       if (event.rootRunId) {
@@ -539,25 +518,22 @@ export const createAgentOrchestration = (
           ?.onAgentEvent?.(event);
       }
     }
-    if (
-      managerParentId &&
-      event.audience !== "orchestrator-only" &&
-      isCardLifecycleEvent(event)
-    ) {
-      // Manager descendants stay out of the root event table, but their own
-      // exact-thread viewer still needs the canonical lifecycle semantics.
-      // Store a display-only structured entry beside (not inside) the
-      // model-visible terminal reminder. Starts/progress have no reminder at
-      // all, and this entry type is never replayed into Manager context.
+    if (parentThreadId && event.audience !== "orchestrator-only") {
+      // Subagents stay out of the root event table, but the parent's own
+      // read-only thread viewer still needs the canonical lifecycle semantics
+      // so spawns and completions render as cards there. Store a display-only
+      // structured entry beside (not inside) the model-visible terminal
+      // reminder. Starts/progress have no reminder at all, and this entry type
+      // is never replayed into the parent's model context.
       const lifecycleEvent = buildThreadLifecycleEvent(event, Date.now());
       if (
         !context.runtimeStore.hasThreadLifecycleEvent(
-          managerParentId,
+          parentThreadId,
           lifecycleEvent._id,
         )
       ) {
         context.runtimeStore.appendThreadLifecycleEvent({
-          threadKey: managerParentId,
+          threadKey: parentThreadId,
           event: lifecycleEvent,
         });
       }
@@ -568,24 +544,25 @@ export const createAgentOrchestration = (
     // A legacy/malformed parent link or ancestry cycle cannot be attributed
     // safely. Keep the task in Activity, but never guess that it belongs in
     // root chat or let it finalize the root turn.
-    if (hasUnresolvedManagedAncestry) return;
+    if (hasUnresolvedParentAncestry) return;
     const userPrompt = buildAgentEventPrompt(event, {
-      recipient: isManagerOwned ? "manager" : "orchestrator",
+      recipient: isParentOwned ? "parent_agent" : "orchestrator",
     });
     if (!userPrompt) {
       return;
     }
-    if (managerParentId) {
-      // Managed child reports live in the manager's durable thread and wake
-      // that manager directly. They never enter the top-level orchestrator's
-      // history, callbacks, or hidden follow-up stream.
+    if (parentThreadId) {
+      // Subagent reports live in the parent agent's durable thread and wake
+      // that parent directly. They never enter the top-level orchestrator's
+      // history, callbacks, or hidden follow-up stream — so a nested
+      // completion produces no root card and no OS notification.
       if (
-        hasPersistedThreadCustomEvent(context, managerParentId, event.eventId)
+        hasPersistedThreadCustomEvent(context, parentThreadId, event.eventId)
       ) {
         return;
       }
       persistThreadCustomMessage(context.runtimeStore, {
-        threadKey: managerParentId,
+        threadKey: parentThreadId,
         customType: "runtime.task_lifecycle",
         content: [{ type: "text", text: userPrompt }],
         display: false,
@@ -593,16 +570,15 @@ export const createAgentOrchestration = (
         ...(event.eventId ? { eventId: event.eventId } : {}),
       });
       void context.state.localAgentManager?.sendAgentMessage(
-        managerParentId,
+        parentThreadId,
         userPrompt,
         "orchestrator",
-        { deliveryKind: "manager-event" },
+        { deliveryKind: "child-report" },
       );
       return;
     }
     // The follow-up below is in-memory delivery for the active orchestrator
     // session; this row is the durable record read by the next history rebuild.
-    const isInterimMessage = event.type === "agent-message";
     const orchestratorThreadKey = resolveOrchestratorThreadKey(
       event.conversationId,
     );
@@ -615,9 +591,7 @@ export const createAgentOrchestration = (
     ) {
       persistThreadCustomMessage(context.runtimeStore, {
         threadKey: orchestratorThreadKey,
-        customType: isInterimMessage
-          ? "runtime.task_update"
-          : "runtime.task_lifecycle",
+        customType: "runtime.task_lifecycle",
         content: [{ type: "text", text: userPrompt }],
         display: false,
         timestamp: Date.now(),
@@ -659,9 +633,7 @@ export const createAgentOrchestration = (
       agentType: AGENT_IDS.ORCHESTRATOR,
       deliverAs: "followUp",
       callbackRunId: event.rootRunId,
-      customType: isInterimMessage
-        ? "runtime.task_update"
-        : "runtime.task_lifecycle",
+      customType: "runtime.task_lifecycle",
       display: false,
       responseTarget: createAgentLifecycleResponseTarget({
         agentId: event.agentId,

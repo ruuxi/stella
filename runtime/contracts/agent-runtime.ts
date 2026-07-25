@@ -1,6 +1,5 @@
 export const AGENT_IDS = {
   ORCHESTRATOR: "orchestrator",
-  MANAGER: "manager",
   SCHEDULE: "schedule",
   FASHION: "fashion",
   GENERAL: "general",
@@ -14,15 +13,6 @@ export const AGENT_IDS = {
 
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
 export type AgentIdLike = AgentId | (string & {});
-
-export type ManagerReportState = {
-  /** Accepted terminal payload, retained across a superseded attempt. */
-  finalMessage?: string;
-  /** Attempt that accepted `finalMessage`; useful for fencing diagnostics. */
-  finalAttemptGeneration?: number;
-  /** Per-attempt sequence for distinct non-terminal report event ids. */
-  reportSequence: number;
-};
 
 type AgentPromptRole = "orchestrator" | "subagent";
 type LocalCliWorkingDirectory = "home" | "frontend";
@@ -123,21 +113,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
       triggersMemoryReview: true,
       triggersSelfModDetection: true,
     },
-  },
-  {
-    id: AGENT_IDS.MANAGER,
-    name: "Manager",
-    description:
-      "Coordinates multi-agent work and reports consolidated results to the orchestrator.",
-    activityLabel: "Managing",
-    bundledCore: false,
-    runsAsSubagent: true,
-    includeInAgentRoster: false,
-    usesLocalCliRuntime: true,
-    promptRole: "subagent",
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: "home",
-    modelSettings: null,
   },
   {
     id: AGENT_IDS.SCHEDULE,
@@ -422,8 +397,6 @@ export const AGENT_STREAM_EVENT_TYPES = {
   TOOL_END: "tool-end",
   AGENT_STARTED: "agent-started",
   AGENT_PROGRESS: "agent-progress",
-  /** Non-terminal manager report; not part of task lifecycle persistence. */
-  AGENT_MESSAGE: "agent-message",
   AGENT_COMPLETED: "agent-completed",
   AGENT_FAILED: "agent-failed",
   AGENT_CANCELED: "agent-canceled",

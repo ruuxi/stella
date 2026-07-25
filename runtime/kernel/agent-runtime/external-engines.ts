@@ -503,7 +503,7 @@ const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
  *
  * Reports are delivered WHOLE: buildAgentEventPrompt deliberately preserves
  * full child final reports because the TAIL carries outcomes and blockers —
- * cutting it could make a manager act on a false completion with no way to
+ * cutting it could make a parent agent act on a false completion with no way to
  * retrieve the omitted end. A report too large for the normal block budget
  * gets its own dedicated single-row batch (the contiguous-prefix watermark
  * semantics permit a 1-row batch) sized up to the engine's practical input
@@ -551,7 +551,7 @@ export type ExternalThreadUpdatesDelta = {
  * The full Stella-history block is only sent on session-creating turns (see
  * `buildClaudeCodeTurnPrompts`); resumed turns rely on the CLI transcript,
  * which never contains rows written out-of-band by the orchestration layer —
- * e.g. a manager's `runtime.task_lifecycle` child reports, whose wake prompt
+ * e.g. a parent agent's `runtime.task_lifecycle` child reports, whose wake prompt
  * is deliberately a content-free stub. This delta carries exactly those rows
  * persisted after `afterEntryId` (the delivered watermark), keeping resumed
  * prompts small instead of re-sending the whole history each turn.
@@ -726,7 +726,7 @@ export const buildExternalThreadUpdatesDelta = (args: {
     }
   }
   truncated = truncated || coveredEndIndex < undelivered.length - 1;
-  // The content-free wake stub means this delta is the manager's only view
+  // The content-free wake stub means this delta is the parent agent's only view
   // of the report that woke it — and external turns get no extra queued step
   // to fetch more. The newest not-otherwise-covered row is therefore always
   // included, even beyond the contiguous prefix, as a marked out-of-order
@@ -929,7 +929,7 @@ export const buildClaudeCodeTurnPrompts = (args: {
     ...(fallbackDeltaMessage ? [fallbackDeltaMessage] : []),
   ];
   // Built even with an empty history snapshot: a delta-only fallback still
-  // reseeds rows that arrived after the snapshot (e.g. a brand-new manager
+  // reseeds rows that arrived after the snapshot (e.g. a brand-new parent agent
   // thread whose first child completed mid-turn).
   const historyPrefixedPrompt =
     fallbackSeedMessages.length > 0
@@ -1395,7 +1395,7 @@ const runClaudeHostedTurn = async (args: {
   collectTurnFileChanges(finalResult.fileChanges);
 
   for (;;) {
-    // Persist and publish THIS completed turn before a queued manager/user
+    // Persist and publish THIS completed turn before a queued parent/user
     // prompt can advance `finalResult`. Previously only the last result after
     // this loop was committed, so a concurrent managed update overwrote the
     // user's completed reply even though both existed in the Claude transcript.
@@ -1802,7 +1802,7 @@ const runCodexHostedTurn = async (args: {
       ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
       : {}),
     stellaModel: args.opts.agentContext.model,
-    // Exact inherited Manager route or per-spawn Codex pin.
+    // Exact inherited parent route or per-spawn Codex pin.
     ...(codexModelOverride ? { modelOverride: codexModelOverride } : {}),
     ...(codexReasoningEffort
       ? {

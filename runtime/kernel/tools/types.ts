@@ -37,7 +37,6 @@ export type ToolContext = {
   cloudAgentId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
-  /** Effective Orchestrator route inherited by spawn_manager. */
   modelConfigSnapshot?: AgentModelConfigSnapshot;
   allowedToolNames?: string[];
   /** External adapters acknowledge image delivery after transcript storage. */
@@ -143,7 +142,7 @@ export type AgentToolRequest = {
   spawnEngine?: SpawnEngineSelection;
   /** Per-spawn reasoning override parsed from model's `:<effort>` suffix. */
   spawnReasoningEffort?: SpawnReasoningEffort;
-  /** Durable effective route inherited by a Manager from its Orchestrator. */
+  /** Durable effective route inherited by a subagent from its Orchestrator. */
   modelConfigSnapshot?: AgentModelConfigSnapshot;
   toolWorkspaceRoot?: string;
   rootRunId?: string;
@@ -200,17 +199,6 @@ export type AgentToolApi = {
     threadId: string,
     reason?: string,
   ) => Promise<{ canceled: boolean }>;
-  /** Rebind an existing thread's completion routing to a manager thread. */
-  adoptAgent?: (
-    threadId: string,
-    parentAgentId: string,
-  ) => Promise<{ adopted: boolean; reason?: string }>;
-  /** Deliver a Manager-authored payload through its only upward channel. */
-  submitManagerReport?: (
-    threadId: string,
-    message: string,
-    final: boolean,
-  ) => { accepted: boolean; reason?: string };
   sendAgentMessage?: (
     threadId: string,
     message: string,
@@ -218,11 +206,10 @@ export type AgentToolApi = {
     options?: {
       description?: string;
       rootRunId?: string;
-      /** Manager thread that adopted and now owns completion routing. */
+      /** Parent agent thread that owns this thread's completion routing. */
       parentAgentId?: string;
       /** Internal child report vs. direct orchestrator status/steering input. */
-      deliveryKind?: "manager-event" | "external-input";
-      /** Current Orchestrator route, used only to heal legacy Manager rows. */
+      deliveryKind?: "child-report" | "external-input";
       modelConfigSnapshot?: AgentModelConfigSnapshot;
     },
   ) => Promise<{ delivered: boolean; reason?: string }>;

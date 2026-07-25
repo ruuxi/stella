@@ -239,7 +239,6 @@ export const handleSendInput = async (
 ): Promise<ToolResult> => {
   const threadId =
     toOptionalString(args.thread_id) ?? toOptionalString(context.agentId);
-  const isManager = context.agentType === AGENT_IDS.MANAGER;
   if (!ctx.agentApi?.sendAgentMessage) {
     return { error: "Agent input is not configured on this device." };
   }
@@ -255,19 +254,6 @@ export const handleSendInput = async (
     return { error: "description is required" };
   }
   const description = deriveAgentDescription(rawDescription, message);
-  const managerThreadId = isManager
-    ? (toOptionalString(context.agentId) ??
-      toOptionalString(context.cloudAgentId))
-    : undefined;
-  if (isManager && !managerThreadId) {
-    return { error: "Manager thread identity is unavailable." };
-  }
-  if (managerThreadId && ctx.agentApi.adoptAgent) {
-    const adoption = await ctx.agentApi.adoptAgent(threadId, managerThreadId);
-    if (!adoption.adopted) {
-      return { error: adoption.reason ?? `Thread not found: ${threadId}` };
-    }
-  }
   const delivered = await ctx.agentApi.sendAgentMessage(
     threadId,
     message,
@@ -275,7 +261,6 @@ export const handleSendInput = async (
     {
       description,
       ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
-      ...(managerThreadId ? { parentAgentId: managerThreadId } : {}),
       ...(context.agentType === AGENT_IDS.ORCHESTRATOR &&
       context.modelConfigSnapshot
         ? { modelConfigSnapshot: context.modelConfigSnapshot }
@@ -295,50 +280,6 @@ export const handleSendInput = async (
   };
 };
 
-export const handleReport = async (
-  ctx: StateContext,
-  args: Record<string, unknown>,
-  context: ToolContext,
-): Promise<ToolResult> => {
-  if (context.agentType !== AGENT_IDS.MANAGER) {
-    return { error: "Only a Manager can use report." };
-  }
-  const threadId =
-    toOptionalString(context.agentId) ?? toOptionalString(context.cloudAgentId);
-  if (!threadId) {
-    return { error: "Manager thread identity is unavailable." };
-  }
-  const message = toOptionalString(args.message);
-  if (!message) {
-    return { error: "message is required" };
-  }
-  if (args.final !== undefined && typeof args.final !== "boolean") {
-    return { error: "final must be a boolean" };
-  }
-  const final = args.final === true;
-  const submitted = ctx.agentApi?.submitManagerReport?.(
-    threadId,
-    message,
-    final,
-  );
-  if (!submitted?.accepted) {
-    return {
-      error: submitted?.reason ?? "Manager reporting is unavailable.",
-    };
-  }
-  return {
-    result: {
-      thread_id: threadId,
-      final,
-      delivered: !final,
-      accepted: true,
-      note: final
-        ? "The report is stored as the Manager's terminal result and will be delivered by the completion event."
-        : "The report was delivered as a non-terminal update; the Manager remains active.",
-    },
-  };
-};
-
 export const handleSpawnAgent = async (
   ctx: StateContext,
   args: Record<string, unknown>,
@@ -354,25 +295,6 @@ export const handleSpawnAgent = async (
     // because it produced an empty assistant message that overwrote the
     // orchestrator's actual response to the pause request.
     if (ctx.agentApi) {
-      if (context.agentType === AGENT_IDS.MANAGER) {
-        const managerThreadId =
-          toOptionalString(context.agentId) ??
-          toOptionalString(context.cloudAgentId);
-        if (!managerThreadId) {
-          return { error: "Manager thread identity is unavailable." };
-        }
-        if (ctx.agentApi.adoptAgent) {
-          const adoption = await ctx.agentApi.adoptAgent(
-            explicitThreadId,
-            managerThreadId,
-          );
-          if (!adoption.adopted) {
-            return {
-              error: adoption.reason ?? `Thread not found: ${explicitThreadId}`,
-            };
-          }
-        }
-      }
       const canceled = await ctx.agentApi.cancelAgent(
         explicitThreadId,
         AGENT_PAUSE_CANCEL_REASON,
@@ -403,12 +325,11 @@ export const handleSpawnAgent = async (
   }
 
   const agentType = AGENT_IDS.GENERAL;
+  // The root orchestrator has no thread identity of its own, so this resolves
+  // to undefined there and the spawn is top-level. A General parent always has
+  // one, which is what makes its children route back to it instead of root.
   const parentAgentId =
-    context.agentType === AGENT_IDS.MANAGER
-      ? (toOptionalString(context.agentId) ??
-        toOptionalString(context.cloudAgentId))
-      : (toOptionalString(context.cloudAgentId) ??
-        toOptionalString(context.agentId));
+    toOptionalString(context.cloudAgentId) ?? toOptionalString(context.agentId);
   const storageMode = context.storageMode ?? "local";
   const parentAgentDepth = Math.max(0, context.agentDepth ?? 0);
   const nextAgentDepth = parentAgentDepth + 1;
@@ -416,10 +337,10 @@ export const handleSpawnAgent = async (
 
   if (
     context.agentType !== AGENT_IDS.ORCHESTRATOR &&
-    context.agentType !== AGENT_IDS.MANAGER
+    context.agentType !== AGENT_IDS.GENERAL
   ) {
     return {
-      error: "Only the orchestrator or a manager can create tasks.",
+      error: "Only the orchestrator or a General agent can create tasks.",
     };
   }
 
@@ -434,7 +355,7 @@ export const handleSpawnAgent = async (
   if (Object.prototype.hasOwnProperty.call(args, "group")) {
     return {
       error:
-        "group has been removed from spawn_agent. Use spawn_manager to coordinate related multi-agent work.",
+        "group has been removed from spawn_agent. Spawn a General agent and let it run its own subagents to coordinate related multi-agent work.",
     };
   }
 
@@ -568,67 +489,6 @@ export const handleSpawnAgent = async (
       follow_up_on_completion: true,
       note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
       ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
-    },
-  };
-};
-
-export const handleSpawnManager = async (
-  ctx: StateContext,
-  args: Record<string, unknown>,
-  context: ToolContext,
-): Promise<ToolResult> => {
-  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
-    return { error: "Only the orchestrator can create a manager." };
-  }
-  const prompt = toOptionalString(args.prompt);
-  if (!prompt) {
-    return { error: "prompt is required" };
-  }
-  const description = deriveAgentDescription("Task", prompt);
-  const storageMode = context.storageMode ?? "local";
-  if (ctx.agentApi) {
-    if (!context.modelConfigSnapshot) {
-      return {
-        error:
-          "The Orchestrator's resolved model configuration is unavailable; the Manager was not started.",
-      };
-    }
-    const created = await ctx.agentApi.createAgent({
-      conversationId: context.conversationId,
-      description,
-      prompt,
-      agentType: AGENT_IDS.MANAGER,
-      modelConfigSnapshot: context.modelConfigSnapshot,
-      rootRunId: context.rootRunId,
-      agentDepth: 1,
-      storageMode,
-    });
-    return {
-      result: {
-        thread_id: created.threadId,
-        created: true,
-        running_in_background: true,
-        follow_up_on_completion: true,
-        note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
-      },
-    };
-  }
-
-  const id = String(ctx.tasks.size + 1);
-  ctx.tasks.set(id, {
-    id,
-    description,
-    status: "running",
-    startedAt: Date.now(),
-    completedAt: null,
-  });
-  return {
-    result: {
-      thread_id: id,
-      created: true,
-      running_in_background: true,
-      follow_up_on_completion: true,
-      note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
     },
   };
 };

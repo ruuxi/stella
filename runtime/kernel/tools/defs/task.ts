@@ -1,26 +1,23 @@
 /**
- * Sub-agent management tools for the orchestrator.
+ * Sub-agent management tools.
  *
- * Five tools manipulate the durable agent thread surface: `spawn_agent`,
- * `spawn_manager`, `send_input`, `report`, and `pause_agent`.
- * Managers receive their coordination/reporting tools but cannot create
- * another manager.
+ * Three tools manipulate the durable agent thread surface: `spawn_agent`,
+ * `send_input`, and `pause_agent`. The orchestrator and General agents share
+ * them, so a General agent can run its own subagents; how deep that can nest
+ * is bounded by `maxAgentDepth` rather than by agent type.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleSendInput,
-  handleReport,
   handleSpawnAgent,
-  handleSpawnManager,
   type StateContext,
 } from "../state.js";
 import type { ToolDefinition } from "../types.js";
 
-const ORCHESTRATOR_ONLY: readonly string[] = [AGENT_IDS.ORCHESTRATOR];
-const AGENT_MANAGERS: readonly string[] = [
+const AGENT_SPAWNERS: readonly string[] = [
   AGENT_IDS.ORCHESTRATOR,
-  AGENT_IDS.MANAGER,
+  AGENT_IDS.GENERAL,
 ];
 
 export const createAgentTools = (
@@ -28,7 +25,7 @@ export const createAgentTools = (
 ): ToolDefinition[] => [
   {
     name: "spawn_agent",
-    agentTypes: AGENT_MANAGERS,
+    agentTypes: AGENT_SPAWNERS,
     description:
       "Spawn a sub-agent for a well-scoped background task. Returns immediately with a durable `thread_id`; the agent is NOT finished yet.",
     parameters: {
@@ -56,27 +53,8 @@ export const createAgentTools = (
       handleSpawnAgent(stateContext, args, context),
   },
   {
-    name: "spawn_manager",
-    agentTypes: ORCHESTRATOR_ONLY,
-    description:
-      "Spawn a manager agent to coordinate multi-agent work, loops, or adopted threads and return a consolidated report. Returns immediately with a durable `thread_id`; the manager is NOT finished yet.",
-    parameters: {
-      type: "object",
-      properties: {
-        prompt: {
-          type: "string",
-          description:
-            "Complete instructions for the manager, including the desired process, scope, constraints, and reporting expectations.",
-        },
-      },
-      required: ["prompt"],
-    },
-    execute: async (args, context) =>
-      handleSpawnManager(stateContext, args, context),
-  },
-  {
     name: "send_input",
-    agentTypes: AGENT_MANAGERS,
+    agentTypes: AGENT_SPAWNERS,
     description:
       "Send a follow-up message to an existing sub-agent. The agent sees it right away. If you want the message to land after the agent has finished its current work, wait for the [Agent completed] event on that thread first.",
     parameters: {
@@ -102,32 +80,8 @@ export const createAgentTools = (
       handleSendInput(stateContext, args, context),
   },
   {
-    name: "report",
-    agentTypes: [AGENT_IDS.MANAGER],
-    description:
-      "Send a Manager report to the orchestrator. This is the Manager's only upward channel. Use non-final reports sparingly for blockers, questions, or requested progress; call exactly once with final true for the consolidated terminal result.",
-    parameters: {
-      type: "object",
-      properties: {
-        message: {
-          type: "string",
-          description:
-            "The exact update or consolidated result to deliver upward.",
-        },
-        final: {
-          type: "boolean",
-          default: false,
-          description:
-            "False sends a non-terminal update. True supplies the Manager's terminal completion result.",
-        },
-      },
-      required: ["message"],
-    },
-    execute: async (args, context) => handleReport(stateContext, args, context),
-  },
-  {
     name: "pause_agent",
-    agentTypes: AGENT_MANAGERS,
+    agentTypes: AGENT_SPAWNERS,
     description:
       "Pause a running sub-agent, or a whole group of related agents at once by passing a grp-… group id. The same thread can be resumed later by calling send_input with its thread_id.",
     parameters: {
