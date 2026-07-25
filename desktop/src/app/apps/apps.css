@@ -175,15 +175,19 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
   padding: 16px 18px;
   min-height: 124px;
+  appearance: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--card);
   color: var(--foreground);
-  text-decoration: none;
+  font: inherit;
+  text-align: left;
+  cursor: default;
   box-shadow: var(--shadow-sm);
   transition:
     background 0.14s ease,

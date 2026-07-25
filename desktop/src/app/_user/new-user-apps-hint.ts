@@ -9,8 +9,8 @@ import {
 /**
  * Tiny "new app" marker on the Apps top-bar nav item. Mirrors the
  * post-onboarding hint shape but the trigger is dynamic: any user app
- * slug the user hasn't seen yet keeps the dot lit until they visit
- * `/apps`.
+ * slug the user hasn't seen yet keeps the dot lit until they open the
+ * Apps library.
  *
  * Storage shape (single shared-UI-state key):
  *   {
@@ -21,7 +21,7 @@ import {
  * On the very first launch with this feature shipped, the seen set is
  * seeded from the current registry — that way existing apps don't all
  * pop a dot retroactively. After that, any new file in `_user/` whose
- * slug isn't in `seen` lights the nav dot until `/apps` is visited.
+ * slug isn't in `seen` lights the nav dot until the library is opened.
  */
 
 const STORAGE_KEY = "stella:new-user-apps-seen";
@@ -129,8 +129,8 @@ const seedIfNeeded = (state: StoredState): StoredState => {
 };
 
 /**
- * Marks every currently-registered user app as seen. Called when the
- * user visits `/apps` (any sub-route counts).
+ * Marks every currently-registered user app as seen. Called when a
+ * library list is actually on screen.
  */
 export const markAllUserAppsSeen = (): void => {
   const current = safeRead();
@@ -148,8 +148,8 @@ export const markAllUserAppsSeen = (): void => {
 };
 
 /**
- * Test/reset helper — drops the entire seen set so the next visit to
- * `/apps` re-seeds. Not currently surfaced in the UI.
+ * Test/reset helper — drops the entire seen set so the next library
+ * visit re-seeds. Not currently surfaced in the UI.
  */
 export const clearNewUserAppsHint = (): void => {
   safeWrite(EMPTY_STATE);

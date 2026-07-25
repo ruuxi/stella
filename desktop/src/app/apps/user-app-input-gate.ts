@@ -4,7 +4,7 @@ import { getUserApp } from "@/app/_user/user-apps-registry";
  * Global-input gate for keep-alive user apps.
  *
  * `<PersistentUserAppsHost />` keeps user apps mounted-but-hidden after the
- * user navigates away. `inert` + `visibility: hidden` stop events *targeted
+ * user leaves them. `inert` + `visibility: hidden` stop events *targeted
  * at the app's subtree*, but apps also register window/document-level
  * listeners (Tower Reader binds "j"/"f" on `window`), and those keep firing
  * while the app is hidden — swallowing keystrokes typed into chat.
@@ -15,7 +15,7 @@ import { getUserApp } from "@/app/_user/user-apps-registry";
  * registered and the registration call stack contains a user-app module
  * frame (`desktop/src/app/_user/<slug>.tsx`, including `<slug>.*.ts(x)`
  * helper splits), the listener is wrapped so it no-ops unless that app is
- * the active `/apps/<slug>` route.
+ * the one on screen (see `liveUserAppInputSlug`, which the host feeds in).
  *
  * Per-app opt-out of the gating (NOT of teardown): a user app may export
  * `meta = { label, createdAt, backgroundInput: true }`. With
@@ -77,7 +77,7 @@ const GATED_INPUT_EVENT_TYPES = new Set([
 ]);
 
 type GateSharedState = {
-  /** Slug of the user app currently visible on `/apps/<slug>`, or null. */
+  /** Slug of the user app the panel is currently showing, or null. */
   activeInputSlug: string | null;
   /** Idempotency marker so HMR re-evaluation never double-patches. */
   installed: boolean;
@@ -103,13 +103,13 @@ const getSharedState = (): GateSharedState => {
   return state;
 };
 
-/** Called by the keep-alive host whenever the active user app changes. */
+/** Called by the keep-alive host whenever the visible user app changes. */
 export const setInputActiveUserApp = (slug: string | null): void => {
   getSharedState().activeInputSlug = slug;
 };
 
 /**
- * Checked at dispatch time (not registration time) so both route changes
+ * Checked at dispatch time (not registration time) so both section changes
  * and HMR edits to an app's `meta.backgroundInput` take effect immediately.
  */
 const isUserAppInputLive = (slug: string): boolean => {

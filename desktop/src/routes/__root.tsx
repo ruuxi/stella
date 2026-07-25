@@ -61,7 +61,6 @@ const SubscriptionUpgradeDialog = lazy(() =>
     default: m.SubscriptionUpgradeDialog,
   })),
 );
-import { PersistentUserAppsHost } from "@/app/apps/PersistentUserAppsHost";
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
 import {
@@ -553,11 +552,6 @@ function RootChrome() {
           >
             <Outlet />
           </div>
-          {/* Keep-alive surfaces for user apps (/apps/$slug). Rendered after
-              the route outlet so the active app paints (and receives pointer
-              events) above the outlet's empty render for that route. */}
-          <PersistentUserAppsHost />
-
           {/* Inside `.content-area`, not the window, so the bar spans the
               center column only. The display panel owns its own top strip, and
               anchoring here means the account cluster tracks the column

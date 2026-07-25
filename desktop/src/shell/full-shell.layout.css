@@ -526,7 +526,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .persistent-chat-surface,
-.persistent-user-app-surface,
 .route-outlet-surface {
   position: absolute;
   top: var(--shell-topbar-height);
@@ -539,7 +538,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .persistent-chat-surface,
-.persistent-user-app-surface,
 .route-outlet-surface {
   display: flex;
   visibility: hidden;
@@ -547,24 +545,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .persistent-chat-surface--active,
-.persistent-user-app-surface--active,
 .route-outlet-surface--active {
   visibility: visible;
   pointer-events: auto;
-}
-
-/* Retained-but-hidden user apps additionally skip rendering entirely:
-   `content-visibility: hidden` keeps the subtree's DOM state (scroll
-   positions, media elements) — unlike `display: none` — while rendering
-   work is skipped and element-visibility signals (IntersectionObserver,
-   element timing) read as offscreen, so visible-only work in hidden apps
-   pauses naturally. */
-.persistent-user-app-surface {
-  content-visibility: hidden;
-}
-
-.persistent-user-app-surface--active {
-  content-visibility: visible;
 }
 
 /* Row wrapper around the chat/home column + the visualization mockup

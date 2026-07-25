@@ -14,13 +14,13 @@ import type { ComponentType } from "react";
  *
  * The directory prefix `_` keeps these files out of the top-bar nav
  * (the sidebar registry filters folders starting with `_`). Discovery
- * here is purely for the `/apps` page (list, search, sort) and the
- * `/apps/$slug` dynamic route.
+ * here is purely for the library lists (list, search, sort) and for the
+ * keep-alive host that mounts an app in the right sidebar's Apps section.
  *
  * `meta` is loaded eagerly via `import.meta.glob({ eager: true, import: "meta" })`
  * so the list can render and sort without a round of dynamic imports.
  * The component itself stays lazy: `load()` returns the module promise
- * and `/apps/$slug` consumes it through `React.lazy`.
+ * and `PersistentUserAppsHost` consumes it through `React.lazy`.
  *
  * HMR: when a user app file is added, removed, or edited, Vite re-runs
  * this module and we notify subscribers via `useSyncExternalStore`. No
@@ -34,9 +34,9 @@ export type UserAppMeta = {
    * Opt-in: keep this app's window/document input listeners (keyboard,
    * pointer, clipboard, …) live while the app is retained-hidden by the
    * keep-alive host. Default (absent/false): a hidden app cannot receive
-   * global input events — its listeners no-op until it is the active
-   * `/apps/<slug>` route again. Set `true` only for apps that must watch
-   * input in the background (typing trackers, global-keybind launchers).
+   * global input events — its listeners no-op until the sidebar is showing
+   * that app again. Set `true` only for apps that must watch input in the
+   * background (typing trackers, global-keybind launchers).
    * Input gating only: teardown timing and retention are unaffected.
    */
   backgroundInput?: boolean;
