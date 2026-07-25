@@ -55,7 +55,6 @@ import {
   type FirstSeenOrder,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
-import { AGENT_IDS } from "../../../runtime/contracts/agent-runtime.js";
 import {
   deriveConversationFiles,
   type ConversationFileEntry,
@@ -353,15 +352,16 @@ const TaskRow = memo(function TaskRow({
   // Per-session only; resets when the row unmounts, which is fine.
   const [filesExpanded, setFilesExpanded] = useState(false);
   const hasAgentUpdates = agentUpdates.length > 0;
-  const managerDetail =
-    task.agentType === AGENT_IDS.MANAGER
-      ? task.status === "running"
-        ? task.statusText?.trim() &&
-          task.statusText.trim() !== task.description.trim()
-          ? task.statusText.trim()
-          : undefined
-        : task.outputPreview?.trim() || undefined
-      : undefined;
+  // Second line on a row that owns subagents: what the parent is doing now,
+  // or its result once settled. Keyed on having children, not on agent type.
+  const parentDetail = compactChildren
+    ? task.status === "running"
+      ? task.statusText?.trim() &&
+        task.statusText.trim() !== task.description.trim()
+        ? task.statusText.trim()
+        : undefined
+      : task.outputPreview?.trim() || undefined
+    : undefined;
   const hasFiles = files.length > 0;
   const compactTasks = useMemo(
     () => (compactChildren ? flattenActivityTasks(compactChildren) : undefined),
@@ -378,7 +378,7 @@ const TaskRow = memo(function TaskRow({
   });
   const hasChildContent = Boolean(childContent);
   const hasDetail =
-    hasChildContent || Boolean(managerDetail) || hasAgentUpdates || hasFiles;
+    hasChildContent || Boolean(parentDetail) || hasAgentUpdates || hasFiles;
   const detailOpen = expanded && hasDetail;
   return (
     <motion.li
@@ -468,9 +468,9 @@ const TaskRow = memo(function TaskRow({
         <div className="chat-workspace-strip__task-collapse-clip">
           {hasDetail ? (
             <div className="chat-workspace-strip__task-detail">
-              {managerDetail ? (
-                <p className="chat-workspace-strip__manager-status">
-                  {managerDetail}
+              {parentDetail ? (
+                <p className="chat-workspace-strip__parent-status">
+                  {parentDetail}
                 </p>
               ) : null}
               {hasAgentUpdates || hasFiles ? (

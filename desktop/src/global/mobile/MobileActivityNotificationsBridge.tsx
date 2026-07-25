@@ -24,54 +24,28 @@ const isWellFormedThreadId = (value: string): boolean =>
 /**
  * Select the durable Activity rows that own mobile lifecycle notifications.
  *
- * The Activity feed intentionally omits the Orchestrator, so a General
- * agent's unresolved first parent is its normal standalone boundary. Once an
- * Activity parent has resolved, however, broken or cyclic ancestry is unsafe:
- * suppress the row rather than risk notifying for Manager-owned work.
+ * Only top-level work notifies the user. A subagent belongs to the agent that
+ * spawned it, and its completion is that parent's business — it is delivered
+ * into the parent's thread instead, so it must never surface as a user-facing
+ * notification. The Activity feed intentionally omits the Orchestrator, so an
+ * agent with no parent is exactly a root-spawned one.
  */
 export function selectActivityNotificationTasks(
   tasks: readonly TaskItem[],
 ): TaskItem[] {
-  const taskById = new Map<string, TaskItem>();
+  const seenIds = new Set<string>();
   const duplicateIds = new Set<string>();
   for (const task of tasks) {
-    if (taskById.has(task.id)) duplicateIds.add(task.id);
-    else taskById.set(task.id, task);
+    if (seenIds.has(task.id)) duplicateIds.add(task.id);
+    else seenIds.add(task.id);
   }
 
   return tasks.filter((task) => {
     if (!isWellFormedThreadId(task.id) || duplicateIds.has(task.id)) {
       return false;
     }
-    if (task.agentType === AGENT_IDS.MANAGER) {
-      return task.parentAgentId === undefined;
-    }
     if (task.agentType !== AGENT_IDS.GENERAL) return false;
-
-    let parentId = task.parentAgentId;
-    if (parentId === undefined) return true;
-    if (!isWellFormedThreadId(parentId)) return false;
-
-    const visited = new Set([task.id]);
-    let resolvedActivityParent = false;
-    while (parentId) {
-      if (visited.has(parentId) || duplicateIds.has(parentId)) return false;
-      visited.add(parentId);
-
-      const parent = taskById.get(parentId);
-      if (!parent) {
-        return !resolvedActivityParent;
-      }
-      resolvedActivityParent = true;
-      if (parent.agentType === AGENT_IDS.MANAGER) return false;
-      if (parent.agentType !== AGENT_IDS.GENERAL) return false;
-
-      parentId = parent.parentAgentId;
-      if (parentId === undefined) return true;
-      if (!isWellFormedThreadId(parentId)) return false;
-    }
-
-    return false;
+    return task.parentAgentId === undefined;
   });
 }
 
@@ -135,10 +109,7 @@ export function collectActivityNotificationKinds(
 
     if (task.status === "running") {
       record.observedRunning = true;
-      if (
-        record.eligibleForStartedNotification &&
-        !record.startedNotified
-      ) {
+      if (record.eligibleForStartedNotification && !record.startedNotified) {
         record.startedNotified = true;
         kinds.push("started");
       }
@@ -148,8 +119,7 @@ export function collectActivityNotificationKinds(
     const terminalAtMs =
       task.completedAtMs ?? task.lastUpdatedAtMs ?? task.startedAtMs;
     const eligibleForTerminalNotification =
-      record.observedRunning ||
-      terminalAtMs >= mountedAtMs - MOUNT_GRACE_MS;
+      record.observedRunning || terminalAtMs >= mountedAtMs - MOUNT_GRACE_MS;
 
     if (
       !record.terminalNotified &&

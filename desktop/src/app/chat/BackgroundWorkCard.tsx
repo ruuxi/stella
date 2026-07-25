@@ -11,7 +11,7 @@
  * them as a count) rather than stacking a card per thread.
  *
  * Two variants share the same surface:
- *   - spawn ("started X" — `spawn_agent` or `spawn_manager` kicked off new
+ *   - spawn ("started X" — `spawn_agent` kicked off new
  *     background work)
  *   - follow-up ("update sent to X" — `send_input` advanced an already-
  *     spawned thread). A follow-up reuses the thread's original description,
@@ -274,9 +274,7 @@ export function BackgroundWorkCard({
                 agentType:
                   threadActivity.find((record) => record.threadId === threadId)
                     ?.agentType ?? "Agent",
-                title:
-                  descriptions?.[threadId]?.trim() ||
-                  "Agent thread",
+                title: descriptions?.[threadId]?.trim() || "Agent thread",
               })
             }
             aria-label="View activity"

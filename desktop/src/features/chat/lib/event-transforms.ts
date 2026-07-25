@@ -317,14 +317,12 @@ export function fallbackTaskDescription(agentId: string | undefined): string {
 
 /**
  * The user-facing activity feed shows durable delegated work: General agents
- * plus Manager coordinators. Orchestrator-internal helpers (schedule
+ * including those spawned by another agent. Orchestrator-internal helpers (schedule
  * specialists, recall lookups, and any future machinery agent types) remain
  * execution detail and must not surface as activity rows.
  */
 export function isActivityFeedTask(task: Pick<TaskItem, 'agentType'>): boolean {
-  return (
-    task.agentType === AGENT_IDS.GENERAL || task.agentType === AGENT_IDS.MANAGER
-  )
+  return task.agentType === AGENT_IDS.GENERAL
 }
 
 export function isStandaloneTaskStatusText(
@@ -844,7 +842,6 @@ const countActivityTasks = (rows: readonly ActivityRow[]): number =>
 export function getTaskAgentUpdates(
   task: Pick<TaskItem, 'status' | 'agentType' | 'assistantMessages'>,
 ): readonly string[] {
-  if (task.agentType === AGENT_IDS.MANAGER) return []
   return (task.assistantMessages ?? []).filter((message) => message.trim())
 }
 

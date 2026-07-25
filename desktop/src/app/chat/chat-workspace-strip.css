@@ -624,7 +624,7 @@
   margin-left: -23px;
 }
 
-.chat-workspace-strip__manager-status {
+.chat-workspace-strip__parent-status {
   margin: 0;
   color: var(--text-weak);
   font-size: var(--font-size-xs);

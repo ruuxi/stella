@@ -8,10 +8,7 @@ import {
   isUserMessage,
 } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
-import {
-  AGENT_IDS,
-  isOrchestratorReservedBuiltinAgentId,
-} from "../../../../../runtime/contracts/agent-runtime.js";
+import { isOrchestratorReservedBuiltinAgentId } from "../../../../../runtime/contracts/agent-runtime.js";
 import { isOfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { ScheduleToolAffectedRef } from "../../../../../runtime/kernel/shared/scheduling";
 import { pickScheduleToolSummary } from "@/global/schedule/schedule-receipt-summary";
@@ -136,12 +133,8 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * and for agents spawned via `multi_tool_use_parallel`, and never fires for
  * a failed spawn (so no phantom card).
  *
- * Only user-facing *delegated* work earns a card: `general`, the dedicated
- * `manager` spawned by `spawn_manager`, and any custom user-installed
- * subagent. Manager is the one intentional exception to the reserved-builtin
- * denylist: unlike schedule/fashion/explore/dream/chronicle/install_update,
- * it is a durable background thread created directly by the orchestrator and
- * resumed through `send_input`. A denylist (rather than an allowlist of only
+ * Only user-facing *delegated* work earns a card: `general` and any custom
+ * user-installed subagent. A denylist (rather than an allowlist of only
  * known agent types) means legitimate custom subagents still surface while
  * future internal builtins remain excluded automatically. Tool-internal
  * one-shot helpers like HTML/canvas and Recall never emit `agent-started`, so
@@ -184,15 +177,9 @@ export const getBackgroundWork = (
   const spawnedAtMs: Record<string, number> = {};
   for (const event of events) {
     if (!isAgentStartedEvent(event)) continue;
-    // Skip internal/system agents invoked behind a tool (schedule, etc.). A
-    // manager is reserved from direct `spawn_agent` targeting, but is still
-    // user-visible delegated work when created through `spawn_manager`.
+    // Skip internal/system agents invoked behind a tool (schedule, etc.).
     const agentType = asNonEmptyString(event.payload.agentType);
-    if (
-      agentType &&
-      agentType !== AGENT_IDS.MANAGER &&
-      isOrchestratorReservedBuiltinAgentId(agentType)
-    ) {
+    if (agentType && isOrchestratorReservedBuiltinAgentId(agentType)) {
       continue;
     }
     const agentId = asNonEmptyString(event.payload.agentId);

@@ -13,7 +13,7 @@
  */
 /**
  * Stella always presents as a single assistant — never expose that
- * `spawn_agent`, `spawn_manager`, `send_input`, and `pause_agent` orchestrate
+ * `spawn_agent`, `send_input`, and `pause_agent` orchestrate
  * other agents under the hood. Those tools just get generic "Stella is doing
  * the work" copy.
  */
@@ -105,7 +105,6 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Adding it to my notes",
   ],
   spawn_agent: AGENT_WORK_VARIATIONS,
-  spawn_manager: AGENT_WORK_VARIATIONS,
   send_input: AGENT_WORK_VARIATIONS,
   pause_agent: [
     "Pausing",
