@@ -1,0 +1,102 @@
+/* Section hosts inside the display panel body — see `SidebarSectionBody.tsx`.
+
+   All four are mounted at once; only the active one is displayed. `display:
+   none` is deliberate over `visibility: hidden` for the inactive ones: it
+   costs no layout, and the two sections that must survive hiding (Files'
+   canvas iframes, Apps' running user apps) keep their DOM and their state
+   either way, because the node is never removed or re-parented. */
+
+.sidebar-section {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-section[data-active="true"] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Shared list/viewer scaffolding used by Files, Tasks and Apps. */
+
+.sidebar-section__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 10px 14px;
+}
+
+.sidebar-section__empty {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  color: var(--text-weak);
+  font-size: var(--font-size-base);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Header shown above a section's viewer, carrying the back affordance that
+   returns the section to its list. This is the only route back to a list —
+   re-selecting the tab closes the panel instead. */
+.sidebar-section__viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.sidebar-section__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
+  cursor: default;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.sidebar-section__back:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.sidebar-section__back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.sidebar-section__viewer-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sidebar-section__viewer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

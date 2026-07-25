@@ -1,0 +1,76 @@
+/* Four-tab rail in the display panel's chrome — see `SidebarTabRail.tsx`.
+
+   Sized to sit inside the 38px chrome strip alongside `DisplayPanelControls`.
+   Labels hide below a narrow panel width so four tabs never crowd out the
+   controls; the icons and tooltips carry the meaning from there. */
+
+.sidebar-tab-rail {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-tab-rail__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.sidebar-tab-rail__tab:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.sidebar-tab-rail__tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.sidebar-tab-rail__tab[data-active="true"] {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.sidebar-tab-rail__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-tab-rail__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Below ~440px of panel the four labels plus the panel controls stop fitting.
+   Collapse to icon-only square tabs; `title`/`aria-label` still name them. */
+@container display-panel (max-width: 440px) {
+  .sidebar-tab-rail__label {
+    display: none;
+  }
+
+  .sidebar-tab-rail__tab {
+    width: 26px;
+    padding: 0;
+    justify-content: center;
+  }
+}

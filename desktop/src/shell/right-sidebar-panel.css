@@ -124,6 +124,15 @@ body[data-display-expanding="true"]
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Container context for everything inside the panel. The tab rail collapses
+     its labels against this, and user apps rendered in the Apps section size
+     against it too — they are authored as full pages with `vw` units and
+     viewport media queries, which would otherwise read the whole window and
+     overflow a ~400px panel. */
+  container-type: inline-size;
+  container-name: display-panel;
   /* Hold the viewer at the open width while the frame animates so the
      contents (e.g. a media image) stay laid out at their final size and
      get clip-revealed rather than reflowed/rescaled during the slide. */

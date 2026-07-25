@@ -5,9 +5,7 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  useState,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -19,11 +17,9 @@ import {
   DISPLAY_MAIN_CONTENT_MIN_WIDTH,
   DISPLAY_PANEL_MIN_WIDTH,
   displayTabs,
-  useActiveDisplayTab,
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
-import { resolveDisplayTabKeepAlive } from "@/features/workspace-display/display-tab-keep-alive";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
 import {
   dispatchClosePanel,
@@ -32,8 +28,8 @@ import {
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
-import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
-import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
+import { SidebarSectionBody } from "@/shell/sidebar-sections/SidebarSectionBody";
+import { SidebarTabRail } from "@/shell/sidebar-sections/SidebarTabRail";
 import "./right-sidebar.css";
 import "./right-sidebar-panel.css";
 import "./shell-junction.css";
@@ -122,18 +118,6 @@ const clearDisplayPanelWidthCssVar = (): void => {
   root.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
 };
 
-const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => setReady(true));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  return ready ? render() : null;
-};
 
 /**
  * workspace panel shell.
@@ -150,15 +134,15 @@ export const RightSidebar = forwardRef<
 >(function RightSidebar({ portalTarget }, ref) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
-  const activeTab = useActiveDisplayTab();
   const asideRef = useRef<HTMLElement | null>(null);
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
   const isMiniWindow = useWindowType() === "mini";
 
-  // Viewer-only: the panel is just the detail surface. It's mounted only
-  // when open (with an active viewer); the index lives in the left sidebar.
+  // The panel carries the shell's whole index now that the left sidebar is
+  // gone — Tasks, Files, Search and Apps all live here — so it takes up width
+  // only while open, but its section host stays mounted either way.
   const shellVisible = panelOpen;
 
   useImperativeHandle(
@@ -428,19 +412,12 @@ export const RightSidebar = forwardRef<
   const resolvedPortalTarget =
     portalTarget ?? document.querySelector(".full-body") ?? document.body;
 
-  // Canvas keep-alive: closing the panel used to unmount the active tab,
-  // which destroys a canvas iframe's browsing context — reopening re-parsed
-  // the document, re-ran scripts, refetched CDN assets, and lost all state.
-  // Keep the just-viewed canvas mounted in a hidden host instead (policy in
-  // resolveDisplayTabKeepAlive); every other tab kind unmounts on close
-  // exactly as before.
-  const lastRenderedTabIdRef = useRef<string | null>(null);
-  const { renderedTab, lastRenderedTabId } = resolveDisplayTabKeepAlive({
-    panelOpen,
-    activeTab,
-    lastRenderedTabId: lastRenderedTabIdRef.current,
-  });
-  lastRenderedTabIdRef.current = lastRenderedTabId;
+  // Keep-alive used to be a per-tab policy here: closing the panel unmounted
+  // the active tab, which destroys a canvas iframe's browsing context, so the
+  // just-viewed canvas was held in a hidden host while every other kind
+  // unmounted. `SidebarSectionBody` supersedes that with a stronger and
+  // simpler guarantee — all four sections stay mounted for the panel's
+  // lifetime, so nothing needs rescuing on close.
 
   return createPortal(
     <aside
@@ -472,25 +449,23 @@ export const RightSidebar = forwardRef<
             data-platform={isMac ? "mac" : isWin ? "win" : "other"}
           >
             <div className="right-sidebar-panel__chrome-tabs-slot">
-              <DisplayTabSwitcher />
-              <CanvasTopBarTabs />
+              <SidebarTabRail />
             </div>
             <DisplayPanelControls />
           </div>
         ) : null}
+        {/* All four sections stay mounted; only the active one displays, and
+            the host itself survives the panel closing. Files' canvas iframes
+            and Apps' running user apps both lose their state to an unmount,
+            so neither a tab switch nor a close may remove them. */}
         <div className="right-sidebar-panel__body">
-          {renderedTab ? (
-            <div
-              className={`right-sidebar__active${
-                panelOpen ? "" : " right-sidebar__active--kept"
-              }`}
-            >
-              <DeferredDisplayContent
-                key={renderedTab.id}
-                render={renderedTab.render}
-              />
-            </div>
-          ) : null}
+          <div
+            className={`right-sidebar__active${
+              panelOpen ? "" : " right-sidebar__active--kept"
+            }`}
+          >
+            <SidebarSectionBody />
+          </div>
         </div>
       </div>
     </aside>,
