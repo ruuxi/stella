@@ -7,8 +7,8 @@ import { getContextSuggestionLabel } from "@/app/chat/ComposerAddMenu";
 import {
   getActivityPillLabel,
   getDisplayedActivityPillState,
-  shouldTrayHoldSearchLayout,
 } from "@/app/chat/ComposerActivityPill";
+import { shouldHoldSearchLayout } from "@/shell/sidebar-sections/SearchSection";
 import { isComposerContextMenuTarget } from "@/shell/context-menu/StellaContextMenu";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
@@ -18,7 +18,7 @@ const SOURCE_ROOT = path.resolve(
 );
 
 describe("chat shell UI contracts", () => {
-  it("keeps the activity pill visible but suppresses running state while the sidebar is docked", () => {
+  it("keeps the activity pill visible but suppresses running state while Tasks is on screen", () => {
     expect(getDisplayedActivityPillState("running", false)).toBe("running");
     expect(getDisplayedActivityPillState("running", true)).toBe("idle");
     expect(getDisplayedActivityPillState("done", true)).toBe("done");
@@ -27,8 +27,8 @@ describe("chat shell UI contracts", () => {
   });
 
   it("keeps compact grid cells stationary and their pulse locally scoped", () => {
-    const sidebar = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/LeftSidebarSections.tsx"),
+    const sections = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/workspace/WorkspaceSections.tsx"),
       "utf8",
     );
     const css = fs.readFileSync(
@@ -39,8 +39,10 @@ describe("chat shell UI contracts", () => {
     // `anim-pulse` belongs to ConnectHeroAnimation and scales around its SVG
     // coordinate transform-origin. Reusing it on a 4px cell caused the dot to
     // travel diagonally; Activity must use only its namespaced animation.
-    expect(sidebar).not.toMatch(/compact-(?:cell|bar-segment)[^\n]*anim-pulse/);
-    expect(sidebar).toContain("key={task.id}");
+    expect(sections).not.toMatch(
+      /compact-(?:cell|bar-segment)[^\n]*anim-pulse/,
+    );
+    expect(sections).toContain("key={task.id}");
 
     const cellIn = css.match(
       /@keyframes chat-workspace-strip__compact-cell-in\s*\{([\s\S]*?)\n\}/,
@@ -98,7 +100,7 @@ describe("chat shell UI contracts", () => {
     expect(isComposerContextMenuTarget(outside)).toBe(false);
   });
 
-  it("moves suggestion UI into + and keeps search above the composer", () => {
+  it("moves suggestion UI into + and keeps search one click from the composer", () => {
     const leadRow = fs.readFileSync(
       path.join(SOURCE_ROOT, "app/chat/ComposerLeadRow.tsx"),
       "utf8",
@@ -111,63 +113,93 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
     );
+    const search = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
+      "utf8",
+    );
 
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
+    // The pill is the entry point; the field itself lives in the Search
+    // section. `openLocation` rather than `selectSection`, so a second click
+    // can never close the panel on a live query.
     expect(activityPill).toContain(
-      'placeholder="Search activity, files, and more"',
+      'sidebarSections.openLocation("search", null)',
     );
+    expect(search).toContain('placeholder="Search activity, files, and more"');
   });
 
-  it("holds the tray search layout through engage and a single-settle clear", () => {
+  it("keeps Search's query out of the Tasks activity index", () => {
+    const tasks = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/TasksSection.tsx"),
+      "utf8",
+    );
+    const search = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
+      "utf8",
+    );
+
+    // Tasks must not subscribe to the shared search store, or typing in the
+    // Search tab would leak filtered results into the stable activity index.
+    expect(tasks).not.toContain("useDisplaySearchQuery");
+    expect(tasks).not.toContain("display-search-store");
+    // It renders the overview unfiltered (no query prop threaded in).
+    expect(tasks).toMatch(/<WorkspaceSections\s+variant="overview"/);
+    expect(tasks).not.toMatch(/\bquery=/);
+
+    // Search is the one surface that does thread the query through.
+    expect(search).toContain("useDisplaySearchQuery");
+    expect(search).toContain("query={deferredQuery}");
+  });
+
+  it("holds the search layout through engage and a single-settle clear", () => {
     // Engages on the very first keystroke, before the deferred results
     // reconcile (immediate input drives it on).
-    expect(shouldTrayHoldSearchLayout("a", "")).toBe(true);
+    expect(shouldHoldSearchLayout("a", "")).toBe(true);
     // Steady state while searching: both the input and the rendered query set.
-    expect(shouldTrayHoldSearchLayout("map", "map")).toBe(true);
+    expect(shouldHoldSearchLayout("map", "map")).toBe(true);
     // Two-stage-drop regression: after the field is cleared the results still
     // render the previous query for ~150ms. The layout MUST stay held so the
     // box collapses once (when results reconcile), not twice. A naive
     // input-only predicate returns false here and fails this assertion.
-    expect(shouldTrayHoldSearchLayout("", "map")).toBe(true);
+    expect(shouldHoldSearchLayout("", "map")).toBe(true);
     // Only once both the field and the deferred results have cleared does the
-    // tray release its fixed layout back to the natural overview height.
-    expect(shouldTrayHoldSearchLayout("", "")).toBe(false);
+    // section release its fixed layout back to the natural overview height.
+    expect(shouldHoldSearchLayout("", "")).toBe(false);
     // Whitespace-only input is not a search.
-    expect(shouldTrayHoldSearchLayout("   ", "")).toBe(false);
+    expect(shouldHoldSearchLayout("   ", "")).toBe(false);
   });
 
-  it("bounds the searching results box to a fixed height with internal scroll", () => {
-    const activityPill = fs.readFileSync(
-      path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
+  it("bounds the searching results box to a resolved height with internal scroll", () => {
+    const search = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
       "utf8",
     );
     const css = fs.readFileSync(
-      path.join(SOURCE_ROOT, "app/chat/composer-activity-pill.css"),
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/search-section.css"),
       "utf8",
     );
 
     // The component drives the searching layout off the hold predicate (not a
-    // bare input check) and marks the tray for CSS.
-    expect(activityPill).toContain(
-      "shouldTrayHoldSearchLayout(inputValue, deferredQuery)",
+    // bare input check) and marks the section for CSS.
+    expect(search).toContain(
+      "shouldHoldSearchLayout(inputValue, deferredQuery)",
     );
-    expect(activityPill).toContain("data-searching={searching || undefined}");
+    expect(search).toContain("data-searching={searching || undefined}");
 
     // The base body scrolls its overflow internally.
-    expect(css).toMatch(
-      /\.composer-activity-tray__body\s*\{[^}]*overflow-y:\s*auto/,
-    );
+    expect(css).toMatch(/\.sidebar-search__body\s*\{[^}]*overflow-y:\s*auto/);
 
-    // While searching the body is pinned to a FIXED, resolved height so the
-    // outer popover can't grow/shrink with the match count. A `min-height`
-    // floor (the old, still-content-driven behavior) does NOT satisfy this.
+    // While searching the body is pinned to a RESOLVED height (a zero
+    // flex-basis filling what the field leaves) so it can't grow/shrink with
+    // the match count. A `min-height` floor leaves the region content-driven
+    // above the floor and does NOT satisfy this.
     const searchingBody = css.match(
-      /\.composer-activity-tray\[data-searching\]\s+\.composer-activity-tray__body\s*\{([^}]*)\}/,
+      /\.sidebar-search\[data-searching\]\s+\.sidebar-search__body\s*\{([^}]*)\}/,
     );
     expect(searchingBody).not.toBeNull();
     const decls = searchingBody?.[1] ?? "";
-    expect(decls).toMatch(/(^|[;{\s])height:\s*min\(/);
+    expect(decls).toMatch(/(^|[;{\s])flex:\s*1\s+1\s+0\s*;/);
     expect(decls).not.toMatch(/min-height:/);
   });
 });

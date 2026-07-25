@@ -123,7 +123,7 @@ describe("orderByFirstSeen (newest-at-top)", () => {
     // Models the sidebar's runningRows pipeline: first-seen indices are
     // assigned over the *unfiltered* running population and the search query
     // is applied afterward, for display only. This mirrors the ref threading
-    // in LeftSidebarSections — the frozen state must survive a query-active
+    // in WorkspaceSections — the frozen state must survive a query-active
     // render so clearing the search doesn't reshuffle the list.
     const running = [task("agent-a", 100), task("agent-b", 200)];
     let state = EMPTY_FIRST_SEEN_ORDER;

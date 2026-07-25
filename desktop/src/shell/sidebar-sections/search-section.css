@@ -1,0 +1,57 @@
+/* Search section — a query field above the shared workspace overview.
+   See `SearchSection.tsx`. */
+
+.sidebar-search {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar-search__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--text-weak);
+}
+
+.sidebar-search__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  line-height: 1.4;
+  padding: 0;
+}
+
+.sidebar-search__input::placeholder {
+  color: var(--text-weaker);
+}
+
+.sidebar-search__input:focus {
+  outline: none;
+}
+
+.sidebar-search__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 10px;
+}
+
+/* While searching, the results region is pinned to a resolved height — the
+   whole of what the field leaves — and matches scroll inside it, so the box
+   can't grow or shrink with the match count as you type. A `min-height` floor
+   does not achieve this: the region stays content-driven above the floor and
+   still re-flows per keystroke. Idle keeps the natural content height so a
+   short overview isn't padded out with a void. */
+.sidebar-search[data-searching] .sidebar-search__body {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+}

@@ -2,27 +2,25 @@
  * Composer activity pill — the compact presentation of background work that
  * sits in the context chip row above the composer.
  *
- * It stays visible regardless of the docked left sidebar state so search is
- * always available above the composer. While the sidebar is visible, its
- * Activity section owns live progress and the pill stays in its Search state.
+ * It stays visible whatever the right sidebar is doing, so search is always
+ * one click away from the composer. While the sidebar is open on Tasks, that
+ * section owns live progress and the pill stays in its Search state.
  *
  * The pill does double duty:
  *   • Idle, it's the entry point to search — a search icon + "Search".
  *   • While Stella has background work in flight it shows a simple,
  *     shimmering count of how many top-level work units are running ("1 task in progress",
  *     "2 tasks in progress", …) — the per-task detail lives in the inline
- *     chat cards and the tray, so the ambient pill just tallies. When work
- *     settles it briefly shows a finished / couldn't-finish / stopped state
- *     before quietly reverting to "Search" — a minimum dwell so a quick task
- *     doesn't just flash its progress.
+ *     chat cards and the Tasks section, so the ambient pill just tallies. When
+ *     work settles it briefly shows a finished / couldn't-finish / stopped
+ *     state before quietly reverting to "Search" — a minimum dwell so a quick
+ *     task doesn't just flash its progress.
  *
- * Clicking it (in any state) opens the tray: the searchable activity
- * overview (`LeftSidebarSections`, the same component the sidebar hosts —
- * expand/collapse, reasoning summaries, live per-agent files).
+ * Clicking it (in any state) opens the sidebar's Search section, which owns
+ * the query field and the searchable overview.
  */
 import {
   memo,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -31,7 +29,6 @@ import {
 } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { AlertCircle, Check, Search } from "@/ui/icons";
-import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import {
   CHAT_ACTIVITY_SHIMMER_GROUP,
   TextShimmer,
@@ -42,12 +39,10 @@ import {
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
-  displaySearchStore,
-  useDisplaySearchQuery,
-} from "@/features/workspace-display/display-search-store";
-import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
+  sidebarSections,
+  useActiveSidebarSection,
+} from "@/features/workspace-display/sidebar-sections";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
-import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import "./composer-activity-pill.css";
 
 export type PillState = "idle" | "running" | "done" | "error" | "canceled";
@@ -79,34 +74,12 @@ export const getActivityPillLabel = (
 /**
  * The pill stands down from its live "running" label whenever the Tasks
  * surface is already on screen, so the two never narrate the same progress at
- * once. That used to mean "the left sidebar is docked"; with the sidebar gone
- * the equivalent condition is the right sidebar being open on its Tasks
- * section.
+ * once.
  */
 export const getDisplayedActivityPillState = (
   state: PillState,
   tasksSurfaceVisible: boolean,
 ): PillState => (tasksSurfaceVisible && state === "running" ? "idle" : state);
-
-/**
- * Whether the tray should hold its fixed "searching" layout (a resolved,
- * scroll-bounded results box) rather than its natural content-fit height.
- *
- * Two inputs, deliberately OR'd:
- *   • `inputValue` — the immediate keystroke value, so the fixed box engages
- *     on the very first character, before the debounced/deferred results
- *     reconcile (no first-keystroke jump).
- *   • `deferredQuery` — the value the results are actually rendered from.
- *     Holding on it keeps the fixed layout in place after the field is
- *     cleared until the results reconcile back to the overview, so clearing
- *     collapses the box exactly once (a single settle) instead of dropping
- *     the layout immediately and resizing again 150ms later when the query
- *     clears (the two-stage drop).
- */
-export const shouldTrayHoldSearchLayout = (
-  inputValue: string,
-  deferredQuery: string,
-): boolean => inputValue.trim().length > 0 || deferredQuery.trim().length > 0;
 
 /** Live status of the whole conversation's background work, distilled into
  *  a single pill state (+ running count) with a minimum dwell on terminal
@@ -213,80 +186,15 @@ function PillGlyph({ state }: { state: PillState }) {
   }
 }
 
-function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
-  const query = useDisplaySearchQuery();
-  const [inputValue, setInputValue] = useState(query);
-  const deferredQuery = useDeferredValue(query);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Keep typing on the input's tiny local state and only wake the full
-  // activity/files search tree after a short pause. `useDeferredValue` gives
-  // React room to paint the final keystroke before reconciling the results.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      displaySearchStore.setQuery(inputValue);
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [inputValue]);
-
-  // While searching, the body becomes a fixed-height, internally-scrolling
-  // box (see CSS) so the OUTER popover height stays constant no matter how
-  // many results match — the results scroll inside a stable frame instead of
-  // re-flowing the popover per keystroke. The layout is held on the immediate
-  // input OR the still-deferred query so it engages before the first result
-  // and collapses only once, after the field clears and results reconcile.
-  const searching = shouldTrayHoldSearchLayout(inputValue, deferredQuery);
-
-  return (
-    <div
-      className="composer-activity-tray"
-      data-searching={searching || undefined}
-    >
-      <div className="composer-activity-tray__search">
-        <Search size={15} strokeWidth={1.75} aria-hidden="true" />
-        <input
-          ref={inputRef}
-          type="text"
-          className="composer-activity-tray__search-input"
-          value={inputValue}
-          placeholder="Search activity, files, and more"
-          onChange={(event) => setInputValue(event.currentTarget.value)}
-          aria-label="Search activity, files, and more"
-        />
-      </div>
-      <div className="composer-activity-tray__body">
-        <LeftSidebarSections
-          query={deferredQuery}
-          variant="overview"
-          onNavigate={onNavigate}
-          renderEmpty={() => (
-            <div className="composer-activity-tray__empty">
-              {deferredQuery.trim()
-                ? "Nothing matches that search."
-                : "Activity will show up here as Stella works."}
-            </div>
-          )}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** The pill + searchable activity tray. */
 const ActivityPillBody = memo(function ActivityPillBody({
   state,
   runningCount,
   open,
-  onOpenChange,
 }: {
   state: PillState;
   runningCount: number;
+  /** Whether the sidebar is already showing the Search section. */
   open: boolean;
-  onOpenChange: (next: boolean) => void;
 }) {
   const label = getActivityPillLabel(state, runningCount);
 
@@ -303,30 +211,22 @@ const ActivityPillBody = memo(function ActivityPillBody({
     );
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="composer-activity-pill"
-          data-state={state}
-          data-open={open || undefined}
-          aria-label={state === "idle" ? "Search" : `${label} — open activity`}
-        >
-          <span className="composer-activity-pill__glyph" aria-hidden="true">
-            <PillGlyph state={state} />
-          </span>
-          <span className="composer-activity-pill__label">{labelNode}</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className="composer-activity-tray-popover"
-      >
-        <ActivityTray onNavigate={() => onOpenChange(false)} />
-      </PopoverContent>
-    </Popover>
+    <button
+      type="button"
+      className="composer-activity-pill"
+      data-state={state}
+      data-open={open || undefined}
+      // `openLocation` rather than `selectSection`: the pill is an entry
+      // point, so clicking it while Search is already showing must reveal the
+      // field again, not close the panel out from under a live query.
+      onClick={() => sidebarSections.openLocation("search", null)}
+      aria-label={state === "idle" ? "Search" : `${label} — open search`}
+    >
+      <span className="composer-activity-pill__glyph" aria-hidden="true">
+        <PillGlyph state={state} />
+      </span>
+      <span className="composer-activity-pill__label">{labelNode}</span>
+    </button>
   );
 });
 
@@ -343,12 +243,6 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
     panelOpen && activeSection === "tasks",
   );
 
-  const [open, setOpen] = useState(false);
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) displaySearchStore.clear();
-  };
-
   return (
     <motion.div
       className="composer-activity-pill-slot"
@@ -361,8 +255,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={open}
-        onOpenChange={handleOpenChange}
+        open={panelOpen && activeSection === "search"}
       />
     </motion.div>
   );

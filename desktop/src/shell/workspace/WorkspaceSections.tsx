@@ -1,7 +1,12 @@
 /**
- * Activity / Files / Schedule / Store sections rendered inside the left
- * sidebar. With `query` supplied they act as the searchable group overview;
- * section rows open the right sidebar viewer (master-detail).
+ * Activity / Files / Schedule / Store sections, shared by the sidebar's Tasks
+ * and Search tabs. With `query` supplied they act as the searchable group
+ * overview; section rows open the right sidebar viewer (master-detail).
+ *
+ * The two hosts differ only in that prop: Tasks renders this unfiltered as the
+ * stable activity index, Search threads its debounced query through. Files and
+ * Store list nothing without a query — they exist here purely as search
+ * results.
  */
 import {
   memo,
@@ -72,7 +77,7 @@ import {
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
-import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
+import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { ActivityTaskShimmer } from "@/shell/ActivityTaskShimmer";
 import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
 import { selectLatestAgentAssistantMessage } from "@/features/chat/lib/agent-assistant-summary";
@@ -338,7 +343,7 @@ const TaskRow = memo(function TaskRow({
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
   const rowRef = useRef<HTMLLIElement>(null);
-  // Sidebar and tray rows identify the delegated thread. Live tool state is
+  // Activity rows identify the delegated thread. Live tool state is
   // intentionally reserved for the inline chat card, so it cannot replace
   // the stable description here or leak into activity search.
   const label = task.description.trim();
@@ -632,12 +637,12 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-// Memoized: the host sidebar re-renders whenever root chrome state changes
-// (e.g. the collapse toggle flipping its className on the animation's first
-// frame), and re-reconciling this whole subtree there adds a hitch right as
-// the width slide starts. Context-driven updates (chat runtime, stores)
-// still re-render as usual.
-export const LeftSidebarSections = memo(function LeftSidebarSections({
+// Memoized: the Search host re-renders on every keystroke while its debounce
+// is still pending, and the Tasks host re-renders whenever the display-tab
+// registry changes. Neither has any business re-reconciling this whole
+// subtree. Context-driven updates (chat runtime, stores) still re-render as
+// usual.
+export const WorkspaceSections = memo(function WorkspaceSections({
   query = "",
   variant = "strip",
   renderEmpty,
@@ -916,10 +921,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     return result;
   }, [agentFileEvents]);
 
-  // The standalone Files section was intentionally removed from the default
-  // sidebar when files moved under each agent, but it is still essential as
-  // a global search result. Derive once per file-feed update; query changes
-  // only scan the cheap normalized path index.
+  // Files list under the agent that produced them rather than in a standalone
+  // section, but a flat file index is still essential as a global search
+  // result. Derive once per file-feed update; query changes only scan the
+  // cheap normalized path index.
   const searchableFiles = useMemo(
     () =>
       deriveConversationFiles(filesFeed.files).map((entry) => ({
@@ -988,7 +993,9 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   );
 
   // Exact thread identity is the durable viewer key. Opening Activity chat
-  // never mutates composer context and never navigates the root transcript.
+  // never mutates composer context and never navigates the root transcript;
+  // `openAgentThreadTab` lands it in the Tasks section, so a row clicked from
+  // Search leads to the same drill-down rather than a dead end.
   const handleSelectTask = useCallback(
     (task: TaskItem) => {
       if (!conversationId) return;
