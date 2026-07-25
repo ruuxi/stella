@@ -6,8 +6,9 @@ description: Scaffold a new single-file Stella app under desktop/src/app/_user. 
 # Creating a Stella app
 
 A Stella app is **one file**: `desktop/src/app/_user/<slug>.tsx`. It
-appears on the `/apps` page automatically and opens at `/apps/<slug>`.
-No nav entry of its own. No multi-file scaffold.
+appears in the right sidebar's **Apps** section automatically, and opens
+*inside that panel* when the user picks it from the list. Apps have no
+URL of their own, no nav entry of their own, and no multi-file scaffold.
 
 ## Scaffold
 
@@ -31,14 +32,15 @@ desktop/src/app/_user/<slug>.tsx
 
 That file exports:
 
-- `default function App()` — the component the dynamic route mounts.
-- `export const meta = { label, createdAt }` — read by the `/apps`
-  page to render the list and sort by recency.
+- `default function App()` — the component the Apps section mounts.
+- `export const meta = { label, createdAt }` — read by the Apps library
+  to render the list and sort by recency.
 
 Optional `meta` flag: `backgroundInput: true`. Apps stay mounted but
-hidden for a while after the user navigates away; by default a hidden
-app's window/document input listeners (keyboard, pointer, clipboard)
-are gated off so it can't react to typing elsewhere. Set
+hidden for a while after the user leaves them — closing the panel or
+switching to another sidebar section counts; by default a hidden app's
+window/document input listeners (keyboard, pointer, clipboard) are
+gated off so it can't react to typing elsewhere. Set
 `backgroundInput: true` only when the app must keep watching global
 input while hidden (typing trackers, global-keybind launchers). The
 flag affects input gating only, never teardown timing.
@@ -56,25 +58,42 @@ node node_modules/typescript-7/lib/tsc.js -p desktop/tsconfig.app.json --noEmit
 Don't preemptively split. The agent should keep the whole app in one
 file until it actually stops working — well past 1k lines, not before.
 When it does, split helpers into siblings (`<slug>.helpers.ts`,
-`<slug>.css`) and import them locally. The `/apps` page only needs the
+`<slug>.css`) and import them locally. The library only needs the
 top-level `<slug>.tsx` to keep exporting `default` and `meta`.
 
 Don't touch:
 
-- `desktop/src/routes/` — the dynamic `apps.$slug.tsx` route already
-  resolves every user app.
+- `desktop/src/routes/` — apps don't have routes. The Apps section's
+  keep-alive host mounts every registered app.
 - `desktop/src/app/_user/user-apps-registry.ts` — discovery happens
   through `import.meta.glob`; new files are picked up automatically.
-- the left sidebar nav / `app-registry` — user apps live on the `/apps`
-  page, reached via the sidebar's single "Apps" entry; they never get
-  their own nav row.
+- the top-bar nav / `app-registry` — user apps live in the right
+  sidebar's Apps section; they never get their own nav row.
 
 ## Visual style
 
-You're designing a **page**, not a widget. The surface is the full
-Stella canvas — `width: 100%; height: 100%`. Use the room. Don't cap
-content to ~430px and float a single card in the middle of empty
-space; that reads as a tiny modal lost on a desktop.
+You're designing a **surface**, not a widget. It fills the right
+sidebar panel — `width: 100%; height: 100%` — which the user can drag
+between roughly 380px and half the window, or expand to the whole
+content area. Use the room you're given. Don't cap content to ~430px
+and float a single card in the middle of empty space.
+
+### Size against the panel, never the viewport
+
+The panel is a **container** (`container-name: display-panel`,
+`container-type: inline-size`). The window can be 2000px wide while
+the app has 400px, so viewport units and viewport media queries read
+the wrong number and overflow the panel:
+
+- `cqi` / `cqw` instead of `vw` — `clamp(1.8rem, 7cqi, 3.6rem)`.
+- `@container display-panel (max-width: 720px)` instead of
+  `@media (max-width: 720px)`.
+- Multi-column layouts (`grid-template-columns: 1fr 280px`) need a
+  container query that collapses them; at the panel's default width
+  there is no room for a rail.
+
+`@media (prefers-reduced-motion: reduce)` and friends are still media
+queries — only *size* queries move to the container.
 
 Aim for Apple-like polish: generous whitespace, restrained color,
 sharp typography, intentional structure. **No AI slop**: don't pile
@@ -83,16 +102,19 @@ space, don't add affordances that aren't earned.
 
 ### Let the layout match the feature
 
-The shape of the page should follow what's actually on it. A few
+The shape of the surface should follow what's actually on it. A few
 honest patterns — pick one, don't force it:
 
 - **Hero + canvas** — a single focused surface (game board, viewer,
   editor): a Cormorant hero up top, then the thing itself filling the
-  remaining height. The default stub is this shape.
+  remaining height. The default stub is this shape, and it's the one
+  that survives a narrow panel best.
 - **Rail + canvas** — a comprehensive tool with controls plus a
   working area: `display: grid; grid-template-columns: <rail> 1fr;
-  height: 100%`. Use this only when there are enough controls to earn
-  a rail; don't manufacture a sidebar to look fancier.
+  height: 100%`, collapsed to one column by a container query. Use
+  this only when there are enough controls to earn a rail, and only if
+  the app is usable stacked; don't manufacture a sidebar to look
+  fancier.
 - **Stream / list** — feeds, libraries, history: a hero, then a
   scrollable column at a comfortable measure (≤ ~72ch) inside the
   full-height surface.

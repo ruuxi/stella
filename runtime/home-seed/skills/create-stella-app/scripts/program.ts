@@ -8,11 +8,11 @@
  *   desktop/src/app/_user/<slug>.tsx
  *
  * The file exports `default function App()` (the component) and a
- * named `meta = { label, createdAt }` consumed by the apps page
- * (`/apps`) for listing/sorting and by the dynamic route
- * (`/apps/<slug>`) for rendering. No metadata.ts, no separate view,
- * no separate CSS, no per-app route file. Split things off only if
- * the file actually outgrows itself.
+ * named `meta = { label, createdAt }` consumed by the right sidebar's
+ * Apps section for listing/sorting and for mounting the app inside the
+ * panel. No metadata.ts, no separate view, no separate CSS, no route
+ * file — apps have no URL. Split things off only if the file actually
+ * outgrows itself.
  *
  * Usage:
  *   bun <abs path>/program.ts <slug> <label words...>
@@ -125,7 +125,7 @@ function main(): void {
   console.log(
     `scaffolded user app "${args.label}" at desktop/src/app/_user/${args.slug}.tsx`,
   );
-  console.log(`it will show up on the /apps page and open at /apps/${args.slug}.`);
+  console.log("it will show up in the right sidebar's Apps section and open inside that panel.");
   console.log("next steps:");
   console.log(`  1. replace the stub body of ${args.slug}.tsx with the real surface`);
   console.log("  2. validate (run from the Stella install root):");
