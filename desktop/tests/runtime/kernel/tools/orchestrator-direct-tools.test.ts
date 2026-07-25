@@ -273,6 +273,83 @@ describe("orchestrator direct tool surface", () => {
     ]);
   });
 
+  it("gives a parent-owned General the same toolset minus the orchestration tools", async () => {
+    const { host, rootPath } = await createTestHost();
+    const general = loadParsedAgentsFromDir(
+      path.join(repoRoot, "runtime/extensions/stella-runtime/agent-metadata"),
+    ).find((agent) => agent.id === AGENT_IDS.GENERAL);
+    const allowlist = general?.toolsAllowlist ?? [];
+    expect(allowlist).toEqual(
+      expect.arrayContaining(["exec_command", "spawn_agent"]),
+    );
+    const orchestrationTools = ["spawn_agent", "send_input", "pause_agent"];
+
+    const topLevelCatalog = host
+      .getToolCatalog(AGENT_IDS.GENERAL)
+      .map((tool) => tool.name);
+    const parentOwnedCatalog = host
+      .getToolCatalog(AGENT_IDS.GENERAL, { parentOwned: true })
+      .map((tool) => tool.name);
+
+    // Top-level General has all three; a parent-owned one has none of them.
+    expect(topLevelCatalog).toEqual(expect.arrayContaining(orchestrationTools));
+    for (const toolName of orchestrationTools) {
+      expect(parentOwnedCatalog).not.toContain(toolName);
+    }
+    // ...and the two catalogs are otherwise identical, so a subagent keeps
+    // shell, files, browser, search and skills exactly as a top-level General.
+    expect(parentOwnedCatalog.slice().sort()).toEqual(
+      topLevelCatalog
+        .filter((name) => !orchestrationTools.includes(name))
+        .sort(),
+    );
+
+    // The allowlist is the authoritative activation list — a name on it that
+    // is absent from the catalog is still registered against synthesized
+    // metadata — so the parent-owned tier must prune it too, not just the
+    // catalog. This mirrors what LocalAgentManager does for a parented task.
+    const parentOwnedAllowlist = allowlist.filter(
+      (name) => !orchestrationTools.includes(name),
+    );
+    const subagentTools = createPiTools({
+      runId: "subagent-run",
+      rootRunId: "root-run",
+      agentId: "subagent-thread",
+      parentAgentId: "parent-thread",
+      conversationId: "conv-1",
+      agentType: AGENT_IDS.GENERAL,
+      deviceId: "device-1",
+      stellaAppDir: rootPath,
+      stellaDataDir: rootPath,
+      toolsAllowlist: parentOwnedAllowlist,
+      toolCatalog: host.getToolCatalog(AGENT_IDS.GENERAL, {
+        parentOwned: true,
+      }),
+      store: {} as never,
+      toolExecutor: host.executeTool,
+    }).map((tool) => tool.name);
+    for (const toolName of orchestrationTools) {
+      expect(subagentTools).not.toContain(toolName);
+    }
+    expect(subagentTools).toContain("exec_command");
+
+    // Defense in depth: even a hallucinated call is refused at execute time
+    // on the strength of the thread's ownership alone.
+    const denied = await host.executeTool(
+      "spawn_agent",
+      { description: "Third level", prompt: "Should never run." },
+      {
+        conversationId: "conv-1",
+        deviceId: "device-1",
+        requestId: "call-denied",
+        agentType: AGENT_IDS.GENERAL,
+        agentId: "subagent-thread",
+        parentAgentId: "parent-thread",
+      },
+    );
+    expect(denied.error).toContain("not available to a subagent");
+  });
+
   it("shows direct coordination tools to the orchestrator and General agents", async () => {
     const { host } = await createTestHost();
 

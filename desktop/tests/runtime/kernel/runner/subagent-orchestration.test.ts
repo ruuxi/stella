@@ -62,6 +62,7 @@ type MockRunArgs = {
   abortSignal?: AbortSignal;
   agentContext?: {
     threadHistory?: Array<{ content: string }>;
+    toolsAllowlist?: string[];
   };
   toolExecutor?: (
     toolName: string,
@@ -316,6 +317,17 @@ const createHarness = (options?: {
         systemPrompt: "",
         dynamicContext: "",
         maxAgentDepth: 2,
+        // The shipped General allowlist. The manager prunes the orchestration
+        // tools from it for a parent-owned thread, which is what the
+        // two-tier exposure test below observes.
+        toolsAllowlist: [
+          "exec_command",
+          "apply_patch",
+          "web",
+          "spawn_agent",
+          "send_input",
+          "pause_agent",
+        ],
         // Mirrors buildAgentContext's real non-orchestrator history hydration.
         // Keeping this wired to SessionStore is what exposes replay duplicates
         // and is how a woken parent actually sees its subagent's report.
@@ -1467,6 +1479,65 @@ describe("subagent orchestration production routing", () => {
     taskRecords.get(grandchild.threadId)!.parentAgentId = child.threadId;
     expect(manager.resolveOwningParentThread(grandchild.threadId)).toBeNull();
     expect(manager.resolveOwningParentThread(child.threadId)).toBeNull();
+  });
+
+  it("withholds the orchestration tools from a parent-owned run's toolset", async () => {
+    const { manager } = createHarness();
+    const allowlistByThread = new Map<string, string[] | undefined>();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    runMock.handler = async (args) => {
+      allowlistByThread.set(
+        args.agentId ?? "",
+        args.agentContext?.toolsAllowlist,
+      );
+      if (args.agentId === "tier-parent") {
+        await parentGate;
+        return { runId: "tier-parent-1", result: "Parent done." };
+      }
+      return { runId: "tier-sub-1", result: "Subagent done." };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-tool-tiers",
+      description: "Tier parent",
+      prompt: "Coordinate.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      maxAgentDepth: 2,
+      storageMode: "local",
+    });
+    const subTask = await manager.createAgent({
+      conversationId: "conversation-tool-tiers",
+      description: "Tier sub",
+      prompt: "Execute.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parentTask.threadId,
+      storageMode: "local",
+    });
+    await waitUntil(() => allowlistByThread.has(subTask.threadId));
+    releaseParent();
+    await waitUntil(() => allowlistByThread.has(parentTask.threadId));
+
+    const parentAllowlist = allowlistByThread.get(parentTask.threadId) ?? [];
+    const subAllowlist = allowlistByThread.get(subTask.threadId) ?? [];
+    const orchestrationTools = ["spawn_agent", "send_input", "pause_agent"];
+
+    // A root-spawned General keeps them; a parent-owned one does not.
+    expect(parentAllowlist).toEqual(expect.arrayContaining(orchestrationTools));
+    for (const toolName of orchestrationTools) {
+      expect(subAllowlist).not.toContain(toolName);
+    }
+    // Everything else is identical — a subagent is a full General otherwise.
+    expect(subAllowlist.slice().sort()).toEqual(
+      parentAllowlist
+        .filter((name) => !orchestrationTools.includes(name))
+        .sort(),
+    );
   });
 
   it("refuses a depth-2 subagent's spawn while allowing a depth-1 parent to spawn", async () => {
