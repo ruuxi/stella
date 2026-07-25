@@ -1,7 +1,6 @@
 /**
- * Persisted expansion state for the left sidebar's Activity rows, keyed by
- * conversation id. Two pieces per conversation, matching the defaults in
- * `LeftSidebarSections`:
+ * Persisted expansion state for the Activity rows, keyed by conversation id.
+ * Two pieces per conversation, matching the defaults in `WorkspaceSections`:
  *
  *   - `seenTaskIds` — the "seen running this session" set that keeps a
  *     finished standalone agent's row expanded (files visible). Compact

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("Activity exact-thread chat UI contract", () => {
   const source = readFileSync(
-    path.resolve(process.cwd(), "src/shell/LeftSidebarSections.tsx"),
+    path.resolve(process.cwd(), "src/shell/workspace/WorkspaceSections.tsx"),
     "utf8",
   );
   const css = readFileSync(

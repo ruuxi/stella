@@ -1,4 +1,5 @@
 import type { DisplayTabPayload } from "@/shared/contracts/display-payload";
+import { sidebarSections } from "./sidebar-sections";
 import { displayTabs } from "./tab-store";
 import {
   pushAndOpenSourceDiffBatch,
@@ -48,8 +49,17 @@ export const openDisplayPayloadTab = (
   displayTabs.openTab(getAdapter().payloadToTabSpec(payload), opts);
 };
 
+/**
+ * A read-only agent thread is the Tasks section's drill-down, so opening one
+ * points that section at it as well as registering the viewer. Registering
+ * alone leaves the panel on whatever section was last active and never shows
+ * the thread. Every entry point relies on this: the activity rows, and the
+ * subagent cards inline in the transcript.
+ */
 export const openAgentThreadTab = (args: AgentThreadTabArgs): void => {
-  displayTabs.openTab(getAdapter().createAgentThreadTabSpec(args));
+  const spec = getAdapter().createAgentThreadTabSpec(args);
+  displayTabs.openTab(spec);
+  sidebarSections.openLocation("tasks", spec.id);
 };
 
 export const openSourceDiffBatch = (batch: SourceDiffBatch): void => {

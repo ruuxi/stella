@@ -24,7 +24,7 @@ const task = (overrides: Partial<TaskItem> = {}): TaskItem => ({
   ...overrides,
 });
 
-describe("left-sidebar Activity shimmer", () => {
+describe("Tasks Activity shimmer", () => {
   let container: HTMLDivElement;
   let root: Root;
   let animate: ReturnType<typeof vi.fn>;
