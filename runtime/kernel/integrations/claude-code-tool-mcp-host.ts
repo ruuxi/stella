@@ -33,6 +33,16 @@ export type ClaudeCodeToolMcpActiveTurn = {
     args: Record<string, unknown>,
     signal: AbortSignal,
   ) => Promise<string>;
+  /**
+   * Resolves to a truncation when the model's stream ended mid-argument for
+   * this call (safety refusal, output budget), or undefined when the arguments
+   * are whole or unadjudicated. Truncated calls are rejected, never executed.
+   */
+  checkToolUseIntegrity?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal,
+  ) => Promise<{ stopReason: string; explanation?: string } | undefined>;
   executeTool: (
     toolCallId: string,
     toolName: string,
@@ -302,6 +312,27 @@ export const createClaudeCodeToolMcpHost = async (
           );
         }
         const turn = options.getActiveTurn();
+        // A safety refusal or an exhausted output budget cuts the model's
+        // stream mid-argument, and the CLI repairs the partial JSON and
+        // dispatches the call anyway — a half-written `prompt` or `message`
+        // is indistinguishable from a complete one by the time it lands here.
+        // Refuse it loudly so the model resends whole arguments instead of
+        // silently shipping half an instruction to an agent.
+        const truncation = await turn?.checkToolUseIntegrity?.(
+          request.params.name,
+          request.params.arguments ?? {},
+          extra.signal,
+        );
+        if (truncation) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Refusing ${request.params.name}: your stream ended with ` +
+              `stop_reason "${truncation.stopReason}" while these arguments ` +
+              `were still being written, so they are cut off mid-value and ` +
+              `were NOT executed. Reissue the call with complete arguments` +
+              `${truncation.explanation ? ` (${truncation.explanation})` : ""}.`,
+          );
+        }
         const clientSessionId = extra.sessionId ?? "stateless";
         const durableScope = crypto
           .createHash("sha256")

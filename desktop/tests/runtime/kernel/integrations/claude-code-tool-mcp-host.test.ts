@@ -177,6 +177,43 @@ describe("claude-code-tool-mcp-host", () => {
     ).rejects.toThrow("Tool is not available in this Stella session");
   });
 
+  it("never executes a tool call whose arguments the model's stream cut short", async () => {
+    const executeTool = vi.fn(async () => ({ result: "sunny" }));
+    const host = await createClaudeCodeToolMcpHost({
+      tools,
+      getActiveTurn: () => ({
+        executeTool,
+        checkToolUseIntegrity: async (_name, args) =>
+          String(args.city).endsWith("…")
+            ? {
+                stopReason: "refusal",
+                explanation: "safeguards flagged this message",
+              }
+            : undefined,
+      }),
+    });
+    hosts.add(host);
+    const client = await connect(host);
+    clients.add(client);
+
+    // A half-written argument is syntactically indistinguishable from a whole
+    // one — only the stop_reason tells them apart, and it must be fatal.
+    await expect(
+      client.callTool({
+        name: "get_weather",
+        arguments: { city: "San Fran…" },
+      }),
+    ).rejects.toThrow(/stop_reason "refusal".*cut off mid-value/s);
+    expect(executeTool).not.toHaveBeenCalled();
+
+    const ok = await client.callTool({
+      name: "get_weather",
+      arguments: { city: "San Francisco" },
+    });
+    expect(ok.content).toEqual([{ type: "text", text: "sunny" }]);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves details while capping combined model-visible tool text", async () => {
     const host = await createClaudeCodeToolMcpHost({
       tools,

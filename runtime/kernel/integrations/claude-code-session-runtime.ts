@@ -547,6 +547,15 @@ type SessionState = {
       toolArgs: Record<string, unknown>;
     }) => void;
     observeStreamEvent: (event: Record<string, unknown>) => void;
+    observeAssistantMessage: (
+      event: Record<string, unknown>,
+    ) => ClaudeToolUseTruncation | null;
+    resolveToolUseIntegrity: (
+      toolName: string,
+      toolArgs: Record<string, unknown>,
+      signal?: AbortSignal,
+      timeoutMs?: number,
+    ) => Promise<ClaudeToolUseTruncation | undefined>;
     claim: (
       toolName: string,
       toolArgs: Record<string, unknown>,
@@ -577,6 +586,82 @@ type SessionState = {
   fableSafetyFailures?: number;
 };
 
+/**
+ * Message-level stop reasons that mean the model's stream ended BEFORE the
+ * content block it was generating was complete. `refusal` is a mid-stream
+ * safety stop (the API cuts generation the moment a classifier fires);
+ * `max_tokens` is the output budget running out. In both cases the CLI still
+ * repairs the partial `input_json_delta` into syntactically valid JSON and
+ * dispatches the tool call, so a half-written string argument arrives here
+ * looking exactly like a complete one.
+ */
+const TRUNCATING_STOP_REASONS = new Set(["refusal", "max_tokens"]);
+
+export type ClaudeToolUseTruncation = {
+  toolName: string;
+  stopReason: string;
+  /** `stop_details.category` when the API supplies one (e.g. "cyber"). */
+  category?: string;
+  explanation?: string;
+};
+
+/**
+ * Detects an `assistant` stream event whose trailing content block is a
+ * `tool_use` that was cut off mid-generation.
+ *
+ * The CLI emits one `assistant` event per finalized content block, stamping
+ * each with the message-level `stop_reason`. A truncating stop always cuts the
+ * block that was in flight, which is the LAST block of the message — so a
+ * `tool_use` that is followed by another block completed normally and must not
+ * be flagged. Requiring the tool_use to be last keeps this free of false
+ * positives on multi-block messages.
+ */
+export const getClaudeCodeTruncatedToolUseFromStreamEvent = (
+  event: Record<string, unknown>,
+):
+  | (ClaudeToolUseTruncation & {
+      toolCallId: string;
+      toolArgs: Record<string, unknown>;
+    })
+  | null => {
+  if (event.type !== "assistant") return null;
+  const message = asObject(event.message);
+  const stopReason =
+    typeof message?.stop_reason === "string" ? message.stop_reason : "";
+  if (!TRUNCATING_STOP_REASONS.has(stopReason)) return null;
+  const content = message?.content;
+  if (!Array.isArray(content) || content.length === 0) return null;
+  const block = asObject(content[content.length - 1]);
+  if (
+    block?.type !== "tool_use" ||
+    typeof block.id !== "string" ||
+    typeof block.name !== "string"
+  ) {
+    return null;
+  }
+  const details = asObject(message?.stop_details);
+  return {
+    toolCallId: block.id,
+    toolName: block.name,
+    toolArgs: asObject(block.input) ?? {},
+    stopReason,
+    ...(typeof details?.category === "string"
+      ? { category: details.category }
+      : {}),
+    ...(typeof details?.explanation === "string"
+      ? { explanation: details.explanation }
+      : {}),
+  };
+};
+
+export const describeClaudeToolUseTruncation = (
+  truncation: ClaudeToolUseTruncation,
+): string =>
+  `Claude's stream ended with stop_reason "${truncation.stopReason}"` +
+  `${truncation.category ? ` (${truncation.category})` : ""} while it was ` +
+  `still writing the arguments for \`${truncation.toolName}\`, so those ` +
+  `arguments are cut off mid-value.`;
+
 const stableToolArgs = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stableToolArgs).join(",")}]`;
   if (value && typeof value === "object") {
@@ -603,10 +688,33 @@ const claudeToolKey = (
     .digest("hex");
 };
 
+/**
+ * How long an inbound MCP call waits for the finalized `assistant` event that
+ * carries its `stop_reason` before giving up and running anyway.
+ *
+ * The CLI writes that event to stdout immediately before issuing the MCP HTTP
+ * call, so in practice the verdict is already recorded and the wait is zero.
+ * The ceiling only covers the few-millisecond window where the HTTP request
+ * beats the pipe read; it is small because the gate FAILS OPEN — an unmatched
+ * call must never be delayed or blocked on the strength of missing evidence.
+ */
+const TOOL_USE_INTEGRITY_SETTLE_MS = 250;
+
 export const createClaudeNativeToolUseCorrelator = () => {
   const queued = new Map<string, string[]>();
   const waiters = new Map<string, Array<(id: string) => void>>();
   const observedIds = new Set<string>();
+  /** Keys of tool_use blocks a finalized assistant event proved truncated. */
+  const truncatedKeys = new Map<string, ClaudeToolUseTruncation>();
+  /** Keys a finalized assistant event has adjudicated (truncated or clean). */
+  const settledKeys = new Set<string>();
+  const integrityWaiters = new Map<string, Array<() => void>>();
+  const settleKey = (key: string) => {
+    settledKeys.add(key);
+    const pending = integrityWaiters.get(key);
+    integrityWaiters.delete(key);
+    for (const resolve of pending ?? []) resolve();
+  };
   const streamingBlocks = new Map<
     number,
     {
@@ -635,6 +743,64 @@ export const createClaudeNativeToolUseCorrelator = () => {
   };
   return {
     observe,
+    /**
+     * Records the integrity verdict a finalized `assistant` event carries for
+     * the tool_use blocks it contains. Returns the truncation when this event
+     * proved one, so the caller can also surface it to the user (the call may
+     * already be executing, in which case the gate below cannot stop it).
+     */
+    observeAssistantMessage(
+      event: Record<string, unknown>,
+    ): ClaudeToolUseTruncation | null {
+      if (event.type !== "assistant") return null;
+      const content = asObject(event.message)?.content;
+      if (!Array.isArray(content)) return null;
+      const truncated = getClaudeCodeTruncatedToolUseFromStreamEvent(event);
+      for (const raw of content) {
+        const block = asObject(raw);
+        if (block?.type !== "tool_use" || typeof block.name !== "string") {
+          continue;
+        }
+        const key = claudeToolKey(block.name, asObject(block.input) ?? {});
+        if (truncated && block.id === truncated.toolCallId) {
+          truncatedKeys.set(key, truncated);
+        }
+        settleKey(key);
+      }
+      return truncated;
+    },
+    /**
+     * Verdict for an inbound MCP call: the truncation that cut its arguments,
+     * or undefined when the arguments are whole OR when no finalized event
+     * arrived in time to say. Fails open by design — see the settle constant.
+     */
+    async resolveToolUseIntegrity(
+      toolName: string,
+      toolArgs: Record<string, unknown>,
+      signal?: AbortSignal,
+      timeoutMs: number = TOOL_USE_INTEGRITY_SETTLE_MS,
+    ): Promise<ClaudeToolUseTruncation | undefined> {
+      const key = claudeToolKey(toolName, toolArgs);
+      if (!settledKeys.has(key)) {
+        await new Promise<void>((resolve) => {
+          const entries = integrityWaiters.get(key) ?? [];
+          const finish = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", finish);
+            const index = entries.indexOf(finish);
+            if (index >= 0) entries.splice(index, 1);
+            resolve();
+          };
+          const timer = setTimeout(finish, timeoutMs);
+          timer.unref?.();
+          entries.push(finish);
+          integrityWaiters.set(key, entries);
+          signal?.addEventListener("abort", finish, { once: true });
+          if (signal?.aborted) finish();
+        });
+      }
+      return truncatedKeys.get(key);
+    },
     observeStreamEvent(event: Record<string, unknown>) {
       if (event.type !== "stream_event") return;
       const source = asObject(event.event);
@@ -1527,6 +1693,12 @@ class ClaudeCodeSessionRuntime {
         identityScope: request.sessionKey,
         claimNativeToolUseId: (toolName, toolArgs, signal) =>
           nativeToolUseCorrelator.claim(toolName, toolArgs, signal),
+        checkToolUseIntegrity: (toolName, toolArgs, signal) =>
+          nativeToolUseCorrelator.resolveToolUseIntegrity(
+            toolName,
+            toolArgs,
+            signal,
+          ),
         executeTool: async (
           toolCallId,
           toolName,
@@ -2272,6 +2444,21 @@ class ClaudeCodeSessionRuntime {
             parsedLine,
             session.activeNativeToolUseCorrelator?.observe,
           );
+          // Record the stop_reason verdict BEFORE the MCP gate can consult it,
+          // and shout when a tool call's arguments were cut mid-value. The
+          // gate below rejects the call when it wins the race with the CLI's
+          // HTTP dispatch; this notice is what makes the loss visible instead
+          // of shipping half an instruction in silence.
+          const truncatedToolUse =
+            session.activeNativeToolUseCorrelator?.observeAssistantMessage(
+              parsedLine,
+            );
+          if (truncatedToolUse) {
+            current.request.onStatusChange?.({
+              state: "running",
+              text: `⚠ Truncated tool call — ${describeClaudeToolUseTruncation(truncatedToolUse)} Stella blocked or flagged it; the instruction was NOT delivered in full.`,
+            });
+          }
           session.activeNativeToolUseCorrelator?.observeStreamEvent(parsedLine);
           if (
             updateClaudeCodeNativeToolActivity(

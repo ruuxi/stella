@@ -9,6 +9,7 @@ import {
   createClaudeCodeStreamEmitter,
   getClaudeCodeModelRoundFromStreamEvent,
   getClaudeCodeModelFallbackFromStreamEvent,
+  getClaudeCodeTruncatedToolUseFromStreamEvent,
   isClaudeCodeModelRefusalOrOverloadError,
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
@@ -175,6 +176,140 @@ describe("claude-code-session-runtime", () => {
     expect(
       getClaudeCodeModelRoundFromStreamEvent({ type: "stream_event" }),
     ).toBeNull();
+  });
+
+  // Shape recorded on 2026-07-25, when a mid-stream safety refusal cut a
+  // spawn_agent `prompt` at "…prompt + negative (prompt may" and the CLI
+  // dispatched the repaired-but-truncated call anyway.
+  const refusedSpawnAgentEvent = {
+    type: "assistant",
+    message: {
+      id: "msg_011CdPX1vo2Rp8dviLhd7JPE",
+      stop_reason: "refusal",
+      stop_details: {
+        type: "refusal",
+        category: "cyber",
+        explanation: "This request triggered restrictions on cyber content.",
+      },
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_01NPZYf29BFhLdwc6Z7fG9c6",
+          name: "mcp__stella__spawn_agent",
+          input: {
+            description: "Build 'imagegen' webapp",
+            prompt: "- Settings sidebar: prompt + negative (prompt may",
+          },
+        },
+      ],
+    },
+  };
+
+  it("flags a tool_use the model was still writing when the stream stopped", () => {
+    expect(
+      getClaudeCodeTruncatedToolUseFromStreamEvent(refusedSpawnAgentEvent),
+    ).toMatchObject({
+      toolCallId: "toolu_01NPZYf29BFhLdwc6Z7fG9c6",
+      toolName: "mcp__stella__spawn_agent",
+      stopReason: "refusal",
+      category: "cyber",
+    });
+    // An exhausted output budget cuts the same way.
+    expect(
+      getClaudeCodeTruncatedToolUseFromStreamEvent({
+        ...refusedSpawnAgentEvent,
+        message: {
+          ...refusedSpawnAgentEvent.message,
+          stop_reason: "max_tokens",
+          stop_details: undefined,
+        },
+      }),
+    ).toMatchObject({ stopReason: "max_tokens" });
+    // A normal tool round is untouched.
+    expect(
+      getClaudeCodeTruncatedToolUseFromStreamEvent({
+        ...refusedSpawnAgentEvent,
+        message: { ...refusedSpawnAgentEvent.message, stop_reason: "tool_use" },
+      }),
+    ).toBeNull();
+    // A truncating stop cuts the LAST block only; a tool_use followed by
+    // another block finished cleanly and must not be flagged.
+    expect(
+      getClaudeCodeTruncatedToolUseFromStreamEvent({
+        ...refusedSpawnAgentEvent,
+        message: {
+          ...refusedSpawnAgentEvent.message,
+          content: [
+            ...refusedSpawnAgentEvent.message.content,
+            { type: "text", text: "cut here" },
+          ],
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("refuses to clear a tool call whose arguments the stream cut mid-value", async () => {
+    const correlator = createClaudeNativeToolUseCorrelator();
+    const truncatedArgs = refusedSpawnAgentEvent.message.content[0]!.input;
+
+    // The verdict is available before the call arrives: answered with no wait.
+    expect(
+      correlator.observeAssistantMessage(refusedSpawnAgentEvent),
+    ).toMatchObject({ stopReason: "refusal" });
+    await expect(
+      correlator.resolveToolUseIntegrity("spawn_agent", truncatedArgs),
+    ).resolves.toMatchObject({ stopReason: "refusal" });
+
+    // A clean round of the same tool clears immediately.
+    const wholeArgs = {
+      description: "Build 'imagegen' webapp",
+      prompt: "all of it",
+    };
+    correlator.observeAssistantMessage({
+      type: "assistant",
+      message: {
+        id: "msg-clean",
+        stop_reason: "tool_use",
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_clean",
+            name: "mcp__stella__spawn_agent",
+            input: wholeArgs,
+          },
+        ],
+      },
+    });
+    await expect(
+      correlator.resolveToolUseIntegrity("spawn_agent", wholeArgs),
+    ).resolves.toBeUndefined();
+  });
+
+  it("waits out the stdout/MCP race, then fails open rather than stalling a tool call", async () => {
+    const racing = createClaudeNativeToolUseCorrelator();
+    const truncatedArgs = refusedSpawnAgentEvent.message.content[0]!.input;
+    // The CLI's HTTP dispatch can beat our read of the assistant line. The
+    // gate must still catch the truncation once the line lands.
+    const verdict = racing.resolveToolUseIntegrity(
+      "spawn_agent",
+      truncatedArgs,
+      undefined,
+      5_000,
+    );
+    racing.observeAssistantMessage(refusedSpawnAgentEvent);
+    await expect(verdict).resolves.toMatchObject({ stopReason: "refusal" });
+
+    // No evidence either way must never block or delay a legitimate call.
+    const started = Date.now();
+    await expect(
+      createClaudeNativeToolUseCorrelator().resolveToolUseIntegrity(
+        "search_memory",
+        { query: "unmatched" },
+        undefined,
+        25,
+      ),
+    ).resolves.toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   const originalFetch = globalThis.fetch;
