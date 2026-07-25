@@ -39,12 +39,15 @@ import { useRadialDialAnimation } from "@/shell/overlay/use-radial-dial-animatio
 import { isRadialGestureExempt } from "./radial-gesture-target";
 import "./shell-radial-dial.css";
 
+type SectionWedge = RadialDialWedge & { id: SidebarSection };
+
 /**
  * Wedge order follows `SIDEBAR_SECTIONS`, which is also the tab rail's order,
- * so a section sits in the same relative position in both. Index 0 is at 12
- * o'clock and they advance clockwise: Tasks, Files, Search, Apps.
+ * so a section sits in the same relative position in both. Wedge 0 starts at 12
+ * o'clock and they advance clockwise, occupying quadrants: Tasks upper-right,
+ * Files lower-right, Search lower-left, Apps upper-left.
  */
-const WEDGES: readonly RadialDialWedge[] = SIDEBAR_SECTIONS.map((section) => ({
+const WEDGES: readonly SectionWedge[] = SIDEBAR_SECTIONS.map((section) => ({
   id: section,
   label: SIDEBAR_SECTION_META[section].label,
   icon: SIDEBAR_SECTION_META[section].Icon,
@@ -54,7 +57,7 @@ type Origin = { x: number; y: number };
 
 export function ShellRadialDial() {
   const [origin, setOrigin] = useState<Origin | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<SidebarSection | null>(null);
   const { colors } = useTheme();
 
   const selectedIndex = useMemo(
@@ -68,7 +71,7 @@ export function ShellRadialDial() {
   // The gesture runs on window-level listeners, so its handlers are installed
   // once and read live state through refs rather than re-subscribing per frame.
   const originRef = useRef<Origin | null>(null);
-  const selectedRef = useRef<string | null>(null);
+  const selectedRef = useRef<SidebarSection | null>(null);
   selectedRef.current = selectedId;
   const showRef = useRef(show);
   showRef.current = show;
@@ -86,12 +89,15 @@ export function ShellRadialDial() {
     hideRef.current();
 
     if (commit && selected) {
-      sidebarSections.selectSection(selected as SidebarSection);
+      sidebarSections.selectSection(selected);
     }
   }, []);
 
   useEffect(() => {
-    const wedgeAt = (clientX: number, clientY: number): string | null => {
+    const wedgeAt = (
+      clientX: number,
+      clientY: number,
+    ): SidebarSection | null => {
       const current = originRef.current;
       if (!current) return null;
       const index = getWedgeIndexAt(clientX, clientY, current.x, current.y);
@@ -162,8 +168,6 @@ export function ShellRadialDial() {
     };
   }, [endGesture]);
 
-  const wedges = useMemo(() => WEDGES, []);
-
   return (
     <div
       className="shell-radial-dial"
@@ -186,7 +190,7 @@ export function ShellRadialDial() {
           moment, so the blob would never initialize and every open would fall
           back to the un-animated path. */}
       <RadialDialSurface
-        wedges={wedges}
+        wedges={WEDGES}
         selectedId={selectedId}
         phase={animation.phase}
         contentVisible={animation.contentVisible}
