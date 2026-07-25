@@ -40,9 +40,11 @@ import {
 import type { RunnerContext } from "./types.js";
 import { buildAgentEventPrompt } from "./shared.js";
 import {
-  buildCommitSubjectPrompt,
-  sanitizeAuthoredCommitSubject,
+  COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
+  createCommitSubjectProvider,
 } from "../self-mod/feature-namer.js";
+import { runLightTextCompletion } from "../agent-runtime/light-completion.js";
+import { resolveRunnerRecallLlmRoute } from "./model-selection.js";
 
 /**
  * Diagnostic for the "agent promised to report back and never did" failure.
@@ -1258,67 +1260,31 @@ export const createAgentOrchestration = (
           // resume-flush dance — it just observes self-mod-hmr state events
           // emitted by the worker server.
           if (subagentSucceeded) {
-            // Helper: spin up a one-shot LLM call with no tools and a
-            // freshly-built agent context. Used for the commit-subject
-            // namer and the rolling-window feature snapshot namer.
-            const runOneShotPrompt = async (
-              prompt: string,
-            ): Promise<string | null> => {
-              if (!agentId) return null;
-              const oneShotRunId = `local:sub:${crypto.randomUUID()}`;
-              const oneShotContext = await deps.buildAgentContext({
-                conversationId,
-                agentType,
-                runId: oneShotRunId,
-                threadId: agentId,
-              });
-              oneShotContext.maxAgentDepth = agentContext.maxAgentDepth;
-              oneShotContext.agentDepth = agentContext.agentDepth;
-              const oneShotResolvedLlm =
-                oneShotContext.resolvedLlm ?? resolvedLlm;
-              const result = await runSubagentTask({
-                conversationId,
-                userMessageId: oneShotRunId,
-                runId: oneShotRunId,
-                agentId,
-                ...(rootRunId ? { rootRunId } : {}),
-                agentType,
-                userPrompt: prompt,
-                uiVisibility: "hidden",
-                agentContext: oneShotContext,
-                toolCatalog: [],
-                toolExecutor: async () => ({
-                  error: "Tools are not available for this one-shot prompt.",
-                }),
-                deviceId: context.deviceId,
-                stellaDataDir: context.stellaDataDir,
-                ...(context.cliBridgeSocketPath
-                  ? { cliBridgeSocketPath: context.cliBridgeSocketPath }
-                  : {}),
-                resolvedLlm: oneShotResolvedLlm,
-                store: context.runtimeStore,
-                suppressCompletionSideEffects: true,
-                compactionScheduler: context.state.compactionScheduler,
-                ...(abortSignal ? { abortSignal } : {}),
-                stellaAppDir: context.stellaAppDir,
-              });
-              if (result.error) return null;
-              return result.result ?? null;
-            };
-
-            const commitMessageProvider = async (input: {
-              taskDescription: string;
-              files: string[];
-              diffPreview: string;
-              conversationId?: string;
-            }): Promise<string | null> => {
-              const reply = await runOneShotPrompt(
-                buildCommitSubjectPrompt(input),
-              );
-              if (!reply) return null;
-              const subject = sanitizeAuthoredCommitSubject(reply);
-              return subject || null;
-            };
+            // The commit subject is one line of derived text, so it runs as
+            // a single stateless completion on the engine-aware light tier —
+            // no session, no thread history, no tools, no run events. The
+            // prompt already carries everything that decides the subject
+            // (task, changed files, truncated diff), so re-sending this
+            // thread's transcript would buy nothing. A failure here is not
+            // fatal: the finalizer falls back to the task description.
+            const commitMessageProvider = createCommitSubjectProvider(
+              async (prompt) => {
+                const route = await resolveRunnerRecallLlmRoute(
+                  context,
+                  agentType,
+                  agentContext.modelConfigSnapshot,
+                );
+                return await runLightTextCompletion({
+                  route,
+                  userPrompt: prompt,
+                  agentType,
+                  stellaAppDir: context.stellaAppDir,
+                  stellaDataDir: context.stellaDataDir,
+                  maxOutputTokens: COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
+                  ...(abortSignal ? { signal: abortSignal } : {}),
+                });
+              },
+            );
 
             // Durable feature identity, decided at write time: an explicit
             // identity from the caller, else the authoring thread key, so a

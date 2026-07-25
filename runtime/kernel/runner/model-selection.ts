@@ -68,7 +68,13 @@ export const resolveRunnerLlmRouteWithMetadata = async (
   });
 };
 
-/** Resolve Recall's authoritative light tier from the active orchestrator engine. */
+/**
+ * Resolve the authoritative light tier from the active orchestrator engine.
+ *
+ * Recall's brief synthesis and the self-mod commit-subject namer both ride
+ * this, so neither pins a model itself and both track whatever engine the
+ * user has selected.
+ */
 export const resolveRunnerRecallLlmRoute = async (
   context: RunnerContext,
   agentType: string,

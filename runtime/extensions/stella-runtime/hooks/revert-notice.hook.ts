@@ -31,9 +31,10 @@ import type { SelfModRevertRecord } from "../../../kernel/storage/self-mod-rever
  *     reminder for the specific agent the orchestrator resumed via
  *     `send_input`.
  *
- * Gated on `isUserTurn === true`: hidden synthetic turns (commit-subject
- * namer, memory-review subagent, etc.) must not consume the reminder
- * before the user's real next turn ever sees it.
+ * Gated on `isUserTurn === true`: hidden synthetic turns (runtime reminder
+ * injections, the boot-time continuation turn, memory-review subagent,
+ * etc.) must not consume the reminder before the user's real next turn
+ * ever sees it.
  *
  * The reminder is intentionally bare — just informs that the user
  * undid the change, without prescribing acknowledgement behavior.

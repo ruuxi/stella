@@ -30,8 +30,8 @@ export const createThreadSummariesRecordHook = (opts: {
     if (!agentHasCapability(payload.agentType, "recordsThreadSummary")) return;
     if (!payload.runId || !payload.threadKey) return;
     // `services` populated only when side-effects are allowed; absence
-    // means this is a one-shot internal call (e.g. commit-subject
-    // namer) and we self-skip.
+    // means the run failed or was interrupted, so there is no terminal
+    // report to record and we self-skip.
     if (!payload.services) return;
 
     try {

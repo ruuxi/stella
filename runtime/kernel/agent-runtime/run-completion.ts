@@ -238,15 +238,12 @@ const emitSubagentAgentEnd = (
     outcome: "success" | "error" | "interrupted";
     finalText: string;
     /**
-     * `suppressCompletionSideEffects` flag that the subagent finalize
-     * path uses for one-shot internal calls (commit-subject namer,
-     * feature-snapshot namer, …). When true, we still fire `agent_end`
-     * so balanced-lifecycle hooks (self-mod baseline cleanup, etc.)
-     * run, but `services` is intentionally minimal so post-finalize
-     * side-effect hooks (dream notify, thread summaries
-     * record) self-skip. Pre-migration these were
-     * inline if-branches inside `finalizeSubagentSuccess` gated on
-     * `sideEffectsAllowed`; now the gate lives on the hook side.
+     * False on the error and interrupted finalize paths. `agent_end` still
+     * fires so balanced-lifecycle hooks (self-mod baseline cleanup, etc.)
+     * run, but `services` is omitted so post-finalize side-effect hooks
+     * (dream notify, thread summaries record) self-skip — a run that
+     * failed or was cut short has no report worth recording. The gate
+     * lives on the hook side.
      */
     sideEffectsAllowed: boolean;
   },
@@ -631,21 +628,18 @@ export const finalizeSubagentSuccess = async (args: {
   // populated; each hook self-skips when its capability gate doesn't match.
   const trimmedResult = args.result.trim();
   const resolvedResult = trimmedResult || SUBAGENT_EMPTY_RESULT_SENTINEL;
-  const sideEffectsAllowed = !args.opts.suppressCompletionSideEffects;
   emitSubagentAgentEnd(args.opts, {
     runId: args.runId,
     threadKey: args.threadKey,
     outcome: "success",
     finalText: resolvedResult,
-    sideEffectsAllowed,
+    sideEffectsAllowed: true,
   });
 
   // Finish the parent-visible run before scheduling subagent compaction.
-  if (!args.opts.suppressCompletionSideEffects) {
-    args.opts.callbacks?.onEnd?.(
-      args.runEvents.recordRunEnd({ finalText: resolvedResult }),
-    );
-  }
+  args.opts.callbacks?.onEnd?.(
+    args.runEvents.recordRunEnd({ finalText: resolvedResult }),
+  );
 
   // Only schedule compaction when the model actually produced output;
   // sentinel-only finals carry no new history worth compacting.

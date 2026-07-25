@@ -295,7 +295,6 @@ export type OrchestratorRunOptions = BaseRunOptions & {
 export type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
   callbacks?: Partial<RuntimeRunCallbacks>;
-  suppressCompletionSideEffects?: boolean;
   /**
    * Long-lived per-task subagent session. When provided, the Pi engine
    * path routes through `session.runTurn(opts)` so the underlying `Agent`
