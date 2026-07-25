@@ -21,7 +21,7 @@ import {
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
   countingDownUserApps,
-  liveUserAppInputSlug,
+  onScreenUserAppSlug,
   mountedUserApps,
   promoteRetainedUserApp,
   USER_APP_TEARDOWN_MS,
@@ -95,30 +95,35 @@ export function PersistentUserAppsHost() {
   const [retained, setRetained] = useState<readonly string[]>([]);
   const teardownTimersRef = useRef(new Map<string, number>());
 
-  // Tell the input gate which app is reachable by the keyboard. Layout effect
-  // so the flip commits with the section change — the returning app's
-  // bindings work immediately; the leaving app's go quiet immediately.
-  const inputSlug = liveUserAppInputSlug({
+  // The single answer to "is the user looking at this app", shared by input
+  // liveness, rendering and the teardown clock.
+  const onScreenSlug = onScreenUserAppSlug({
     activeSlug,
     activeSection,
     panelOpen,
   });
+
+  // Tell the input gate which app is reachable by the keyboard. Layout effect
+  // so the flip commits with the section change — the returning app's
+  // bindings work immediately; the leaving app's go quiet immediately.
   useLayoutEffect(() => {
-    setInputActiveUserApp(inputSlug);
-  }, [inputSlug]);
+    setInputActiveUserApp(onScreenSlug);
+  }, [onScreenSlug]);
   useEffect(() => () => setInputActiveUserApp(null), []);
 
-  // Promote the active app to the front of the retained MRU list.
+  // Promote to the MRU list only once an app has been on screen, so a location
+  // restored from a previous session doesn't claim a retention slot for an app
+  // this session never shows.
   useEffect(() => {
-    if (activeSlug === null) return;
-    setRetained((prev) => promoteRetainedUserApp(prev, activeSlug));
-  }, [activeSlug]);
+    if (onScreenSlug === null) return;
+    setRetained((prev) => promoteRetainedUserApp(prev, onScreenSlug));
+  }, [onScreenSlug]);
 
-  // Every retained app the user is not inside gets a teardown timer;
+  // Every retained app the user is not looking at gets a teardown timer;
   // returning to it (or eviction) clears the timer.
   useEffect(() => {
     const timers = teardownTimersRef.current;
-    const countingDown = new Set(countingDownUserApps(retained, activeSlug));
+    const countingDown = new Set(countingDownUserApps(retained, onScreenSlug));
     for (const [slug, id] of timers) {
       if (countingDown.has(slug)) continue;
       window.clearTimeout(id);
@@ -132,7 +137,7 @@ export function PersistentUserAppsHost() {
       }, USER_APP_TEARDOWN_MS);
       timers.set(slug, id);
     }
-  }, [activeSlug, retained]);
+  }, [onScreenSlug, retained]);
 
   useEffect(() => {
     const timers = teardownTimersRef.current;
@@ -144,12 +149,12 @@ export function PersistentUserAppsHost() {
 
   return (
     <>
-      {mountedUserApps(retained, activeSlug).map((slug) => {
+      {mountedUserApps(retained, onScreenSlug).map((slug) => {
         const app = apps.find((entry) => entry.slug === slug);
         // App file deleted while retained — let it unmount naturally.
         if (!app) return null;
         const Component = lazyComponentFor(app.load);
-        const isActive = slug === activeSlug;
+        const isActive = slug === onScreenSlug;
         return (
           <div
             key={slug}

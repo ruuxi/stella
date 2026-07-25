@@ -15,7 +15,7 @@ import { getUserApp } from "@/app/_user/user-apps-registry";
  * registered and the registration call stack contains a user-app module
  * frame (`desktop/src/app/_user/<slug>.tsx`, including `<slug>.*.ts(x)`
  * helper splits), the listener is wrapped so it no-ops unless that app is
- * the one on screen (see `liveUserAppInputSlug`, which the host feeds in).
+ * the one on screen (see `onScreenUserAppSlug`, which the host feeds in).
  *
  * Per-app opt-out of the gating (NOT of teardown): a user app may export
  * `meta = { label, createdAt, backgroundInput: true }`. With
@@ -109,12 +109,50 @@ export const setInputActiveUserApp = (slug: string | null): void => {
 };
 
 /**
- * Checked at dispatch time (not registration time) so both section changes
- * and HMR edits to an app's `meta.backgroundInput` take effect immediately.
+ * Keyboard events go wherever focus is, regardless of what the pointer is
+ * over, so they are the only family whose target is ambiguous between an
+ * on-screen app and the rest of the shell. Everything else the gate covers is
+ * already aimed by the browser at whatever the user is actually over or in.
  */
-const isUserAppInputLive = (slug: string): boolean => {
-  if (getSharedState().activeInputSlug === slug) return true;
-  return getUserApp(slug)?.meta.backgroundInput === true;
+const FOCUS_SENSITIVE_EVENT_TYPES = new Set([
+  "keydown",
+  "keypress",
+  "keyup",
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+  "beforeinput",
+]);
+
+/**
+ * Whether keyboard focus is somewhere the on-screen app should answer for.
+ *
+ * Being visible is not enough. An app renders *beside* the chat surface rather
+ * than in place of it, so the user can be typing a message while the app is
+ * fully on screen — and an app that binds bare letters to `window` would eat
+ * those keystrokes. Focus inside the app's own surface means the keys are
+ * meant for it; focus nowhere in particular (`body`, after a click on empty
+ * chrome) still counts, because that is the state an app's global shortcuts
+ * are written for.
+ */
+const isFocusInsideActiveUserApp = (): boolean => {
+  if (typeof document === "undefined") return true;
+  const active = document.activeElement;
+  if (!active || active === document.body) return true;
+  return active.closest(".persistent-user-app-surface--active") !== null;
+};
+
+/**
+ * Checked at dispatch time (not registration time) so section changes, focus
+ * moves and HMR edits to an app's `meta.backgroundInput` all take effect
+ * immediately.
+ */
+const isUserAppInputLive = (slug: string, type: string): boolean => {
+  if (getUserApp(slug)?.meta.backgroundInput === true) return true;
+  if (getSharedState().activeInputSlug !== slug) return false;
+  return FOCUS_SENSITIVE_EVENT_TYPES.has(type)
+    ? isFocusInsideActiveUserApp()
+    : true;
 };
 
 const USER_APP_FRAME = /\/app\/_user\/([A-Za-z0-9._-]+)\.tsx?\b/;
@@ -171,7 +209,7 @@ const patchGlobalTarget = (target: EventTarget): void => {
     let wrapper = byListener.get(listener);
     if (!wrapper) {
       wrapper = (event: Event): void => {
-        if (!isUserAppInputLive(slug)) return;
+        if (!isUserAppInputLive(slug, event.type)) return;
         if (typeof listener === "function") listener.call(target, event);
         else listener.handleEvent(event);
       };

@@ -1,22 +1,35 @@
 /* Section hosts inside the display panel body — see `SidebarSectionBody.tsx`.
 
-   All four are mounted at once; only the active one is displayed. `display:
-   none` is deliberate over `visibility: hidden` for the inactive ones: it
-   costs no layout, and the two sections that must survive hiding (Files'
-   canvas iframes, Apps' running user apps) keep their DOM and their state
-   either way, because the node is never removed or re-parented. */
+   All four are mounted at once and stacked; only the active one is visible.
+
+   Hiding is `visibility` + `content-visibility`, never `display: none`.
+   `display: none` destroys the subtree's layout boxes, and browsers do not
+   restore scroll offsets through that — which would silently break the promise
+   the always-mounted design exists to make. Two sections depend on it
+   concretely: Files hosts canvas iframes, and Apps hosts live user apps whose
+   scroll position and media state have to survive a tab switch.
+   `content-visibility: hidden` gets the same skipped rendering work and the
+   same offscreen IntersectionObserver reading, while keeping the boxes. */
 
 .sidebar-section {
-  display: none;
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  visibility: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
 }
 
 .sidebar-section[data-active="true"] {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  visibility: visible;
+  content-visibility: visible;
+  pointer-events: auto;
+  flex: 1 1 auto;
 }
 
 /* Shared list/viewer scaffolding used by Files, Tasks and Apps. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countingDownUserApps,
-  liveUserAppInputSlug,
+  onScreenUserAppSlug,
   MAX_RETAINED_USER_APPS,
   mountedUserApps,
   promoteRetainedUserApp,
@@ -28,17 +28,31 @@ describe("user app retention", () => {
 });
 
 describe("user app teardown", () => {
-  it("never counts down the app the user is inside", () => {
+  it("never counts down the app the user is looking at", () => {
     expect(countingDownUserApps(["a", "b", "c"], "a")).toEqual(["b", "c"]);
   });
 
   it("counts every retained app down once the section is back on its list", () => {
     expect(countingDownUserApps(["a", "b"], null)).toEqual(["a", "b"]);
   });
+
+  // The teardown clock keys off what is on screen, not off what the section
+  // remembers. Closing the panel or switching to Files leaves `locations.apps`
+  // pointing at the app — if that suppressed the clock, the app the user
+  // opened last (usually the only one) could never time out, and a polling or
+  // animating app would run untouched for the rest of the session.
+  it("counts the remembered app down once it is off screen", () => {
+    const onScreen = onScreenUserAppSlug({
+      activeSlug: "a",
+      activeSection: "apps",
+      panelOpen: false,
+    });
+    expect(countingDownUserApps(["a", "b"], onScreen)).toEqual(["a", "b"]);
+  });
 });
 
 describe("mounted user apps", () => {
-  it("renders the active app before retention state has caught up", () => {
+  it("renders the on-screen app before retention state has caught up", () => {
     expect(mountedUserApps([], "a")).toEqual(["a"]);
   });
 
@@ -46,15 +60,27 @@ describe("mounted user apps", () => {
     expect(mountedUserApps(["c", "b", "a"], "d")).toEqual(["d", "c", "b"]);
   });
 
-  it("keeps hidden apps mounted when no app is open", () => {
+  it("keeps hidden apps mounted when no app is on screen", () => {
     expect(mountedUserApps(["a", "b"], null)).toEqual(["a", "b"]);
+  });
+
+  // A location restored from a previous session is non-null on the very first
+  // render. Mounting off it would fetch the app's chunk and run its mount
+  // effects during startup, for a surface the user may never open.
+  it("does not mount a restored location before the section is shown", () => {
+    const onScreen = onScreenUserAppSlug({
+      activeSlug: "a",
+      activeSection: "tasks",
+      panelOpen: false,
+    });
+    expect(mountedUserApps([], onScreen)).toEqual([]);
   });
 });
 
 describe("user app input liveness", () => {
   it("lets the open app receive input while its section is showing", () => {
     expect(
-      liveUserAppInputSlug({
+      onScreenUserAppSlug({
         activeSlug: "a",
         activeSection: "apps",
         panelOpen: true,
@@ -67,7 +93,7 @@ describe("user app input liveness", () => {
   // what the user types into chat.
   it("silences the open app when the panel closes", () => {
     expect(
-      liveUserAppInputSlug({
+      onScreenUserAppSlug({
         activeSlug: "a",
         activeSection: "apps",
         panelOpen: false,
@@ -77,7 +103,7 @@ describe("user app input liveness", () => {
 
   it("silences the open app when another section is showing", () => {
     expect(
-      liveUserAppInputSlug({
+      onScreenUserAppSlug({
         activeSlug: "a",
         activeSection: "files",
         panelOpen: true,
@@ -87,7 +113,7 @@ describe("user app input liveness", () => {
 
   it("has nothing to keep live on the library list", () => {
     expect(
-      liveUserAppInputSlug({
+      onScreenUserAppSlug({
         activeSlug: null,
         activeSection: "apps",
         panelOpen: true,

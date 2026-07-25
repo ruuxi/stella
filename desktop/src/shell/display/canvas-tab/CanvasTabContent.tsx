@@ -1,29 +1,15 @@
 /**
- * Canvas tab — right sidebar viewer for HTML artifacts the orchestrator
- * produced via the `html` tool. Layout is a chip rail of saved canvases
- * over a sandboxed iframe rendering the selected file as `srcdoc`.
+ * Canvas viewer for one HTML artifact the orchestrator produced via the
+ * `html` tool: a share bar over a sandboxed iframe rendering the file as
+ * `srcdoc`. Which canvas is showing is the Files section's business, so this
+ * takes the item it should render rather than picking one.
  */
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { openExternalUrl } from "@/platform/electron/open-external";
-import {
-  type CanvasHtmlItem,
-  getCanvasHtmlItems,
-  getSelectedCanvasHtmlId,
-  loadCanvasHtmlHistory,
-  setSelectedCanvasHtmlId,
-  subscribeCanvasHtmlItems,
-  subscribeSelectedCanvasHtmlId,
-} from "./canvas-items";
+import { type CanvasHtmlItem } from "./canvas-items";
 import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import { CanvasShareBar } from "./CanvasShareBar";
 import { classifyCanvasNavigation } from "./canvas-navigation";
@@ -337,82 +323,18 @@ const CanvasHeroFrame = ({
   return <CanvasHeroFrameContent item={item} />;
 };
 
-const useCanvasItems = (
-  initial: ReadonlyArray<CanvasHtmlItem>,
-): ReadonlyArray<CanvasHtmlItem> =>
-  useSyncExternalStore(
-    subscribeCanvasHtmlItems,
-    getCanvasHtmlItems,
-    () => initial,
-  );
-
-const useSelectedCanvasId = (fallback: string | null): string | null =>
-  useSyncExternalStore(
-    subscribeSelectedCanvasHtmlId,
-    getSelectedCanvasHtmlId,
-    () => fallback,
-  );
-
-export const CanvasTabContent = ({
-  items: initialItems,
-  selectedItemId,
-}: {
-  items: ReadonlyArray<CanvasHtmlItem>;
-  selectedItemId?: string;
-}) => {
+export const CanvasTabContent = ({ item }: { item: CanvasHtmlItem }) => {
   const panelOpen = useDisplayPanelOpen();
-  const items = useCanvasItems(initialItems);
-  const selectedId = useSelectedCanvasId(
-    selectedItemId ?? items.at(-1)?.id ?? null,
-  );
-
-  useEffect(() => {
-    void loadCanvasHtmlHistory();
-  }, []);
-
-  useEffect(() => {
-    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
-      setSelectedCanvasHtmlId(selectedItemId);
-    }
-  }, [items, selectedItemId]);
-
-  useEffect(() => {
-    if (items.length === 0) {
-      setSelectedCanvasHtmlId(null);
-      return;
-    }
-    if (!selectedId || !items.some((item) => item.id === selectedId)) {
-      setSelectedCanvasHtmlId(items.at(-1)?.id ?? null);
-    }
-  }, [items, selectedId]);
-
-  const selectedItem =
-    items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
 
   return (
     <div className="canvas-tab">
       <div className="canvas-tab__hero">
-        {selectedItem ? (
-          <>
-            <CanvasShareBar item={selectedItem} />
-            <CanvasHeroFrame
-              key={`${selectedItem.id}:${selectedItem.createdAt}`}
-              item={selectedItem}
-              panelOpen={panelOpen}
-            />
-          </>
-        ) : (
-          <div className="canvas-tab__hero-empty">
-            <CanvasIllustrationSpot />
-            <div className="canvas-tab__hero-empty-title">
-              Canvases land here
-            </div>
-            <div className="canvas-tab__hero-empty-hint">
-              Charts, plans, comparisons, and other HTML views Stella renders
-              are saved here.
-            </div>
-          </div>
-        )}
+        <CanvasShareBar item={item} />
+        <CanvasHeroFrame
+          key={`${item.id}:${item.createdAt}`}
+          item={item}
+          panelOpen={panelOpen}
+        />
       </div>
     </div>
   );

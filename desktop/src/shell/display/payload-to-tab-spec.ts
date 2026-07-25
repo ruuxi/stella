@@ -31,7 +31,7 @@ import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { AgentThreadChatTab } from "./AgentThreadChatTab";
 import {
   addCanvasHtmlItem,
-  setSelectedCanvasHtmlId,
+  canvasDisplayTabId,
 } from "./canvas-tab/canvas-items";
 import type { DisplayTabSpec } from "@/features/workspace-display/types";
 import { kindForPath } from "@/features/workspace-display/path-to-viewer";
@@ -40,8 +40,14 @@ import {
   registerWorkspaceDisplayPayloadAdapter,
   type AgentThreadTabArgs,
 } from "@/features/workspace-display/open-payload";
-
-export const CANVAS_HTML_TAB_ID = "canvas:html";
+import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
+import {
+  recordArtifactFileEntry,
+  setFileEntries,
+  type FileEntry,
+} from "@/features/workspace-display/files-index";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
+import { displayTabs } from "@/features/workspace-display/tab-store";
 
 /**
  * Spec for the singleton "Code changes" tab. All source-diff payloads
@@ -57,9 +63,6 @@ export const createSourceDiffTabSpec = (): DisplayTabSpec => ({
   metadata: { kind: "source-diff" },
   render: () => createElement(SourceDiffTabContent),
 });
-
-export const GENERATED_MEDIA_TAB_ID = "media:generated";
-export const GENERATED_IMAGE_TAB_ID = GENERATED_MEDIA_TAB_ID;
 
 export type GeneratedMediaItem = {
   id: string;
@@ -114,27 +117,61 @@ const generatedMediaItemIds = new Set(
 // skip work.
 let generatedMediaSnapshot: ReadonlyArray<GeneratedMediaItem> = [];
 
-const generatedMediaListeners = new Set<() => void>();
+const filePathForMediaItem = (item: GeneratedMediaItem): string | undefined => {
+  switch (item.asset.kind) {
+    case "image":
+      return item.asset.filePaths[0];
+    case "video":
+    case "audio":
+    case "model3d":
+    case "download":
+      return item.asset.filePath;
+    case "text":
+      return undefined;
+  }
+};
+
+const basename = (filePath: string): string =>
+  filePath.split(/[\\/]/).pop() || filePath;
+
+/**
+ * Text assets have no file behind them, so their prompt is the only
+ * human-readable handle they have.
+ */
+const titleForMediaItem = (item: GeneratedMediaItem): string => {
+  const filePath = filePathForMediaItem(item);
+  if (filePath) return basename(filePath);
+  return item.prompt?.trim() || "Text";
+};
+
+const toFileEntry = (item: GeneratedMediaItem): FileEntry => {
+  const payload: DisplayPayload = {
+    kind: "media",
+    asset: item.asset,
+    createdAt: item.createdAt,
+    ...(item.prompt ? { prompt: item.prompt } : {}),
+    ...(item.capability ? { capability: item.capability } : {}),
+  };
+  const filePath = filePathForMediaItem(item);
+  return {
+    source: "media",
+    // The store's own id is already unique per asset, so it doubles as the
+    // display-tab id and keeps entry, tab and store row in step.
+    id: item.id,
+    kind: displayTabKindForPayload(payload),
+    title: titleForMediaItem(item),
+    ...(filePath ? { filePath } : {}),
+    createdAt: item.createdAt,
+    payload,
+  };
+};
 
 const refreshGeneratedMediaSnapshot = () => {
   generatedMediaSnapshot = generatedMediaItems.slice();
-  for (const listener of generatedMediaListeners) listener();
+  setFileEntries("media", generatedMediaItems.map(toFileEntry));
 };
 
 refreshGeneratedMediaSnapshot();
-
-/**
- * Subscribe to generated-media mutations (add/remove). The library
- * overview uses this so its Media section stays live without polling.
- */
-export const subscribeGeneratedMediaItems = (
-  listener: () => void,
-): (() => void) => {
-  generatedMediaListeners.add(listener);
-  return () => {
-    generatedMediaListeners.delete(listener);
-  };
-};
 
 const hashText = (text: string): string => {
   let hash = 5381;
@@ -197,9 +234,6 @@ const selectedIdForMediaPayload = (
     ? `image:${payload.asset.filePaths[0] ?? ""}`
     : idForMediaPayload(payload);
 
-export const getGeneratedMediaItems = (): ReadonlyArray<GeneratedMediaItem> =>
-  generatedMediaSnapshot;
-
 /**
  * Remove a generated media item from the shared store. Returns the new
  * snapshot so callers can re-register the tab to surface the change.
@@ -216,6 +250,44 @@ export const removeGeneratedMediaItem = (
   return generatedMediaSnapshot;
 };
 
+/**
+ * Every artifact resolves into the Files section: the section is told which
+ * file it would land on, and the kinds with no store behind them are indexed
+ * so the Files list can offer them after a restart.
+ *
+ * Background refreshes — the `display:update` IPC, the media materializer —
+ * map their payloads through here too, which is why remembering is
+ * conditional on the panel being closed. While it is open the file the user
+ * is reading wins, and a refreshed spec only changes what's on screen if it
+ * happens to be that same file. Pointing the panel at Files is the open
+ * verb's job (`openDisplayPayloadTab`), never this one's.
+ */
+const rememberInFiles = (spec: DisplayTabSpec): DisplayTabSpec => {
+  if (!displayTabs.getLayoutSnapshot().panelOpen) {
+    sidebarSections.setLocation("files", spec.id);
+  }
+  return spec;
+};
+
+const indexInFiles = (
+  spec: DisplayTabSpec,
+  payload: DisplayTabPayload,
+  filePath?: string,
+): DisplayTabSpec => {
+  recordArtifactFileEntry({
+    id: spec.id,
+    kind: spec.kind,
+    title: spec.title,
+    ...(filePath ? { filePath } : {}),
+    // Payloads that carry no timestamp (a URL preview, an office preview ref)
+    // are sorted by when they were last opened, which is the only ordering
+    // signal they have.
+    createdAt: ("createdAt" in payload ? payload.createdAt : null) ?? Date.now(),
+    payload,
+  });
+  return rememberInFiles(spec);
+};
+
 export const payloadToTabSpec = (
   payload: DisplayTabPayload,
 ): DisplayTabSpec => {
@@ -224,119 +296,132 @@ export const payloadToTabSpec = (
   switch (payload.kind) {
     case "canvas-html": {
       const items = addCanvasHtmlItem(payload);
-      // Select during the click transaction rather than waiting for the
-      // mounted Canvas tab's effect. A kept-alive canvas may still be hidden
-      // here; synchronously switching it to the keyed loading boundary keeps
-      // the old iframe from being rebuilt before the panel shell can paint.
-      setSelectedCanvasHtmlId(payload.filePath);
-      return {
-        id: CANVAS_HTML_TAB_ID,
+      const item = items.find((entry) => entry.filePath === payload.filePath)!;
+      return rememberInFiles({
+        id: canvasDisplayTabId(payload.filePath),
         kind: "canvas",
-        title: "Canvas",
-        tooltip: payload.title ?? "HTML canvas",
-        metadata: { kind: "canvas-html", items, latest: payload.filePath },
-        render: () =>
-          createElement(CanvasTabContent, {
-            items,
-            selectedItemId: payload.filePath,
-          }),
-      };
+        title: item.title,
+        tooltip: payload.filePath,
+        metadata: { kind: "canvas-html", filePath: payload.filePath },
+        render: () => createElement(CanvasTabContent, { item }),
+      });
     }
 
     case "url":
-      return {
-        id: payload.tabId,
-        kind: "url",
-        title,
-        ...(payload.tooltip ? { tooltip: payload.tooltip } : {}),
-        metadata: { kind: "url", url: payload.url },
-        render: () =>
-          createElement(UrlTabContent, {
-            url: payload.url,
-            title,
-          }),
-      };
+      return indexInFiles(
+        {
+          id: payload.tabId,
+          kind: "url",
+          title,
+          ...(payload.tooltip ? { tooltip: payload.tooltip } : {}),
+          metadata: { kind: "url", url: payload.url },
+          render: () =>
+            createElement(UrlTabContent, {
+              url: payload.url,
+              title,
+            }),
+        },
+        payload,
+      );
 
     case "markdown":
-      return {
-        id: `markdown:${payload.filePath}`,
-        kind: "markdown",
-        title,
-        tooltip: payload.filePath,
-        metadata: { kind: "markdown", filePath: payload.filePath },
-        render: () =>
-          createElement(MarkdownTabContent, {
-            filePath: payload.filePath,
-            ...(payload.title ? { title: payload.title } : {}),
-          }),
-      };
+      return indexInFiles(
+        {
+          id: `markdown:${payload.filePath}`,
+          kind: "markdown",
+          title,
+          tooltip: payload.filePath,
+          metadata: { kind: "markdown", filePath: payload.filePath },
+          render: () =>
+            createElement(MarkdownTabContent, {
+              filePath: payload.filePath,
+              ...(payload.title ? { title: payload.title } : {}),
+            }),
+        },
+        payload,
+        payload.filePath,
+      );
 
     case "source-diff":
       // Singleton tab: every source-diff payload maps to the same
       // tab id. The tab content reads from the source-diff batches
       // store, populated by the chat-side click handler before
       // `openTab` is called.
-      return createSourceDiffTabSpec();
+      return indexInFiles(createSourceDiffTabSpec(), payload);
 
     case "office": {
       const sourcePath = payload.previewRef.sourcePath;
       const kind = kindForPath(sourcePath);
-      return {
-        id: `office:${sourcePath}`,
-        kind:
-          kind === "office-spreadsheet" || kind === "office-slides"
-            ? kind
-            : "office-document",
-        title,
-        tooltip: sourcePath,
-        metadata: { kind: "office", sourcePath },
-        render: () =>
-          createElement(OfficeTabContent, { previewRef: payload.previewRef }),
-      };
+      return indexInFiles(
+        {
+          id: `office:${sourcePath}`,
+          kind:
+            kind === "office-spreadsheet" || kind === "office-slides"
+              ? kind
+              : "office-document",
+          title,
+          tooltip: sourcePath,
+          metadata: { kind: "office", sourcePath },
+          render: () =>
+            createElement(OfficeTabContent, { previewRef: payload.previewRef }),
+        },
+        payload,
+        sourcePath,
+      );
     }
 
     case "file-artifact":
-      return {
-        id: `file-artifact:${payload.filePath}`,
-        kind:
-          payload.artifactKind === "delimited-table"
-            ? "office-spreadsheet"
-            : payload.artifactKind,
-        title,
-        tooltip: payload.filePath,
-        metadata: {
-          kind: "file-artifact",
-          filePath: payload.filePath,
-          artifactKind: payload.artifactKind,
+      return indexInFiles(
+        {
+          id: `file-artifact:${payload.filePath}`,
+          kind:
+            payload.artifactKind === "delimited-table"
+              ? "office-spreadsheet"
+              : payload.artifactKind,
+          title,
+          tooltip: payload.filePath,
+          metadata: {
+            kind: "file-artifact",
+            filePath: payload.filePath,
+            artifactKind: payload.artifactKind,
+          },
+          render: () =>
+            payload.artifactKind === "delimited-table"
+              ? createElement(DelimitedTableTabContent, {
+                  filePath: payload.filePath,
+                  title,
+                })
+              : createElement(OfficeFileTabContent, {
+                  filePath: payload.filePath,
+                  title,
+                  refreshToken: payload.createdAt,
+                }),
         },
-        render: () =>
-          payload.artifactKind === "delimited-table"
-            ? createElement(DelimitedTableTabContent, {
-                filePath: payload.filePath,
-                title,
-              })
-            : createElement(OfficeFileTabContent, {
-                filePath: payload.filePath,
-                title,
-                refreshToken: payload.createdAt,
-              }),
-      };
+        payload,
+        payload.filePath,
+      );
 
     case "pdf":
-      return {
-        id: `pdf:${payload.filePath}`,
-        kind: "pdf",
-        title,
-        tooltip: payload.filePath,
-        metadata: { kind: "pdf", filePath: payload.filePath },
-        render: () =>
-          createElement(PdfTabContent, {
-            filePath: payload.filePath,
-            ...(payload.title ? { title: payload.title } : {}),
-          }),
-      };
+      return indexInFiles(
+        {
+          id: `pdf:${payload.filePath}`,
+          kind: "pdf",
+          title,
+          tooltip: payload.filePath,
+          metadata: { kind: "pdf", filePath: payload.filePath },
+          render: () =>
+            createElement(PdfTabContent, {
+              filePath: payload.filePath,
+              ...(payload.title ? { title: payload.title } : {}),
+            }),
+        },
+        payload,
+        payload.filePath,
+      );
 
     case "trash":
+      // Deferred-delete trash is a shell surface rather than an artifact, so
+      // it stays out of the Files index.
       return {
         id: "trash:deferred-delete",
         kind: "trash",
@@ -346,26 +431,24 @@ export const payloadToTabSpec = (
       };
 
     case "media": {
-      const baseMeta = {
-        ...(payload.jobId ? { jobId: payload.jobId } : {}),
-        ...(payload.capability ? { capability: payload.capability } : {}),
-        ...(payload.prompt ? { prompt: payload.prompt } : {}),
-      };
-      const mediaItems = addGeneratedMediaItem(payload);
-      const selectedItemId = selectedIdForMediaPayload(payload);
-      return {
-        id: GENERATED_MEDIA_TAB_ID,
-        kind: "media",
-        title: "Media",
-        tooltip: "Generated media",
+      const items = addGeneratedMediaItem(payload);
+      // A multi-image job lands as several entries; the tab points at the
+      // first, which is the one the user clicked through to.
+      const itemId = selectedIdForMediaPayload(payload);
+      const item = items.find((entry) => entry.id === itemId)!;
+      return rememberInFiles({
+        id: item.id,
+        kind: displayTabKindForPayload(payload),
+        title: titleForMediaItem(item),
+        ...(payload.capability ? { tooltip: payload.capability } : {}),
         metadata: {
           kind: "media",
-          items: mediaItems,
-          ...baseMeta,
+          ...(payload.jobId ? { jobId: payload.jobId } : {}),
+          ...(payload.capability ? { capability: payload.capability } : {}),
+          ...(payload.prompt ? { prompt: payload.prompt } : {}),
         },
-        render: () =>
-          createElement(MediaTabContent, { items: mediaItems, selectedItemId }),
-      };
+        render: () => createElement(MediaTabContent, { item }),
+      });
     }
   }
 };

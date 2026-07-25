@@ -4,8 +4,6 @@ export const CHAT_DISPLAY_TAB_ID = "chat";
 export const HOME_DISPLAY_TAB_ID = "home";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
-export const MEDIA_DISPLAY_TAB_ID = "media:generated";
-export const CANVAS_DISPLAY_TAB_ID = "canvas:html";
 
 type WorkspaceDefaultTabsAdapter = {
   openChatDisplayTab: (openRequest?: unknown, opts?: OpenTabOptions) => void;
@@ -14,8 +12,6 @@ type WorkspaceDefaultTabsAdapter = {
   openStoreDisplayTab: () => void;
   openTrashDisplayTab: () => void;
   openEngineDisplayTab: () => void;
-  openMediaDisplayTab: () => void;
-  openCanvasDisplayTab: () => void;
 };
 
 let adapter: WorkspaceDefaultTabsAdapter | null = null;
@@ -58,12 +54,4 @@ export function openTrashDisplayTab(): void {
 
 export function openEngineDisplayTab(): void {
   getAdapter().openEngineDisplayTab();
-}
-
-export function openMediaDisplayTab(): void {
-  getAdapter().openMediaDisplayTab();
-}
-
-export function openCanvasDisplayTab(): void {
-  getAdapter().openCanvasDisplayTab();
 }

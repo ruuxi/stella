@@ -1,4 +1,4 @@
-/* Media tab — one surface, two zones (viewer / history).
+/* Media viewer — one asset, filling the panel.
    No nested cards, no glass, no drop shadows. Hairlines only. */
 
 .media-tab {
@@ -8,9 +8,6 @@
   display: flex;
   flex-direction: column;
   padding: 8px 8px 6px;
-  /* Height of the absolutely-docked history rail, reserved so the
-     viewer never sits underneath it. */
-  --media-tab-footer-slot: 70px;
   overflow: hidden;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
@@ -28,18 +25,6 @@
   overflow: hidden;
 }
 
-.media-tab__footer {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  padding: 6px 0 0;
-  background: transparent;
-}
-
 /* ── Viewer (hero) ─────────────────────────────────────────────── */
 
 .media-tab__hero {
@@ -47,7 +32,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-bottom: var(--media-tab-footer-slot);
   overflow: hidden;
 }
 
@@ -151,10 +135,7 @@
   border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
 }
 
-.media-tab__action-btn:focus-visible,
-.media-tab__history-toggle:focus-visible,
-.media-tab__rail-import:focus-visible,
-.media-tab__tile:focus-visible {
+.media-tab__action-btn:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -221,222 +202,4 @@
 .media-tab__hero-preview .display-media__text {
   max-width: 100%;
   max-height: 100%;
-}
-
-.media-tab__empty {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px 20px;
-  text-align: center;
-}
-
-.media-tab__empty-title {
-  font-size: var(--font-size-base);
-  font-weight: var(--weight-medium);
-  color: var(--text-strong);
-}
-
-.media-tab__empty-body {
-  max-width: 240px;
-  font-size: var(--font-size-sm);
-  line-height: 1.45;
-  color: var(--text-weak);
-}
-
-/* ── History (docked rail; surfaces only when expanded) ─────────── */
-
-.media-tab__history {
-  position: relative;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: stretch;
-  height: 64px;
-  margin: 0 10px;
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: transparent;
-  will-change: height;
-  transition:
-    height 0.26s cubic-bezier(0.32, 0.72, 0, 1),
-    background 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.media-tab__history--expanded {
-  height: 248px;
-  border-color: color-mix(in oklch, var(--border) 45%, transparent);
-  background: var(--background);
-}
-
-.media-tab__rail {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  overflow: hidden;
-  padding: 6px 8px;
-}
-
-.media-tab__history-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 8px;
-  scrollbar-width: thin;
-}
-
-.media-tab__history-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.media-tab__history-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
-  border-radius: 3px;
-}
-
-.media-tab__history-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-  gap: 6px;
-  align-content: start;
-}
-
-.media-tab__history-grid .media-tab__tile,
-.media-tab__history-grid .media-tab__rail-import {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1 / 1;
-}
-
-.media-tab__history-grid .media-tab__tile {
-  content-visibility: auto;
-  contain-intrinsic-size: 52px;
-}
-
-.media-tab__history-toggle {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  width: 28px;
-  height: 52px;
-  margin: 6px 6px 0 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-weak);
-  display: grid;
-  place-items: center;
-  cursor: default;
-  transition: color 0.15s ease;
-}
-
-.media-tab__history-toggle:hover {
-  color: var(--text-strong);
-}
-
-.media-tab__history-toggle svg {
-  transition: transform 0.2s ease;
-}
-
-.media-tab__history-toggle--open svg {
-  transform: rotate(180deg);
-}
-
-.media-tab__rail-import {
-  flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  background: transparent;
-  color: var(--text-weak);
-  display: grid;
-  place-items: center;
-  cursor: default;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.media-tab__rail-import:hover {
-  color: var(--text-strong);
-  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-}
-
-.media-tab__file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.media-tab__tile {
-  flex: 0 0 auto;
-  position: relative;
-  appearance: none;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  border-radius: 6px;
-  padding: 0;
-  width: 52px;
-  height: 52px;
-  overflow: hidden;
-  cursor: default;
-  transition: border-color 0.15s ease;
-}
-
-.media-tab__tile:hover {
-  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
-}
-
-.media-tab__tile--active {
-  border-color: var(--primary);
-}
-
-.media-tab__tile--missing {
-  opacity: 0.45;
-}
-
-.media-tab__tile--missing .media-tab__tile-glyph {
-  filter: grayscale(1);
-}
-
-.media-tab__tile--pending {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-.media-tab__tile-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.media-tab__tile-glyph {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: var(--text-weak);
-}
-
-.media-tab__tile-badge {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 9px;
-  letter-spacing: 0.02em;
-  color: var(--text-strong);
-  background: color-mix(in oklch, var(--background) 82%, var(--foreground));
 }

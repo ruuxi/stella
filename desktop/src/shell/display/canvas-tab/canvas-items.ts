@@ -1,10 +1,15 @@
 /**
  * Module-scoped store of HTML canvases the orchestrator's `html` tool has
- * produced. The Canvas tab subscribes via `useSyncExternalStore`; files
- * live under `~/.stella/outputs/html/` and a small index in the shared UI
- * state store keeps the rail populated across renderer and desktop restarts.
+ * produced. Files live under `~/.stella/outputs/html/` and a small index in
+ * the shared UI state store keeps them listed across renderer and desktop
+ * restarts; every mutation republishes the list into the Files index, which
+ * is what the sidebar actually renders.
  */
 
+import {
+  setFileEntries,
+  type FileEntry,
+} from "@/features/workspace-display/files-index";
 import { uiState } from "@/platform/ui-state";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 
@@ -16,20 +21,38 @@ export type CanvasHtmlItem = {
   createdAt: number;
 };
 
+/** Display-tab id for a canvas, so one file is one Files entry. */
+export const canvasDisplayTabId = (filePath: string): string =>
+  `canvas:${filePath}`;
+
 const items: CanvasHtmlItem[] = [];
 const itemsByPath = new Map<string, CanvasHtmlItem>();
-const listeners = new Set<() => void>();
-const selectionListeners = new Set<() => void>();
 const STORAGE_KEY = "stella-display-canvas-html-items";
 const REMOVED_KEY = "stella-display-canvas-html-removed";
 const MAX_ITEMS = 200;
 
 // Stable snapshot for `useSyncExternalStore`; refreshed only on mutation.
 let snapshot: ReadonlyArray<CanvasHtmlItem> = [];
-let selectedCanvasHtmlId: string | null = null;
+
+const toFileEntry = (item: CanvasHtmlItem): FileEntry => ({
+  source: "canvas",
+  id: canvasDisplayTabId(item.filePath),
+  kind: "canvas",
+  title: item.title,
+  filePath: item.filePath,
+  createdAt: item.createdAt,
+  payload: {
+    kind: "canvas-html",
+    filePath: item.filePath,
+    title: item.title,
+    createdAt: item.createdAt,
+    ...(item.slug ? { slug: item.slug } : {}),
+  },
+});
 
 const refreshSnapshot = () => {
   snapshot = items.slice();
+  setFileEntries("canvas", items.map(toFileEntry));
 };
 
 const readJsonArray = <T>(key: string): T[] => {
@@ -74,29 +97,6 @@ const persistRemovedPaths = (): void =>
 const emit = () => {
   refreshSnapshot();
   persistItems();
-  for (const listener of listeners) listener();
-};
-
-const emitSelection = () => {
-  for (const listener of selectionListeners) listener();
-};
-
-export const getSelectedCanvasHtmlId = (): string | null =>
-  selectedCanvasHtmlId;
-
-export const setSelectedCanvasHtmlId = (id: string | null): void => {
-  if (selectedCanvasHtmlId === id) return;
-  selectedCanvasHtmlId = id;
-  emitSelection();
-};
-
-export const subscribeSelectedCanvasHtmlId = (
-  listener: () => void,
-): (() => void) => {
-  selectionListeners.add(listener);
-  return () => {
-    selectionListeners.delete(listener);
-  };
 };
 
 const seedItem = (item: CanvasHtmlItem): void => {
@@ -128,8 +128,8 @@ export const addCanvasHtmlItem = (
   };
   const existing = itemsByPath.get(payload.filePath);
   if (existing) {
-    // Mutate in-place so the existing tile keeps its rail position and
-    // we still bump createdAt (used as the iframe refresh key).
+    // Mutate in-place so the entry keeps its identity and we still bump
+    // createdAt (used as the iframe refresh key).
     existing.title = next.title;
     existing.createdAt = next.createdAt;
     if (next.slug) existing.slug = next.slug;
@@ -146,20 +146,13 @@ export const removeCanvasHtmlItem = (
 ): ReadonlyArray<CanvasHtmlItem> => {
   const idx = items.findIndex((item) => item.filePath === filePath);
   if (idx === -1) return snapshot;
-  const removed = items[idx];
   items.splice(idx, 1);
   itemsByPath.delete(filePath);
   removedPaths.add(filePath);
   persistRemovedPaths();
-  if (selectedCanvasHtmlId === removed.id) {
-    selectedCanvasHtmlId = items.at(-1)?.id ?? null;
-    emitSelection();
-  }
   emit();
   return snapshot;
 };
-
-export const getCanvasHtmlItems = (): ReadonlyArray<CanvasHtmlItem> => snapshot;
 
 let historyLoadStarted = false;
 
@@ -185,15 +178,8 @@ export const loadCanvasHtmlHistory = async (): Promise<void> => {
     }
     if (changed) emit();
   } catch {
-    // Keep the tab usable even if filesystem enumeration is unavailable.
+    // Keep the list usable even if filesystem enumeration is unavailable.
   }
-};
-
-export const subscribeCanvasHtmlItems = (listener: () => void): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 };
 
 for (const item of readPersistedItems()) {

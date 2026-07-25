@@ -311,14 +311,17 @@ html[data-stella-window="mini"] .right-sidebar__resize-handle {
   min-height: 0;
 }
 
-/* Keep-alive host: while the panel is closed, the just-viewed canvas stays
-   mounted here so its iframe's browsing context (scripts, scroll,
-   interaction state) survives and reopening is instant. `display: none`
-   keeps an iframe alive as long as the element remains in the DOM, removes
-   the subtree from layout/paint/hit-testing entirely (zero cost during the
-   panel slide), and Chromium throttles rAF loops inside hidden iframes. */
+/* Panel closed. The section host stays mounted so nothing inside it loses
+   state — canvas iframes keep their browsing context, user apps keep running,
+   and every scroller keeps its offset — but it must cost nothing while the
+   panel is shut. `content-visibility: hidden` skips its rendering work and
+   makes element-visibility signals read as offscreen, and `visibility`
+   removes it from hit-testing, all without destroying the layout boxes that
+   `display: none` would take scroll positions down with. */
 .right-sidebar__active--kept {
-  display: none;
+  visibility: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
 }
 
 /* Wrapper for non-HTML payloads (office preview, PDF viewer). Fills the

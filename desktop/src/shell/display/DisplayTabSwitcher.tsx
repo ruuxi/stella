@@ -1,9 +1,9 @@
 /**
  * Top-bar display-tab switcher. A standalone Home icon returns to the home
  * launcher, and a separate chip shows the active non-home surface (Chat,
- * Media, Canvas, …); clicking the chip opens a menu listing the other open
- * surfaces. Lives in the panel chrome (full window) and the mini window's
- * top bar.
+ * Store, an open file, …); clicking the chip opens a menu listing the other
+ * open surfaces. Lives in the panel chrome (full window) and the mini
+ * window's top bar.
  */
 
 import { useState } from "react";
@@ -23,10 +23,8 @@ import {
 } from "@/features/workspace-display/tab-store";
 import type { DisplayTab } from "@/features/workspace-display/types";
 import {
-  CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,
   HOME_DISPLAY_TAB_ID,
-  MEDIA_DISPLAY_TAB_ID,
   STORE_DISPLAY_TAB_ID,
   TRASH_DISPLAY_TAB_ID,
   openHomeDisplayTab,
@@ -36,13 +34,11 @@ import "./display-tab-switcher.css";
 /**
  * Fixed destinations, in pin order. These never scroll away — with many
  * ephemeral surfaces (open files, apps) the list splits into a pinned block
- * and a scrollable rest, so Chat/Canvas/Media/… stay reachable however long
- * the file list grows.
+ * and a scrollable rest, so Chat/Store/Trash stay reachable however long the
+ * file list grows.
  */
 const PINNED_TAB_IDS: readonly string[] = [
   CHAT_DISPLAY_TAB_ID,
-  CANVAS_DISPLAY_TAB_ID,
-  MEDIA_DISPLAY_TAB_ID,
   STORE_DISPLAY_TAB_ID,
   TRASH_DISPLAY_TAB_ID,
 ];
