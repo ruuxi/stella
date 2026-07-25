@@ -98,6 +98,11 @@
 }
 
 .chat-conversation-surface--sidebar {
+  /* Match the full chat's user bubble exactly — same solid `--primary`
+     fill with flipped `--primary-foreground` text (see `.event-item.user`
+     in full-shell.chat.css) so the two surfaces can't drift apart. */
+  --compact-chat-user-bg: var(--primary);
+  --compact-chat-user-color: var(--primary-foreground);
   --compact-chat-user-radius: 14px;
   --compact-chat-user-tail-radius: 4px;
   --compact-chat-user-max-width: 88%;
@@ -128,9 +133,11 @@
   max-width: var(--compact-chat-user-max-width);
   width: fit-content;
   /* The full-chat user bubble is a solid `--primary` fill and flips text to
-     `--primary-foreground`. Compact bubbles use a subtle tint instead, so
-     reset the body text color (`.event-body` reads `--chat-text-color`)
-     back to a readable color or the light primary-foreground washes out. */
+     `--primary-foreground`. The sidebar variant mirrors that exactly; other
+     compact surfaces (mini, orb, Store) use a subtle tint instead, so the
+     body text color (`.event-body` reads `--chat-text-color`) routes through
+     `--compact-chat-user-color` and each variant keeps text legible on its
+     own bubble fill. */
   --chat-text-color: var(--compact-chat-user-color);
   color: var(--compact-chat-user-color);
   padding: var(--compact-chat-user-padding);

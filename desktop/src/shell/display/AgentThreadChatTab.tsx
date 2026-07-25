@@ -365,7 +365,10 @@ export function AgentThreadChatTab({
             <span>No messages in this thread yet.</span>
           </div>
         ) : (
-          <ol className="agent-thread-chat__messages">
+          // `chat-conversation-surface--sidebar` reuses the panel chat's
+          // shared bubble styling (see compact-conversation.css) so this
+          // read-only view renders exactly like the normal sidebar chat.
+          <ol className="agent-thread-chat__messages chat-conversation-surface chat-conversation-surface--sidebar">
             {visibleMessages.map((message, index) => (
               <li
                 key={message.entryId ?? `${message.timestamp}:${index}`}
@@ -387,17 +390,19 @@ export function AgentThreadChatTab({
                     <span className="agent-thread-chat__role">
                       {roleLabel(message.role)}
                     </span>
-                    <div className="agent-thread-chat__body">
-                      {message.role === "assistant" ? (
+                    {message.role === "assistant" ? (
+                      <div className="event-item assistant">
                         <Markdown
                           text={message.content}
                           cacheKey={message.entryId ?? `${threadId}:${index}`}
                           hideHorizontalRules
                         />
-                      ) : (
-                        message.content
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="event-item user">
+                        <div className="event-body">{message.content}</div>
+                      </div>
+                    )}
                   </>
                 )}
               </li>
