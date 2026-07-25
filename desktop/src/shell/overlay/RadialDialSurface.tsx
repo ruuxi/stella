@@ -24,6 +24,7 @@ import {
 } from "@/shared/lib/radial-geometry";
 import { useTheme } from "@/context/theme-context";
 import type { RadialDialPhase } from "./use-radial-dial-animation";
+import "./radial-dial.css";
 
 export type RadialDialWedge = {
   id: string;
