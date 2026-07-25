@@ -17,6 +17,7 @@
     "test:electron": "cd desktop && vitest run --config vitest.electron.config.ts",
     "test:stella-browser": "cargo test --manifest-path desktop/stella-browser/cli/Cargo.toml -- --skip test_all_documented_actions_are_handled && node --test desktop/stella-browser/extension/*.test.js desktop/stella-browser/extension/**/*.test.js && vitest run desktop/tests/runtime/kernel/browser-use/*.test.ts",
     "routes:generate": "cd desktop && bunx --package @tanstack/router-cli@1.166.40 tsr generate",
+    "ipc:contract": "cd desktop && node scripts/derive-ipc-payload-contract.mjs",
     "reset": "cd desktop && node scripts/reset-dev.mjs",
     "reset:all": "cd desktop && node scripts/reset-dev.mjs --with-permissions",
     "reset:sql": "cd desktop && node scripts/reset-sql.mjs",

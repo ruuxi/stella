@@ -1,0 +1,3 @@
+# Generated files. These are written by a script and verified byte-for-byte by
+# a --check drift test, so reformatting them would just make the two disagree.
+desktop/electron/services/mobile-bridge/ipc-payload-contract.generated.ts
