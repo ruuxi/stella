@@ -14,6 +14,8 @@
  *   bun program.ts item <id>
  */
 
+export {};
+
 const APP_ID = "UJ5WYC0L7X";
 const SEARCH_KEY = "28f0e1ec37a5e792e6845e67da5f20dd";
 const HOST = `https://${APP_ID.toLowerCase()}-dsn.algolia.net`;

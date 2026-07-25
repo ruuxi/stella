@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMediaToolHandlers } from "../../../../../runtime/kernel/tools/media.js";
 import {
@@ -47,10 +47,21 @@ import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
+const originalDevStorage =
+  process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE;
+
+beforeEach(() => {
+  process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE = "1";
+});
 
 afterEach(() => {
   tempDirs.cleanup();
   vi.restoreAllMocks();
+  if (originalDevStorage === undefined) {
+    delete process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE;
+  } else {
+    process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE = originalDevStorage;
+  }
 });
 
 const contextFor = (stellaDataDir: string): ToolContext => ({

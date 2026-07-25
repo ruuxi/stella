@@ -2172,6 +2172,7 @@ describe("send_input follow-up description and run rebind", () => {
       conversationId: "conv-1",
       runId: "root-1",
       statusText: "find the booked itinerary",
+      startsAttempt: true,
     });
     expect(getTaskDecoration("thread-1")?.runId).toBe("root-1");
 
@@ -2181,6 +2182,7 @@ describe("send_input follow-up description and run rebind", () => {
       conversationId: "conv-1",
       runId: "root-2",
       statusText: "search for the itinerary email",
+      startsAttempt: true,
     });
     expect(getTaskDecoration("thread-1")).toMatchObject({
       runId: "root-2",

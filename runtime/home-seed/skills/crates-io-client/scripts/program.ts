@@ -13,6 +13,8 @@
  *   bun program.ts versions <name> [--limit N]
  */
 
+export {};
+
 const BASE = "https://crates.io/api/v1";
 // crates.io asks automated clients to identify themselves; an honest UA is the
 // difference between working and being rate-limited.

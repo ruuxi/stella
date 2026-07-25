@@ -387,10 +387,16 @@ describe("stella-browser shared tab group", () => {
       initialWindowUrl: "https://user.example",
     });
     const userWindowId = Array.from(state.windows.keys())[0];
+    const ownerALease = {
+      ownerId: "owner-a",
+      ownerLeaseId: "lease-a",
+      ownerLeaseIssuedAt: 1,
+    };
+    await module.authorizeOwnerLease(ownerALease);
 
     await module.handleTabNew({
       id: "first",
-      ownerId: "owner-a",
+      ...ownerALease,
       url: "https://example.com",
     });
 
@@ -404,7 +410,7 @@ describe("stella-browser shared tab group", () => {
       ),
     ).toBe(true);
 
-    await module.closeOwnerTabs("owner-a");
+    await module.finalizeOwnerTabs(ownerALease);
 
     expect(state.stats.windowsCreated).toBe(0);
     expect(state.windows.size).toBe(1);
@@ -412,9 +418,15 @@ describe("stella-browser shared tab group", () => {
       "https://user.example",
     ]);
 
+    const ownerBLease = {
+      ownerId: "owner-b",
+      ownerLeaseId: "lease-b",
+      ownerLeaseIssuedAt: 2,
+    };
+    await module.authorizeOwnerLease(ownerBLease);
     await module.handleTabNew({
       id: "second",
-      ownerId: "owner-b",
+      ...ownerBLease,
       url: "https://cursor.com",
     });
 

@@ -47,6 +47,7 @@ describe("model-list Electron IPC", () => {
       externalLinkService: {
         assertPrivilegedSender: vi.fn(() => true),
       },
+      getStellaAppDir: vi.fn(() => null),
       getStellaHostRunner: vi.fn(() => null),
     } as never);
 
