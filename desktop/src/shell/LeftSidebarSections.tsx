@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronDown, Eye } from "@/ui/icons";
+import { Eye } from "@/ui/icons";
 import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -488,13 +488,6 @@ const TaskRow = memo(function TaskRow({
                       onClick={() => setFilesExpanded((value) => !value)}
                       aria-expanded={filesExpanded}
                     >
-                      <ChevronDown
-                        size={13}
-                        strokeWidth={2}
-                        aria-hidden="true"
-                        className="chat-workspace-strip__files-toggle-chevron"
-                        data-expanded={filesExpanded ? "true" : undefined}
-                      />
                       <span className="chat-workspace-strip__file-name">
                         {`View ${files.length} ${
                           files.length === 1 ? "file" : "files"
@@ -502,30 +495,41 @@ const TaskRow = memo(function TaskRow({
                       </span>
                     </button>
                   ) : null}
-                  {hasFiles && filesExpanded ? (
-                    <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
-                      {files.map((file) => (
-                        <li
-                          key={file.path}
-                          className="chat-workspace-strip__row"
-                          title={file.path}
-                        >
-                          <button
-                            type="button"
-                            className="chat-workspace-strip__file-button"
-                            onClick={() => onOpenFile(file)}
-                          >
-                            <DisplayTabIcon
-                              kind={displayTabKindForPayload(file.payload)}
-                              size={15}
-                            />
-                            <span className="chat-workspace-strip__file-name">
-                              {basenameOf(file.path)}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                  {hasFiles ? (
+                    // Same always-mounted grid-rows collapse as the row's own
+                    // detail above, so the file list glides open instead of
+                    // popping in when the disclosure toggles.
+                    <div
+                      className="chat-workspace-strip__task-collapse"
+                      data-collapsed={filesExpanded ? undefined : "true"}
+                      inert={!filesExpanded}
+                    >
+                      <div className="chat-workspace-strip__task-collapse-clip">
+                        <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
+                          {files.map((file) => (
+                            <li
+                              key={file.path}
+                              className="chat-workspace-strip__row"
+                              title={file.path}
+                            >
+                              <button
+                                type="button"
+                                className="chat-workspace-strip__file-button"
+                                onClick={() => onOpenFile(file)}
+                              >
+                                <DisplayTabIcon
+                                  kind={displayTabKindForPayload(file.payload)}
+                                  size={15}
+                                />
+                                <span className="chat-workspace-strip__file-name">
+                                  {basenameOf(file.path)}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               ) : null}

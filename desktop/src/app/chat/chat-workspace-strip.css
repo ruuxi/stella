@@ -650,8 +650,18 @@
   border-left: 1px solid var(--border-base);
 }
 
+/* The file list reuses the __task-collapse pair for its expand/collapse so
+   the motion matches the row detail exactly. The always-mounted wrapper
+   still occupies a flex-gap slot in the rail; cancel that gap and let the
+   list carry the spacing inside the clip, where a collapsed state clips it
+   to nothing instead of leaving phantom trailing space. */
+.chat-workspace-strip__task-rail > .chat-workspace-strip__task-collapse {
+  margin-top: -4px;
+}
+
 .chat-workspace-strip__task-files {
   gap: 2px;
+  padding-top: 4px;
 }
 
 .chat-workspace-strip__list {
@@ -722,21 +732,6 @@
   color: var(--text-weak);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
-}
-
-.chat-workspace-strip__files-toggle-chevron {
-  flex-shrink: 0;
-  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.chat-workspace-strip__files-toggle-chevron[data-expanded="true"] {
-  transform: rotate(180deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-workspace-strip__files-toggle-chevron {
-    transition: none;
-  }
 }
 
 .chat-workspace-strip__row-meta {
