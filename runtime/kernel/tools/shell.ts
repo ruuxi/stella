@@ -98,12 +98,44 @@ const WINDOWS_CLI_SHIMS = [
   },
 ] as const;
 
+/**
+ * Which thread started a shell session. Sessions outlive the run that
+ * created them and live in one worker-wide map, so the record has to carry
+ * its own provenance — that's what lets a background command's exit be
+ * delivered back to the agent that started it.
+ */
+export type ShellSessionOwner = {
+  conversationId: string;
+  /** Durable agent thread id. Absent for non-subagent callers. */
+  agentId?: string;
+  agentType?: string;
+};
+
+/** What a caller learns when a background session finally exits. */
+export type ShellExitSnapshot = {
+  sessionId: string;
+  command: string;
+  cwd: string;
+  exitCode: number | null;
+  startedAt: number;
+  completedAt: number;
+  /** Captured output, tail-capped at `MAX_OUTPUT` by the live buffer. */
+  output: string;
+  owner?: ShellSessionOwner;
+};
+
 type ManagedShellRecord = ShellRecord & {
   unreadOutput: string;
   outputVersion: number;
   waiters: Set<() => void>;
+  /**
+   * Persistent exit listeners, distinct from `waiters`: those are one-shot
+   * and fire on any activity, these fire once when the process is gone.
+   */
+  exitWatchers: Set<() => void>;
   child?: SpawnedShell;
   stdinOpen: boolean;
+  owner?: ShellSessionOwner;
   startSnapshot?: FileSnapshot | null;
   externalCandidateSnapshots?: ExternalCandidateSnapshot[];
   producedFilesReported?: boolean;
@@ -143,6 +175,12 @@ type ExternalCandidateSnapshot =
 export const DEFAULT_EXEC_YIELD_MS = 10_000;
 export const DEFAULT_WRITE_STDIN_YIELD_MS = 250;
 const MAX_EXEC_YIELD_MS = 30_000;
+// An empty `write_stdin` is a poll, not an interaction: nobody is waiting on
+// the other side of the pipe, so it can afford to block much longer than a
+// write. Codex sizes the same case at 5s..5min; matching that lets an agent
+// sit out a quiet build inside its turn instead of round-tripping every 30s.
+export const DEFAULT_EMPTY_POLL_YIELD_MS = 5_000;
+const MAX_EMPTY_POLL_YIELD_MS = 5 * 60_000;
 const DEFAULT_EXEC_OUTPUT_TOKENS = 4_000;
 const MAX_SNAPSHOT_FILES = 20_000;
 const SNAPSHOT_IGNORED_DIRS = new Set([
@@ -1114,6 +1152,95 @@ const notifyShellActivity = (record: ManagedShellRecord) => {
   }
 };
 
+const notifyShellExit = (record: ManagedShellRecord) => {
+  const watchers = [...record.exitWatchers];
+  record.exitWatchers.clear();
+  for (const watcher of watchers) {
+    try {
+      watcher();
+    } catch {
+      // A listener must never break the process teardown path.
+    }
+  }
+};
+
+export const readShellExitSnapshot = (
+  state: ShellState,
+  sessionId: string,
+): ShellExitSnapshot | null => {
+  const record = state.shells.get(sessionId);
+  if (!record || record.running) return null;
+  return {
+    sessionId: record.id,
+    command: record.command,
+    cwd: record.cwd,
+    exitCode: record.exitCode,
+    startedAt: record.startedAt,
+    completedAt: record.completedAt ?? Date.now(),
+    output: sanitizeToolVisibleText(record.output),
+    ...(record.owner ? { owner: record.owner } : {}),
+  };
+};
+
+/**
+ * Call `listener` once the session's process is gone, and return a
+ * disposer. Sessions that already exited resolve on the next microtask so
+ * callers never have to special-case the race between "still running when
+ * I checked" and "exited before I subscribed".
+ */
+export const watchShellExit = (
+  state: ShellState,
+  sessionId: string,
+  listener: () => void,
+): (() => void) => {
+  const record = state.shells.get(sessionId);
+  if (!record) return () => {};
+  if (!record.running) {
+    let disposed = false;
+    queueMicrotask(() => {
+      if (!disposed) listener();
+    });
+    return () => {
+      disposed = true;
+    };
+  }
+  record.exitWatchers.add(listener);
+  return () => {
+    record.exitWatchers.delete(listener);
+  };
+};
+
+/**
+ * Every running session an agent thread owns, whichever of its runs started
+ * them. Scoping a thread's background work by owner rather than by "what
+ * the last run touched" is what keeps a job started three turns ago — and
+ * not polled since — from being forgotten.
+ */
+export const listRunningShellSessionsOwnedBy = (
+  state: ShellState,
+  agentId: string,
+): string[] => {
+  const owned: string[] = [];
+  for (const shell of state.shells.values()) {
+    if (!shell.running || shell.owner?.agentId !== agentId) continue;
+    owned.push(shell.id);
+  }
+  return owned;
+};
+
+/** Stamp the calling thread onto a freshly started session. */
+export const setShellOwner = (
+  record: Pick<ShellRecord, "id">,
+  context?: ToolContext,
+): void => {
+  if (!context?.conversationId) return;
+  (record as ManagedShellRecord).owner = {
+    conversationId: context.conversationId,
+    ...(context.agentId ? { agentId: context.agentId } : {}),
+    ...(context.agentType ? { agentType: context.agentType } : {}),
+  };
+};
+
 const waitForShellActivity = async (
   record: ManagedShellRecord,
   observedVersion: number,
@@ -1281,6 +1408,7 @@ export const startShell = (
       unreadOutput: safeLaunchError,
       outputVersion: 1,
       waiters: new Set(),
+      exitWatchers: new Set(),
       stdinOpen: false,
       startSnapshot,
       externalCandidateSnapshots,
@@ -1310,6 +1438,7 @@ export const startShell = (
     unreadOutput: "",
     outputVersion: 0,
     waiters: new Set(),
+    exitWatchers: new Set(),
     stdinOpen: Boolean(child.stdin),
     startSnapshot,
     externalCandidateSnapshots,
@@ -1348,6 +1477,7 @@ export const startShell = (
     record.completedAt = Date.now();
     record.stdinOpen = false;
     notifyShellActivity(record);
+    notifyShellExit(record);
     onActivity?.(record);
     if (onClose) {
       onClose();
@@ -1359,6 +1489,7 @@ export const startShell = (
     record.completedAt = Date.now();
     record.stdinOpen = false;
     notifyShellActivity(record);
+    notifyShellExit(record);
     onActivity?.(record);
     if (onClose) {
       onClose();
@@ -1499,12 +1630,13 @@ const resolveManagedShellCommand = (
 const resolveExecYieldTime = (
   value: unknown,
   defaultMs: number = DEFAULT_EXEC_YIELD_MS,
+  maxMs: number = MAX_EXEC_YIELD_MS,
 ): number => {
   const raw =
     typeof value === "number" && Number.isFinite(value)
       ? Math.floor(value)
       : defaultMs;
-  return Math.max(0, Math.min(raw, MAX_EXEC_YIELD_MS));
+  return Math.max(0, Math.min(raw, maxMs));
 };
 
 const buildExecToolPayload = (
@@ -1621,6 +1753,7 @@ export const handleExecCommand = async (
     beforeSideEffects.externalCandidateSnapshots,
     emitUpdate,
   );
+  setShellOwner(record, context);
   const observedVersion = record.outputVersion;
   try {
     await waitForShellActivity(
@@ -1697,7 +1830,19 @@ export const handleWriteStdin = async (
     await waitForShellActivity(
       record,
       observedVersion,
-      resolveExecYieldTime(args.yield_time_ms, DEFAULT_WRITE_STDIN_YIELD_MS),
+      chars
+        ? resolveExecYieldTime(args.yield_time_ms, DEFAULT_WRITE_STDIN_YIELD_MS)
+        : // An empty write is a pure poll on a silent process, so it gets a
+          // far higher ceiling than an interactive write — matching Codex,
+          // whose background-terminal poll budget is 5 minutes. The wait
+          // still returns the instant the process emits anything or exits,
+          // so a chatty build is unaffected; this only stops a quiet
+          // 10-minute job from costing twenty round-trips.
+          resolveExecYieldTime(
+            args.yield_time_ms,
+            DEFAULT_EMPTY_POLL_YIELD_MS,
+            MAX_EMPTY_POLL_YIELD_MS,
+          ),
       signal,
     );
   } catch (error) {
@@ -1773,6 +1918,7 @@ export const handleBash = async (
       beforeSideEffects.rootSnapshot,
       beforeSideEffects.externalCandidateSnapshots,
     );
+    setShellOwner(record, context);
     const extracted = extractOfficePreviewRef(record.output || "");
     return {
       result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(

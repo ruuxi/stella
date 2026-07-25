@@ -1,9 +1,12 @@
 /**
- * `WakeWhen` / `WakeCancel` — durable waits that survive the end of a turn.
+ * `WakeWhen` / `WakeCancel` — the escape hatch for waits that are not a
+ * command exiting.
  *
- * Available to every agent with a shell, because every agent with a shell
- * can start something that outlasts its turn. See `tools/wake.ts` for why
- * the runtime has to own the wait.
+ * The common case needs no tool: a long `exec_command` left running at turn
+ * end is watched by the runtime and wakes the thread on exit (see
+ * `runner/background-exit-wake.ts`). This covers the rest — a file
+ * appearing, a remote job flipping to done, an endpoint going healthy —
+ * where there is no local process whose exit means "ready".
  */
 
 import { handleWakeCancel, handleWakeWhen } from "../wake.js";
@@ -17,9 +20,9 @@ export const createWakeTools = (options: WakeToolOptions): ToolDefinition[] => [
   {
     name: "WakeWhen",
     description:
-      "Wait on a long external event across turn boundaries. Registers a check with the runtime, which polls it and resumes you — in this thread, with your history — the moment it passes. Use this instead of leaving a background watcher running and ending your turn: processes you spawn keep running, but nothing they print can start a new turn, so you would never be resumed. Prefer finishing short waits inside the current turn; reach for WakeWhen when the wait is long enough that holding the turn open is wasteful.",
+      "Wait across turn boundaries on something that is NOT a local command finishing — a file appearing, a remote job reporting done, an endpoint going healthy. Registers a check with the runtime, which polls it from outside your session and resumes you, in this thread with your history, when it passes or times out. You do not need this to wait on a command you started: an exec_command session still running when your turn ends is already watched, and its exit wakes you automatically.",
     promptSnippet:
-      "Arm a runtime-owned wake for a long external event, then end your turn",
+      "Wait on a non-process condition (file, remote status) across turns",
     parameters: {
       type: "object",
       properties: {

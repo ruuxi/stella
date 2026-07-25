@@ -54,6 +54,10 @@ import type {
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
+import {
+  createBackgroundExitWake,
+  writeBackgroundExitLog,
+} from "./background-exit-wake.js";
 import { ensureDreamMemoryLayout } from "../memory/dream-storage.js";
 import {
   isRecallNoMatchBrief,
@@ -797,6 +801,7 @@ export const createRunnerContext = ({
       isInitialized: false,
       initializationPromise: null,
       localAgentManager: null,
+      backgroundExitWake: null,
       activeOrchestratorRunId: null,
       activeOrchestratorConversationId: null,
       activeOrchestratorUiVisibility: "visible",
@@ -813,6 +818,38 @@ export const createRunnerContext = ({
     },
     hookEmitter,
     toolHost,
+  });
+
+  // Needs both halves: the tool host owns the shell sessions, the agent
+  // manager owns the threads a wake resumes. Both are reachable now, so the
+  // wake is wired here rather than deferred to initialization.
+  context.state.backgroundExitWake = createBackgroundExitWake({
+    watchShellExit: toolHost.watchShellExit,
+    readShellExitSnapshot: toolHost.readShellExitSnapshot,
+    getThreadStatus: async (agentId) =>
+      (await context.state.localAgentManager?.getAgent(agentId))?.status,
+    writeExitLog: async (sessionId, contents) =>
+      await writeBackgroundExitLog(stellaDataDir, sessionId, contents),
+    deliver: async ({ conversationId, agentId, text }) => {
+      const manager = context.state.localAgentManager;
+      if (!manager) return false;
+      // Same door as `send_input`: rehydrates an evicted or finished thread
+      // with its own history instead of starting a stranger.
+      const result = await manager.sendAgentMessage(
+        agentId,
+        text,
+        "orchestrator",
+        {
+          deliveryKind: "external-input",
+        },
+      );
+      if (result.delivered) {
+        console.info(
+          `[background-wake] resumed thread ${agentId} (conversation ${conversationId}) on background command exit`,
+        );
+      }
+      return result.delivered;
+    },
   });
 
   return context;

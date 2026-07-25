@@ -365,13 +365,16 @@ const hasShellToolGuidance = (context: LocalAgentContext): boolean => {
 };
 
 /**
- * Runtime fact, not persona: an agent's turn is the only place its own code
- * runs. Background children it leaves behind keep running, but nothing they
- * print can start a new turn, so "I'll report back when X lands" is a
- * promise the runtime cannot keep — the thread just stops. This has cost
- * real money (a GPU pod idle-billing while its thread waited on a watcher
- * whose output went nowhere), so it's stated wherever an agent has a shell
- * rather than left to each agent's prompt body.
+ * Runtime facts about waiting, stated wherever an agent has a shell rather
+ * than left to each agent's prompt body.
+ *
+ * The load-bearing fact is that an `exec_command` session outlives the turn
+ * that started it AND now reports back: the runtime watches sessions left
+ * running at turn end and resumes the thread when they exit. Agents were
+ * writing checks the runtime couldn't cash ("I'll report back when the
+ * benchmark lands") and threads were stopping forever — one left a GPU pod
+ * idle-billing for hours. Now that promise is keepable, but only for
+ * sessions the tool host can see, so the boundary has to be explicit too.
  */
 const buildBackgroundWaitPrompt = (
   context: LocalAgentContext,
@@ -380,17 +383,18 @@ const buildBackgroundWaitPrompt = (
     return null;
   }
   const lines = [
-    "Waiting on long external events:",
-    "- Ending your turn does not pause you; it ends you. Background watchers, `nohup`'d monitors, and `sleep && echo done` chains keep running after the turn, but their output reaches nobody and cannot start a new turn. Nothing will resume you.",
-    '- So never end a turn with "I\'ll report back when X finishes". Either complete the wait inside this turn — foreground-poll with `exec_command` (check, sleep, check) and report what you actually saw — or arm a wait the runtime owns before you stop.',
+    "Long-running commands:",
+    "- A command still running when `exec_command` yields keeps running after your turn ends, and the runtime watches it for you. When it exits you are resumed in this thread, with your history, holding its command, exit code, and output. So you may start a long job, end your turn, and genuinely be woken when it finishes — several exits close together arrive as one wake.",
+    "- This covers sessions `exec_command` gives you a `session_id` for. It does NOT cover a process you detach from that session (`nohup … &`, `disown`, a daemon that forks away): the session exits immediately, and the thing you actually care about is invisible to the runtime. Run long work in the foreground of its own session and let it hold the session open.",
+    "- For a short wait, prefer finishing in-turn: poll with `write_stdin` and empty `chars`, which blocks until the process prints something or exits (up to 5 minutes per call). Only end your turn when the wait is long enough that holding it open would be wasteful.",
   ];
   if (hasToolGuidance(context, ["WakeWhen"])) {
     lines.push(
-      "- `WakeWhen` is that runtime-owned wait: it polls your condition from outside your session and resumes this thread, with your history, when it passes or when it times out. Use it when the wait is long enough that holding the turn open would be wasteful.",
+      "- `WakeWhen` covers waits that are not a command exiting — a file appearing, a remote job flipping to done, a deploy going healthy. It polls a shell check from outside your session and resumes you when it passes or times out. Reach for it only when process exit can't express the wait.",
     );
   }
   lines.push(
-    "- If you can do neither, say plainly that the wait is unattended and hand over the exact command to check it. An honest handoff beats a promise nobody can keep.",
+    "- Never claim you'll report back on something outside these paths. If a wait is genuinely unattended, say so plainly and hand over the exact command to check it.",
   );
   return lines.join("\n");
 };

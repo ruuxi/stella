@@ -41,6 +41,9 @@ import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 import {
   createShellState,
   drainCompletedProducedFiles,
+  listRunningShellSessionsOwnedBy,
+  readShellExitSnapshot,
+  watchShellExit,
   type ShellState,
 } from "./shell.js";
 import { createStateContext, type StateContext } from "./state.js";
@@ -482,7 +485,7 @@ export const createToolHost = ({
      * Session ids still running, optionally scoped to the sessions a run
      * touched. Shells outlive the run that started them by design (see the
      * shutdown comment above), so a non-empty answer at run teardown means
-     * the agent left something running that nothing will report back from.
+     * the agent left work running past the end of its turn.
      */
     listRunningShellSessionIds: (sessionIds?: string[]) => {
       const scope = sessionIds ? new Set(sessionIds) : null;
@@ -494,6 +497,15 @@ export const createToolHost = ({
       }
       return running;
     },
+    /** Running sessions owned by one agent thread, across all of its runs. */
+    listRunningShellSessionsOwnedBy: (agentId: string) =>
+      listRunningShellSessionsOwnedBy(shellState, agentId),
+    /** Subscribe to one session's exit. Returns a disposer. */
+    watchShellExit: (sessionId: string, listener: () => void) =>
+      watchShellExit(shellState, sessionId, listener),
+    /** Terminal facts about an exited session; null while it still runs. */
+    readShellExitSnapshot: (sessionId: string) =>
+      readShellExitSnapshot(shellState, sessionId),
     // Pull deliverables from background/long-running shell sessions that
     // finished after their last poll (so their produced files were never
     // drained inline) into the agent-completed rollup. Optionally scoped to

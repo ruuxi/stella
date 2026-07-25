@@ -41,7 +41,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("standard POSIX shell commands");
   });
 
-  it("warns every shell-capable agent that background waits die with the turn", () => {
+  it("tells every shell-capable agent that a long command wakes it on exit", () => {
     const prompt = buildSystemPrompt({
       systemPrompt: "system",
       dynamicContext: "",
@@ -50,13 +50,16 @@ describe("buildSystemPrompt", () => {
       toolsAllowlist: ["exec_command", "apply_patch"],
     });
 
-    expect(prompt).toContain("Ending your turn does not pause you");
-    expect(prompt).toContain("Nothing will resume you");
+    expect(prompt).toContain("the runtime watches it for you");
+    expect(prompt).toContain("you are resumed in this thread");
+    // The coverage boundary is the whole point of saying it out loud.
+    expect(prompt).toContain("nohup");
+    expect(prompt).toContain("invisible to the runtime");
     // No WakeWhen in the allowlist, so don't advertise it.
-    expect(prompt).not.toContain("`WakeWhen` is that runtime-owned wait");
+    expect(prompt).not.toContain("`WakeWhen` covers waits");
   });
 
-  it("points at WakeWhen only when the agent actually has it", () => {
+  it("mentions WakeWhen only when the agent has it, and only as the exception", () => {
     const prompt = buildSystemPrompt({
       systemPrompt: "system",
       dynamicContext: "",
@@ -65,7 +68,10 @@ describe("buildSystemPrompt", () => {
       toolsAllowlist: ["exec_command", "WakeWhen"],
     });
 
-    expect(prompt).toContain("`WakeWhen` is that runtime-owned wait");
+    expect(prompt).toContain(
+      "`WakeWhen` covers waits that are not a command exiting",
+    );
+    expect(prompt).toContain("only when process exit can't express the wait");
   });
 
   it("stays quiet for agents that cannot start anything long-running", () => {
@@ -77,7 +83,7 @@ describe("buildSystemPrompt", () => {
       toolsAllowlist: ["Read", "Grep"],
     });
 
-    expect(prompt).not.toContain("Ending your turn does not pause you");
+    expect(prompt).not.toContain("Long-running commands:");
   });
 });
 

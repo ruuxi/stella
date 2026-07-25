@@ -461,6 +461,9 @@ export const createRuntimeInitialization = (
     context.state.conversationCallbacks.clear();
     context.state.runCallbacksByRunId.clear();
     void context.selfModHmrController?.forceResumeAll();
+    // Before the tool host kills the shells: a wake fired for a session the
+    // shutdown itself is terminating would be noise, not news.
+    context.state.backgroundExitWake?.dispose();
     await context.toolHost.shutdown();
     // Drain any in-flight background compactions so SQLite writes
     // complete before the worker tears down its store handle. Bounded

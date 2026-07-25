@@ -4,6 +4,7 @@ import type { ImageCapTarget } from "../../ai/utils/image-caps.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type { OrchestratorSession } from "../agent-runtime/orchestrator-session.js";
 import type { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
+import type { BackgroundExitWake } from "./background-exit-wake.js";
 import type {
   RuntimeAssistantMessageEvent,
   RuntimeEndEvent,
@@ -350,6 +351,12 @@ export type RunnerState = {
   isInitialized: boolean;
   initializationPromise: Promise<void> | null;
   localAgentManager: LocalAgentManager | null;
+  /**
+   * Watches `exec_command` sessions a finished run left running and wakes
+   * the owning thread when they exit. Null until the runner is initialized
+   * (it needs both the tool host and the agent manager).
+   */
+  backgroundExitWake: BackgroundExitWake | null;
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";
@@ -461,6 +468,14 @@ export type RunnerContext = {
     >;
     /** Shell sessions still running, optionally scoped to a run's sessions. */
     listRunningShellSessionIds: (sessionIds?: string[]) => string[];
+    /** Running sessions owned by one agent thread, across all of its runs. */
+    listRunningShellSessionsOwnedBy: (agentId: string) => string[];
+    /** Subscribe to one shell session's exit. Returns a disposer. */
+    watchShellExit: (sessionId: string, listener: () => void) => () => void;
+    /** Terminal facts about an exited session; null while it still runs. */
+    readShellExitSnapshot: (
+      sessionId: string,
+    ) => import("../tools/shell.js").ShellExitSnapshot | null;
     killAllShells: () => void;
     killShell: (sessionId: string) => Promise<void> | void;
     killShellsByPort: (port: number) => void;

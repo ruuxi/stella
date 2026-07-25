@@ -45,34 +45,54 @@ import {
 } from "../self-mod/feature-namer.js";
 import { runLightTextCompletion } from "../agent-runtime/light-completion.js";
 import { resolveRunnerRecallLlmRoute } from "./model-selection.js";
+import type { BackgroundExitWake } from "./background-exit-wake.js";
 
 /**
- * Diagnostic for the "agent promised to report back and never did" failure.
+ * Hand a finished run's still-running `exec_command` sessions to the
+ * background-exit wake, so whatever the agent left running reports back to
+ * it when it finishes.
  *
- * Shells outlive the run that started them on purpose, so a background
- * watcher an agent leaves behind keeps running — but nothing it prints can
- * start a new turn, and the thread it was supposed to wake just stops. The
- * agent has no way to notice, so the runtime says it out loud. `WakeWhen`
- * is the supported way to wait across a turn boundary.
+ * Shells outlive the run that started them on purpose. Before this, that
+ * meant a build or benchmark left running past the end of a turn finished
+ * into a void: nothing it printed could start a new turn, and the thread
+ * just stopped. Arming here is what makes "I'll check on it when it's
+ * done" something the runtime can actually deliver.
+ *
+ * A run with no durable thread id has nothing to resume, so it only gets
+ * the warning.
  */
-const warnOnAbandonedBackgroundShells = (args: {
+const armBackgroundExitWake = (args: {
   agentType: string;
   agentId?: string;
   conversationId: string;
-  sessionIds: string[];
+  touchedSessionIds: string[];
+  interrupted: boolean;
   listRunningShellSessionIds: (sessionIds?: string[]) => string[];
+  listRunningShellSessionsOwnedBy: (agentId: string) => string[];
+  backgroundExitWake?: BackgroundExitWake;
 }): void => {
-  if (args.sessionIds.length === 0) return;
   try {
-    const running = args.listRunningShellSessionIds(args.sessionIds);
+    // Scope by owner, not by what this run happened to touch: a benchmark
+    // started two turns ago and never polled since is exactly the session
+    // whose exit the thread is waiting on.
+    const running = args.agentId
+      ? args.listRunningShellSessionsOwnedBy(args.agentId)
+      : args.listRunningShellSessionIds(args.touchedSessionIds);
     if (running.length === 0) return;
+    const armedIds = args.backgroundExitWake?.arm({
+      conversationId: args.conversationId,
+      ...(args.agentId ? { agentId: args.agentId } : {}),
+      runningSessionIds: running,
+      interrupted: args.interrupted,
+    });
+    if (armedIds?.length) return;
     console.warn(
       `[background-wait] ${args.agentType} run ended with ${running.length} shell session(s) still running ` +
         `(conversation ${args.conversationId}${args.agentId ? `, thread ${args.agentId}` : ""}): ${running.join(", ")}. ` +
-        "Nothing they print can resume this thread — a wait that must survive the turn belongs in WakeWhen.",
+        "No exit wake was armed, so nothing they print will resume this thread.",
     );
   } catch {
-    // Diagnostics must never break run teardown.
+    // Diagnostics and best-effort arming must never break run teardown.
   }
 };
 
@@ -754,6 +774,14 @@ export const createAgentOrchestration = (
         context.state.conversationCallbacks.get(conversationId) ??
         null;
 
+      // This thread is awake again, so it can watch its own leftovers. Drop
+      // any arm from its previous run: a background exit landing now belongs
+      // to a live turn, not to a wake that would re-enter a thread already
+      // running. Teardown re-arms whatever is still going.
+      if (agentId) {
+        context.state.backgroundExitWake?.disarm(agentId);
+      }
+
       if (shouldAttachSelfModLifecycle) {
         // Register the run with the contention tracker before any writes can
         // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
@@ -1245,13 +1273,19 @@ export const createAgentOrchestration = (
           await killGuardedShellSessions();
         }
         await releaseGuardedShellSessions();
-        warnOnAbandonedBackgroundShells({
+        armBackgroundExitWake({
           agentType,
           agentId,
           conversationId,
-          sessionIds: [...touchedShellSessions],
+          touchedSessionIds: [...touchedShellSessions],
+          interrupted: subagentInterrupted,
           listRunningShellSessionIds:
             context.toolHost.listRunningShellSessionIds,
+          listRunningShellSessionsOwnedBy:
+            context.toolHost.listRunningShellSessionsOwnedBy,
+          ...(context.state.backgroundExitWake
+            ? { backgroundExitWake: context.state.backgroundExitWake }
+            : {}),
         });
         if (shouldAttachSelfModLifecycle) {
           // The finalize/cancel hooks below own the entire apply pipeline
