@@ -154,6 +154,78 @@ export const isMobileBridgeSender = (
   event.senderFrame?.url === MOBILE_BRIDGE_SENDER_URL ||
   event.sender.getURL() === MOBILE_BRIDGE_SENDER_URL;
 
+/**
+ * Subdirectories of `~/.stella` the phone may read from directly.
+ *
+ * These hold artifacts Stella itself produced and already renders in the UI
+ * (generated media, `outputs/<app>/…` result files). The mirrored desktop UI
+ * on the phone is the *same* bundle, so its media viewers — and user apps that
+ * read their own output directory — need them to load at all.
+ *
+ * Everything else under `~/.stella` stays off-limits: credential stores like
+ * `llm_credentials.json` and `connectors/.credentials.json` live at the root
+ * and in sibling directories, and `.json` is an allowed display extension.
+ */
+const MOBILE_READABLE_DATA_SUBDIRS = ["outputs", "media"] as const;
+
+/**
+ * Marks an error as "this was refused because the caller is the phone, not
+ * because anything is broken". The phone's shim matches this prefix to show a
+ * visible "not available in phone view" notice, so a caller that swallows the
+ * rejection still degrades loudly instead of rendering a false empty state.
+ * Keep in sync with `REMOTE_VIEW_DENIAL_PREFIX` in the mobile shim.
+ */
+export const REMOTE_VIEW_DENIAL_PREFIX = "Not available in phone view: ";
+
+/** True when `candidate` is `base` itself or sits underneath it. */
+const isPathInside = (candidate: string, base: string): boolean =>
+  candidate === base || candidate.startsWith(base + path.sep);
+
+/**
+ * Resolves the deepest existing ancestor of `target` and re-appends the part
+ * that does not exist yet.
+ *
+ * A plain `realpath` is not enough on its own: it throws for a file that has
+ * not been written yet, and the caller still needs those to reach the handler's
+ * soft "missing" result rather than being refused. Resolving the ancestor also
+ * normalizes symlinked parents (on macOS the temp and home trees sit behind
+ * `/var` -> `/private/var`), which a lexical comparison would get wrong.
+ */
+const resolveThroughSymlinks = async (target: string): Promise<string> => {
+  let current = target;
+  const trailing: string[] = [];
+  // Bounded by the path depth; `path.dirname` is a fixed point at the root.
+  for (;;) {
+    try {
+      return path.join(await fs.realpath(current), ...trailing.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return target;
+      trailing.push(path.basename(current));
+      current = parent;
+    }
+  }
+};
+
+/**
+ * True when the phone may read `resolvedPath` without a conversation.
+ *
+ * Symlinks are resolved before the containment check so a link planted inside
+ * `outputs/` (e.g. by a prompt-injected agent) can't be used to read a
+ * credential file that the extension allowlist would otherwise permit.
+ */
+export const isMobileReadableStellaPath = async (
+  resolvedPath: string,
+  stellaDataDir: string | null,
+): Promise<boolean> => {
+  if (!stellaDataDir) return false;
+  const realPath = await resolveThroughSymlinks(resolvedPath);
+  const realDataDir = await resolveThroughSymlinks(path.resolve(stellaDataDir));
+  return MOBILE_READABLE_DATA_SUBDIRS.some((subdir) =>
+    isPathInside(realPath, path.join(realDataDir, subdir)),
+  );
+};
+
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
   const requireStellaDataDir = () => {
     const stellaDataDir = options.getStellaDataDir();
@@ -181,26 +253,36 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
 
       const resolved = path.resolve(requestedPath);
       if (isMobileBridgeSender(event)) {
-        const conversationId =
-          typeof payload?.conversationId === "string"
-            ? payload.conversationId.trim()
-            : "";
-        if (!conversationId) {
-          throw new Error(
-            "display:readFile from mobile requires a conversationId.",
-          );
-        }
-        if (!options.localChatHistoryService) {
-          throw new Error("Local chat file history is unavailable.");
-        }
-        const { files } = options.localChatHistoryService.listFiles({
-          conversationId,
-          limit: 500,
-        });
-        if (!isDisplayReadPathInLocalChatFiles(files, resolved)) {
-          throw new Error(
-            "display:readFile from mobile is limited to recent files Stella displayed for the active conversation.",
-          );
+        // Stella's own artifact directories are readable without a
+        // conversation: apps rendered in the phone's mirrored UI (and the
+        // shell's media viewers) read their result files directly, and have
+        // no conversation to attribute the read to.
+        const isStellaArtifact = await isMobileReadableStellaPath(
+          resolved,
+          options.getStellaDataDir(),
+        );
+        if (!isStellaArtifact) {
+          const conversationId =
+            typeof payload?.conversationId === "string"
+              ? payload.conversationId.trim()
+              : "";
+          if (!conversationId) {
+            throw new Error(
+              `${REMOTE_VIEW_DENIAL_PREFIX}this file is outside Stella's own outputs and media, and no conversation was supplied to check it against.`,
+            );
+          }
+          if (!options.localChatHistoryService) {
+            throw new Error("Local chat file history is unavailable.");
+          }
+          const { files } = options.localChatHistoryService.listFiles({
+            conversationId,
+            limit: 500,
+          });
+          if (!isDisplayReadPathInLocalChatFiles(files, resolved)) {
+            throw new Error(
+              `${REMOTE_VIEW_DENIAL_PREFIX}reading this file needs your computer. Only Stella's own outputs and files from the current conversation can load here.`,
+            );
+          }
         }
       }
       const extension = path.extname(resolved).toLowerCase();

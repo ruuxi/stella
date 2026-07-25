@@ -9,6 +9,7 @@ import {
   isMobileBridgeEventChannel,
   isMobileBridgeRequestChannel,
 } from "./bridge-policy.js";
+import { encodeBridgeBinaryValues } from "./binary-codec.js";
 import type { MobileBridgeBootstrap } from "./bootstrap-payload.js";
 import {
   BRIDGE_CRYPTO_PROTOCOL,
@@ -25,6 +26,7 @@ import {
   type BridgeReplayGuard,
 } from "./crypto.js";
 import { getHandler, getOnHandlers } from "./handler-registry.js";
+import { adaptLegacyMobileArgs } from "./legacy-args.js";
 import { probeBridgePublicHealth } from "./public-health.js";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
@@ -613,6 +615,7 @@ export class MobileBridgeService {
       }
       return;
     }
+    const encodedData = encodeBridgeBinaryValues(data);
     for (const [ws, client] of this.wsClients) {
       if (
         client.authenticated &&
@@ -620,7 +623,11 @@ export class MobileBridgeService {
         ws.readyState === WebSocket.OPEN
       ) {
         ws.send(
-          this.serializeWsMessage(client, { type: "event", channel, data }),
+          this.serializeWsMessage(client, {
+            type: "event",
+            channel,
+            data: encodedData,
+          }),
         );
       }
     }
@@ -1144,14 +1151,17 @@ export class MobileBridgeService {
       const decodedBody = encryptedRequest
         ? this.decryptBridgePayload(session, body.envelope)
         : body;
+      const requestArgs = (decodedBody as { args?: unknown }).args ?? [];
       const dispatchResult = await dispatchCapturedIpc(
         channel,
-        (decodedBody as { args?: unknown }).args ?? [],
+        Array.isArray(requestArgs)
+          ? adaptLegacyMobileArgs(channel, requestArgs)
+          : requestArgs,
         this.broadcastToMobile,
         { swallowEventHandlerErrors: true },
       );
       if (dispatchResult.kind === "handle") {
-        const { result } = dispatchResult;
+        const result = encodeBridgeBinaryValues(dispatchResult.result);
         this.sendMaybeEncryptedJson(
           res,
           200,
@@ -1363,13 +1373,16 @@ export class MobileBridgeService {
     args: unknown[],
   ) {
     try {
+      const resolvedArgs = this.resolveUploadedAttachments(channel, args);
       const dispatchResult = await dispatchCapturedIpc(
         channel,
-        this.resolveUploadedAttachments(channel, args),
+        Array.isArray(resolvedArgs)
+          ? adaptLegacyMobileArgs(channel, resolvedArgs)
+          : resolvedArgs,
         this.broadcastToMobile,
       );
       if (dispatchResult.kind === "handle") {
-        const { result } = dispatchResult;
+        const result = encodeBridgeBinaryValues(dispatchResult.result);
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(
             this.serializeWsMessage(client, { type: "response", id, result }),

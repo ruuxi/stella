@@ -4,6 +4,7 @@ import {
   IPC_AGENT_GET_ACTIVE_RUN,
   IPC_AGENT_GET_SESSION_STARTED_AT,
   IPC_AGENT_HEALTH_CHECK,
+  IPC_AGENT_ONE_SHOT_COMPLETION,
   IPC_AGENT_RESUME,
   IPC_AGENT_SELF_MOD_HMR_STATE,
   IPC_AGENT_SEND_INPUT,
@@ -285,6 +286,11 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   event("voice.onRuntimeState", IPC_VOICE_RUNTIME_STATE),
 
   invoke("agent.healthCheck", IPC_AGENT_HEALTH_CHECK),
+  // The renderer's LLM proxy. Apps rendered in the phone's mirrored UI call
+  // this directly; without it the shim leaves the method undefined and they
+  // fail with a TypeError rather than a bridged call. `agent.startChat` below
+  // is already exposed and is strictly more capable.
+  invoke("agent.oneShotCompletion", IPC_AGENT_ONE_SHOT_COMPLETION),
   invoke("agent.getActiveRun", IPC_AGENT_GET_ACTIVE_RUN),
   invoke("agent.getAppSessionStartedAt", IPC_AGENT_GET_SESSION_STARTED_AT),
   invoke("agent.startChat", IPC_AGENT_START_CHAT),
