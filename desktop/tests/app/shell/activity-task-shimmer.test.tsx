@@ -153,25 +153,27 @@ describe("left-sidebar Activity shimmer", () => {
     expect(container.textContent).toContain("Apply Rahul's follow-up");
   });
 
-  it("bounds simultaneous top-level Activity motion to one owner", async () => {
+  it("animates every simultaneously running top-level Activity row", async () => {
     await render(
       <>
-        <ActivityTaskShimmer
-          task={task({ id: "general", agentType: "general" })}
-          text="General work"
-          isTopLevel
-        />
-        <ActivityTaskShimmer
-          task={task({ id: "manager", agentType: "manager" })}
-          text="Manager work"
-          isTopLevel
-        />
+        {Array.from({ length: 10 }, (_, index) => (
+          <ActivityTaskShimmer
+            key={index}
+            task={task({
+              id: `agent-${index}`,
+              agentType: index % 3 === 0 ? "manager" : "general",
+            })}
+            text={`Concurrent work ${index}`}
+            isTopLevel
+          />
+        ))}
       </>,
     );
 
     expect(
       container.querySelectorAll(".activity-task-shimmer .text-shimmer__sweep"),
-    ).toHaveLength(1);
+    ).toHaveLength(10);
+    expect(animate).toHaveBeenCalledTimes(20);
   });
 
   it.each(["completed", "error", "canceled"] as const)(

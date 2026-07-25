@@ -33,6 +33,18 @@ let environmentSnapshot = readEnvironment();
 const environmentListeners = new Set<() => void>();
 let stopEnvironmentListeners: (() => void) | null = null;
 
+const getEnvironmentSnapshot = () => {
+  const next = readEnvironment();
+  if (
+    next.documentVisible !== environmentSnapshot.documentVisible ||
+    next.reducedMotion !== environmentSnapshot.reducedMotion ||
+    next.windowFocused !== environmentSnapshot.windowFocused
+  ) {
+    environmentSnapshot = next;
+  }
+  return environmentSnapshot;
+};
+
 const syncEnvironment = () => {
   const next = readEnvironment();
   if (
@@ -149,16 +161,14 @@ export function useContinuousAnimationGate<T extends HTMLElement>({
 }: UseContinuousAnimationGateOptions<T>): boolean {
   const environment = useSyncExternalStore(
     subscribeToAnimationEnvironment,
-    () => environmentSnapshot,
+    getEnvironmentSnapshot,
     () => ({
       documentVisible: true,
       reducedMotion: false,
       windowFocused: true,
     }),
   );
-  const [elementVisible, setElementVisible] = useState(
-    () => typeof IntersectionObserver === "undefined",
-  );
+  const [elementVisible, setElementVisible] = useState(false);
 
   useEffect(() => {
     if (!active) {

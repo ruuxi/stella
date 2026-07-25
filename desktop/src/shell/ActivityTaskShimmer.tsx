@@ -1,14 +1,12 @@
 import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 
-export const LEFT_SIDEBAR_ACTIVITY_SHIMMER_GROUP = "left-sidebar-activity";
-
 export const isTopLevelActivityShimmerEligible = (
   task: Pick<TaskItem, "status">,
   isTopLevel: boolean,
 ): boolean => isTopLevel && task.status === "running";
 
-/** One bounded shimmer owner for visible, running top-level Activity rows. */
+/** Shimmer every visible, running top-level Activity row. */
 export function ActivityTaskShimmer({
   task,
   text,
@@ -24,7 +22,6 @@ export function ActivityTaskShimmer({
       text={text}
       durationMs={2000}
       className="activity-task-shimmer"
-      exclusiveGroup={LEFT_SIDEBAR_ACTIVITY_SHIMMER_GROUP}
     />
   );
 }
