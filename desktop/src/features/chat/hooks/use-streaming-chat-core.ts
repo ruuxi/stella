@@ -13,6 +13,7 @@ import {
   toDisplayAttachments,
 } from '../streaming/message-context'
 import { toPastedTextDescriptor } from '../lib/paste-context'
+import { getComposerAppSelections } from '../composer-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
   combineQueuedSendPayloads,
@@ -55,7 +56,12 @@ const buildContextMessageMetadata = (
   chatContext: SendMessageArgs['chatContext'],
   base?: MessageMetadata,
 ): MessageMetadata | undefined => {
-  const appSelectionLabel = chatContext?.appSelection?.label?.trim()
+  const appSelectionLabels = getComposerAppSelections(chatContext)
+    .map((selection) => selection.label?.trim() ?? '')
+    .filter((label) => label.length > 0)
+  // Joined singular kept for legacy single-slot consumers.
+  const appSelectionLabel =
+    appSelectionLabels.length > 0 ? appSelectionLabels.join(', ') : undefined
   const activityLabel = chatContext?.activity?.label?.trim()
   const pastedTexts = (chatContext?.pastedTexts ?? [])
     .map((text) => text?.trim() ?? '')
@@ -70,6 +76,7 @@ const buildContextMessageMetadata = (
     context: {
       ...(base?.context ?? {}),
       ...(appSelectionLabel ? { appSelectionLabel } : {}),
+      ...(appSelectionLabels.length > 0 ? { appSelectionLabels } : {}),
       ...(activityLabel ? { activityLabel } : {}),
       ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
     },

@@ -385,7 +385,9 @@ type UserRowProps = {
 export const UserMessageRow = memo(
   function UserMessageRow({ row }: UserRowProps) {
     const { text, windowLabel, attachments, channelEnvelope } = row;
-    const appSelectionLabel = row.appSelectionLabel?.trim();
+    const appSelectionLabels = (row.appSelectionLabels ?? [])
+      .map((label) => label.trim())
+      .filter((label) => label.length > 0);
     const activityLabel = row.activityLabel?.trim();
     const pastedTexts = row.pastedTexts ?? [];
     const windowPreviewImageUrl = sanitizeAttachmentImageUrl(
@@ -407,12 +409,12 @@ export const UserMessageRow = memo(
         ),
       });
     }
-    if (appSelectionLabel) {
+    appSelectionLabels.forEach((label, index) => {
       chips.push({
-        key: "app-selection",
-        node: <ContextPill kind="app-selection" label={appSelectionLabel} />,
+        key: `app-selection-${index}`,
+        node: <ContextPill kind="app-selection" label={label} />,
       });
-    }
+    });
     if (activityLabel) {
       chips.push({
         key: "activity",

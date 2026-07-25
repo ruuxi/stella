@@ -382,13 +382,22 @@ const mapArtifactsEqual = (
   return true;
 };
 
+const appSelectionLabelsEqual = (
+  a: UserRowViewModel["appSelectionLabels"],
+  b: UserRowViewModel["appSelectionLabels"],
+): boolean => {
+  if (a === b) return true;
+  if ((a?.length ?? 0) !== (b?.length ?? 0)) return false;
+  return (a ?? []).every((label, index) => label === b?.[index]);
+};
+
 const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   a.id === b.id &&
   a.text === b.text &&
   Boolean(a.justSent) === Boolean(b.justSent) &&
   (a.windowLabel ?? null) === (b.windowLabel ?? null) &&
   (a.windowPreviewImageUrl ?? null) === (b.windowPreviewImageUrl ?? null) &&
-  (a.appSelectionLabel ?? null) === (b.appSelectionLabel ?? null) &&
+  appSelectionLabelsEqual(a.appSelectionLabels, b.appSelectionLabels) &&
   (a.activityLabel ?? null) === (b.activityLabel ?? null) &&
   (a.pastedTexts?.length ?? 0) === (b.pastedTexts?.length ?? 0) &&
   attachmentsEqual(a.attachments, b.attachments) &&

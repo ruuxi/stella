@@ -245,7 +245,10 @@ export type MessageMetadata = {
   context?: {
     windowLabel?: string;
     windowPreviewImageUrl?: string;
+    /** Legacy single label (joined when multiple areas were attached). */
     appSelectionLabel?: string;
+    /** One label per attached selected-area context, in attach order. */
+    appSelectionLabels?: string[];
     activityLabel?: string;
     /**
      * Descriptors for each "Pasted text" chip on this turn. `text` is a

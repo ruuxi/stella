@@ -34,9 +34,9 @@ import {
 } from "@/features/chat/lib/paste-context";
 import {
   clearComposerActivityContext,
-  clearComposerAppSelectionContext,
   clearComposerSelectedTextContext,
   clearComposerWindowContext,
+  removeComposerAppSelectionContext,
   removeComposerFileContext,
   removeComposerPastedTextContext,
   removeComposerScreenshotContext,
@@ -303,12 +303,15 @@ export function SelectedTextChip({
 
 type AppSelectionChipProps = {
   appSelection: NonNullable<ChatContext["appSelection"]>;
+  /** Position in the composer's selection list; drives per-chip removal. */
+  index?: number;
   setChatContext: SetChatContext;
   className?: string;
 };
 
 export function AppSelectionChip({
   appSelection,
+  index = 0,
   setChatContext,
   className,
 }: AppSelectionChipProps) {
@@ -329,10 +332,40 @@ export function AppSelectionChip({
         className={className}
       />
       <ChipRemoveButton
-        label="Remove selected area"
-        onRemove={() => clearComposerAppSelectionContext(setChatContext)}
+        label={`Remove selected area: ${label}`}
+        onRemove={() => removeComposerAppSelectionContext(index, setChatContext)}
       />
     </span>
+  );
+}
+
+type AppSelectionChipsProps = {
+  appSelections: NonNullable<ChatContext["appSelection"]>[];
+  setChatContext: SetChatContext;
+  className?: string;
+};
+
+/**
+ * Selected-area chips accumulate like attachments — one chip per
+ * selection, each with its own remove ×.
+ */
+export function AppSelectionChips({
+  appSelections,
+  setChatContext,
+  className,
+}: AppSelectionChipsProps) {
+  return (
+    <>
+      {appSelections.map((appSelection, index) => (
+        <AppSelectionChip
+          key={index}
+          appSelection={appSelection}
+          index={index}
+          setChatContext={setChatContext}
+          className={className}
+        />
+      ))}
+    </>
   );
 }
 

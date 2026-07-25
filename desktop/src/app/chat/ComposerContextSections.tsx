@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import {
   ActivityContextChip,
-  AppSelectionChip,
+  AppSelectionChips,
   FileContextChips,
   PastedTextChips,
   PendingCaptureChip,
@@ -10,6 +10,7 @@ import {
   SelectedTextChip,
   WindowContextChip,
 } from "./ComposerContextChips";
+import { getComposerAppSelections } from "@/features/chat/composer-context";
 import "./composer-context.css";
 
 type ComposerContextVariant = "full" | "mini";
@@ -179,14 +180,15 @@ export function ComposerAppSelectionContextSection({
   chatContext,
   setChatContext,
 }: SharedContextProps) {
-  if (!chatContext?.appSelection) {
+  const appSelections = getComposerAppSelections(chatContext);
+  if (appSelections.length === 0) {
     return null;
   }
 
   const classes = pillVariantClassNames[variant];
   const content = (
-    <AppSelectionChip
-      appSelection={chatContext.appSelection}
+    <AppSelectionChips
+      appSelections={appSelections}
       setChatContext={setChatContext}
       className={classes.chipClassName}
     />

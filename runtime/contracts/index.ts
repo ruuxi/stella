@@ -26,6 +26,26 @@ export type ChatContextFile = {
   path?: string;
 };
 
+export type ChatAppSelection = {
+  label: string;
+  snapshot: string;
+  bounds: WindowBounds;
+  surface?: string;
+  anchor?: {
+    kind: string;
+    label?: string;
+    tag?: string;
+    role?: string;
+    path?: string;
+  };
+  source?: {
+    filePath?: string;
+    lineNumber?: number;
+    componentName?: string;
+  };
+  stack?: string;
+};
+
 export type ChatContext = {
   window: {
     title: string;
@@ -43,25 +63,19 @@ export type ChatContext = {
     completedAtMs?: number;
     lastUpdatedAtMs?: number;
   } | null;
-  appSelection?: {
-    label: string;
-    snapshot: string;
-    bounds: WindowBounds;
-    surface?: string;
-    anchor?: {
-      kind: string;
-      label?: string;
-      tag?: string;
-      role?: string;
-      path?: string;
-    };
-    source?: {
-      filePath?: string;
-      lineNumber?: number;
-      componentName?: string;
-    };
-    stack?: string;
-  } | null;
+  /**
+   * Legacy single-slot mirror of the most recent selected area. Kept in
+   * sync with the last entry of `appSelections` so single-slot readers
+   * (capture heuristics, older payload producers) keep working; new code
+   * should read `appSelections`.
+   */
+  appSelection?: ChatAppSelection | null;
+  /**
+   * All selected-area contexts attached to the composer, in attach
+   * order. Selections accumulate until sent or individually removed,
+   * like attachments.
+   */
+  appSelections?: ChatAppSelection[];
   windowContextEnabled?: boolean;
   windowAxTree?: string | null;
   browserUrl?: string | null;

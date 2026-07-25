@@ -24,7 +24,8 @@ export type UserRowViewModel = {
   justSent?: boolean;
   windowLabel?: string;
   windowPreviewImageUrl?: string;
-  appSelectionLabel?: string;
+  /** One chip per attached selected-area context, in attach order. */
+  appSelectionLabels?: string[];
   activityLabel?: string;
   /** Descriptors for the "Pasted text" chips lifted out of the composer. */
   pastedTexts?: PastedTextDescriptor[];

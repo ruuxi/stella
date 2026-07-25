@@ -47,6 +47,41 @@ export const truncateChipLabel = (
 };
 
 /**
+ * Selected-area chips accumulate like attachments. The cap bounds both
+ * the chip strip and the prompt payload (each selection carries a text
+ * snapshot + anchor metadata); appending past it drops the oldest.
+ */
+export const MAX_APP_SELECTIONS = 8;
+
+type ComposerAppSelection = NonNullable<ChatContext["appSelection"]>;
+
+/**
+ * All selected-area contexts, newest last. Reads the `appSelections`
+ * list; falls back to the legacy single `appSelection` slot for contexts
+ * produced before selections became appendable.
+ */
+export const getComposerAppSelections = (
+  chatContext: ChatContext | null,
+): ComposerAppSelection[] => {
+  const list = chatContext?.appSelections;
+  if (list && list.length > 0) return list;
+  return chatContext?.appSelection ? [chatContext.appSelection] : [];
+};
+
+// Identity for dedupe: re-selecting the same area (same label, content
+// snapshot, bounds, and anchoring) must not grow a second chip.
+const appSelectionDedupeKey = (selection: ComposerAppSelection): string =>
+  JSON.stringify([
+    selection.label,
+    selection.snapshot,
+    selection.bounds,
+    selection.surface ?? null,
+    selection.anchor?.path ?? null,
+    selection.source?.filePath ?? null,
+    selection.source?.lineNumber ?? null,
+  ]);
+
+/**
  * Returns true when there is at least one attached chip to render (window,
  * file, screenshot, selected text, or a pending capture). Callers can use
  * this to skip rendering the chip strip container entirely so it doesn't
@@ -60,7 +95,7 @@ export const hasAttachedComposerChips = (
   if (!chatContext) return false;
   if (chatContext.activity) return true;
   if (chatContext.window) return true;
-  if (chatContext.appSelection) return true;
+  if (getComposerAppSelections(chatContext).length > 0) return true;
   if (chatContext.browserUrl) return true;
   if (chatContext.regionScreenshots && chatContext.regionScreenshots.length > 0)
     return true;
@@ -81,7 +116,9 @@ export const resolveComposerContextState = (
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
   const hasPastedTextContext = Boolean(chatContext?.pastedTexts?.length);
-  const hasAppSelectionContext = Boolean(chatContext?.appSelection?.snapshot);
+  const hasAppSelectionContext = getComposerAppSelections(chatContext).some(
+    (selection) => Boolean(selection.snapshot),
+  );
   const hasActivityContext = Boolean(chatContext?.activity?.id);
   const hasWindowContext = windowContextEnabled;
   const hasSelectedTextContext = Boolean(selectedText);
@@ -185,23 +222,65 @@ export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
 
 export const clearComposerAppSelectionContext = (setChatContext: SetChatContext) => {
   setChatContext((prev) => (
-    prev ? { ...prev, appSelection: null } : prev
+    prev ? { ...prev, appSelection: null, appSelections: [] } : prev
   ));
 };
 
+/**
+ * Appends a selected-area context chip. Selections accumulate like
+ * attachments (dedupe on identical re-selects, capped at
+ * `MAX_APP_SELECTIONS`); the legacy `appSelection` slot mirrors the
+ * newest entry for single-slot readers.
+ */
 export const attachComposerAppSelectionContext = (
-  selection: NonNullable<ChatContext["appSelection"]>,
+  selection: ComposerAppSelection,
   setChatContext: SetChatContext,
 ) => {
-  setChatContext((prev) => ({
-    ...(prev ?? {
+  setChatContext((prev) => {
+    const base = prev ?? {
       window: null,
       browserUrl: null,
       selectedText: null,
       regionScreenshots: [],
-    }),
-    appSelection: selection,
-  }));
+    };
+    const existing = getComposerAppSelections(prev);
+    const key = appSelectionDedupeKey(selection);
+    if (existing.some((entry) => appSelectionDedupeKey(entry) === key)) {
+      // Identical area re-selected — keep the existing chip (but make
+      // sure a legacy single-slot context is normalized onto the list).
+      return prev?.appSelections?.length
+        ? prev
+        : {
+            ...base,
+            appSelections: existing,
+            appSelection: existing[existing.length - 1] ?? null,
+          };
+    }
+    const appSelections = [...existing, selection].slice(-MAX_APP_SELECTIONS);
+    return {
+      ...base,
+      appSelections,
+      appSelection: appSelections[appSelections.length - 1] ?? null,
+    };
+  });
+};
+
+/** Removes one selected-area chip; the mirror slot tracks the newest left. */
+export const removeComposerAppSelectionContext = (
+  index: number,
+  setChatContext: SetChatContext,
+) => {
+  setChatContext((prev) => {
+    if (!prev) return prev;
+    const existing = getComposerAppSelections(prev);
+    if (index < 0 || index >= existing.length) return prev;
+    const appSelections = existing.filter((_, i) => i !== index);
+    return {
+      ...prev,
+      appSelections,
+      appSelection: appSelections[appSelections.length - 1] ?? null,
+    };
+  });
 };
 
 export const clearComposerActivityContext = (setChatContext: SetChatContext) => {

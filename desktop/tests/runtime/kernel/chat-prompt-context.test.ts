@@ -70,6 +70,57 @@ describe("buildChatPromptMessages", () => {
     expect(hidden).toContain("main &gt; aside[role=complementary]");
   });
 
+  it("carries every selected area when multiple selections are attached", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "Compare these",
+      chatContext: {
+        window: null,
+        appSelections: [
+          {
+            label: "Sidebar",
+            snapshot: "[nav] Sidebar entries",
+            bounds: { x: 0, y: 0, width: 200, height: 600 },
+            surface: "stella-ui",
+          },
+          {
+            label: "Composer",
+            snapshot: "[form] Composer body",
+            bounds: { x: 200, y: 500, width: 600, height: 100 },
+            surface: "stella-ui",
+          },
+        ],
+      } satisfies ChatContext,
+    });
+
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    const areaCount = hidden.split("<selected-stella-area").length - 1;
+    expect(areaCount).toBe(2);
+    expect(hidden).toContain('label="Sidebar"');
+    expect(hidden).toContain('label="Composer"');
+    expect(hidden).toContain("these 2 specific areas");
+    expect(result.appSelectionLabel).toBe("Sidebar, Composer");
+    expect(result.appSelectionLabels).toEqual(["Sidebar", "Composer"]);
+  });
+
+  it("still reads the legacy single appSelection slot", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "Change this",
+      chatContext: {
+        window: null,
+        appSelection: {
+          label: "Legacy area",
+          snapshot: "[section] Legacy",
+          bounds: { x: 0, y: 0, width: 100, height: 100 },
+        },
+      } satisfies ChatContext,
+    });
+
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    expect(hidden).toContain('label="Legacy area"');
+    expect(result.appSelectionLabel).toBe("Legacy area");
+    expect(result.appSelectionLabels).toEqual(["Legacy area"]);
+  });
+
   it("carries selected activity metadata in hidden context", () => {
     const result = buildChatPromptMessages({
       userPrompt: "What happened here?",

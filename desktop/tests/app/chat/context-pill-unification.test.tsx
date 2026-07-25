@@ -22,7 +22,7 @@ const sentRow: UserRowViewModel = {
   id: "user-with-context",
   text: "compare the chips",
   windowLabel: "Workspace",
-  appSelectionLabel: "Workspace",
+  appSelectionLabels: ["Workspace"],
   attachments: [
     {
       id: "image-1",

@@ -712,11 +712,23 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           contextMetadata.windowPreviewImageUrl.trim()
             ? contextMetadata.windowPreviewImageUrl.trim()
             : undefined;
-        const appSelectionLabel =
-          typeof contextMetadata?.appSelectionLabel === "string" &&
-          contextMetadata.appSelectionLabel.trim()
-            ? contextMetadata.appSelectionLabel.trim()
-            : undefined;
+        // Prefer the per-selection list; older messages persisted a
+        // single (possibly joined) label.
+        const appSelectionLabels = (() => {
+          const plural = Array.isArray(contextMetadata?.appSelectionLabels)
+            ? contextMetadata.appSelectionLabels
+                .filter((label): label is string => typeof label === "string")
+                .map((label) => label.trim())
+                .filter((label) => label.length > 0)
+            : [];
+          if (plural.length > 0) return plural;
+          const singular =
+            typeof contextMetadata?.appSelectionLabel === "string" &&
+            contextMetadata.appSelectionLabel.trim()
+              ? contextMetadata.appSelectionLabel.trim()
+              : undefined;
+          return singular ? [singular] : [];
+        })();
         const activityLabel =
           typeof contextMetadata?.activityLabel === "string" &&
           contextMetadata.activityLabel.trim()
@@ -733,7 +745,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           text: getDisplayUserText(message),
           ...(windowLabel ? { windowLabel } : {}),
           ...(windowPreviewImageUrl ? { windowPreviewImageUrl } : {}),
-          ...(appSelectionLabel ? { appSelectionLabel } : {}),
+          ...(appSelectionLabels.length > 0 ? { appSelectionLabels } : {}),
           ...(activityLabel ? { activityLabel } : {}),
           ...(pastedTexts ? { pastedTexts } : {}),
           attachments: getAttachments(message),

@@ -1870,6 +1870,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         windowContextLabel,
         browserUrl,
         appSelectionLabel,
+        appSelectionLabels,
         activityLabel,
         promptMessages,
         windowScreenshotAttachment,
@@ -1969,6 +1970,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                               ...(appSelectionLabel
                                 ? {
                                     appSelectionLabel,
+                                  }
+                                : {}),
+                              ...(appSelectionLabels?.length
+                                ? {
+                                    appSelectionLabels,
                                   }
                                 : {}),
                               ...(activityLabel
