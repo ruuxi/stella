@@ -268,8 +268,13 @@ export const getBackgroundWorks = (
   events: readonly EventRecord[],
 ): NonNullable<ReturnType<typeof getBackgroundWork>>[] => {
   const cards: NonNullable<ReturnType<typeof getBackgroundWork>>[] = [];
-  for (const event of events) {
-    if (!isAgentStartedEvent(event)) continue;
+  // Lifecycle routing can merge an older start into a row that already owns a
+  // newer follow-up. The event timestamps/ids are the persisted timeline
+  // order; the merged array's insertion order is not.
+  const starts = events
+    .filter(isAgentStartedEvent)
+    .sort((a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id));
+  for (const event of starts) {
     const card = getBackgroundWork([event]);
     if (card) cards.push(card);
   }

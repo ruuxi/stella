@@ -136,12 +136,43 @@ describe("inline follow-up card projection", () => {
           : [],
       );
       expect(cards).toHaveLength(2);
-      expect(cards.map((card) => card.startEventIdsByThread[`${agentType}-thread`])).toEqual([
-        "original-start",
-        "follow-up-start",
-      ]);
+      expect(
+        cards.map((card) => card.startEventIdsByThread[`${agentType}-thread`]),
+      ).toEqual(["original-start", "follow-up-start"]);
       expect(cards[0]?.completedThreadIds).toEqual([`${agentType}-thread`]);
       expect(cards[0]?.supersededThreadIds).toEqual([`${agentType}-thread`]);
+      expect(cards[1]?.completedThreadIds).toEqual([]);
+    },
+  );
+
+  it.each(["general", "manager"] as const)(
+    "orders a settled %s predecessor before its newer follow-up when routed onto one row",
+    async (agentType) => {
+      const original = start("original-start", 100, agentType, 1);
+      const originalDone = complete("original-done", 150, agentType, 1);
+      const followUp = start("follow-up-start", 200, agentType, 2, true);
+      await act(async () => {
+        root.render(
+          <Probe
+            messages={[
+              // Lifecycle routing can move the older start onto an anchor
+              // that already carries the newer follow-up. Projection order
+              // must follow event chronology, not this merge-array order.
+              assistant("shared-row", 100, [followUp, original, originalDone]),
+            ]}
+          />,
+        );
+      });
+
+      const cards = renderedRows.flatMap((row) =>
+        row.kind === "assistant" && row.backgroundWork
+          ? [row.backgroundWork]
+          : [],
+      );
+      expect(
+        cards.map((card) => card.startEventIdsByThread[`${agentType}-thread`]),
+      ).toEqual(["original-start", "follow-up-start"]);
+      expect(cards[0]?.completedThreadIds).toEqual([`${agentType}-thread`]);
       expect(cards[1]?.completedThreadIds).toEqual([]);
     },
   );

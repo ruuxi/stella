@@ -170,6 +170,53 @@ describe("routeLifecycleEvents", () => {
     expect(routed[1]!.toolEvents.map((e) => e._id)).toEqual(["s1"]);
   });
 
+  it("merges an older routed start before a newer start already on the target anchor", () => {
+    const olderStart = event({
+      _id: "original-start",
+      type: "agent-started",
+      timestamp: 350,
+      payload: { agentId: "agent-a", attemptGeneration: 1 },
+    });
+    const newerFollowUp = event({
+      _id: "follow-up-start",
+      type: "agent-started",
+      timestamp: 400,
+      payload: {
+        agentId: "agent-a",
+        attemptGeneration: 2,
+        isFollowUp: true,
+      },
+    });
+    const user = message({
+      _id: "u-ordered-starts",
+      timestamp: 100,
+      type: "user_message",
+      toolEvents: [olderStart],
+    });
+    const overlay = message({
+      _id: "stream-overlay:u-ordered-starts:1",
+      timestamp: 300,
+      type: "assistant_message",
+      payload: {
+        text: "streaming…",
+        userMessageId: "u-ordered-starts",
+        metadata: { runtime: { isStreaming: true } },
+      },
+      toolEvents: [newerFollowUp],
+    });
+
+    const routed = routeLifecycleEvents(
+      [user, overlay],
+      createLifecycleRoutingState(),
+    );
+
+    expect(routed[0]!.toolEvents).toEqual([]);
+    expect(routed[1]!.toolEvents.map((item) => item._id)).toEqual([
+      "original-start",
+      "follow-up-start",
+    ]);
+  });
+
   it("keeps the same layout across the overlay -> persisted handoff (completed card / streamed text / follow-up card)", () => {
     const state = createLifecycleRoutingState();
 

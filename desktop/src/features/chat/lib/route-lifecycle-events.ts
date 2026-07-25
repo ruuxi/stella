@@ -316,9 +316,10 @@ export const routeLifecycleEvents = (
       if (!changed.has(entry)) continue;
       const incoming = incomingByKey.get(entry.anchor.key);
       // Keep events that stay on this anchor, dropping moved-away copies
-      // and any duplicate occurrences beyond the first, then append
-      // routed-in lifecycle events in chronological order — so a message
-      // whose events did not move keeps an identical id sequence.
+      // and any duplicate occurrences beyond the first. Merge routed-in
+      // lifecycle events by authoritative event chronology: appending an
+      // older moved event after a newer kept start reverses follow-up cards.
+      // A message whose events did not move keeps an identical id sequence.
       const seenHere = new Set<string>();
       const kept = entry.message.toolEvents.filter((event) => {
         if (!isLifecycleEvent(event)) return true;
@@ -327,7 +328,7 @@ export const routeLifecycleEvents = (
         seenHere.add(event._id);
         return true;
       });
-      const next = incoming ? [...kept, ...incoming.sort(compareEvents)] : kept;
+      const next = incoming ? [...kept, ...incoming].sort(compareEvents) : kept;
       if (sameToolEventIds(next, entry.message.toolEvents)) continue;
       routedEventsByIndex.set(entry.anchor.messageIndex, next);
     }
