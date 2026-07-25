@@ -124,11 +124,49 @@ try {
 // Old runner versions ran Vite and the Electron launcher as separate spawned
 // scripts; keep their command needles so an upgrade over an unclean shutdown
 // still reaps that generation's orphans.
-const managedScriptPaths = [
-  resolve(scriptDir, "dev-electron-build.mjs"),
-  resolve(scriptDir, "dev-electron.mjs"),
+//
+// Matching is by path suffix rather than by an absolute path resolved from
+// *this* checkout. Two reasons:
+//   - `ps` reports whatever spelling the launcher used, and the launcher runs
+//     from the repo root: `node desktop/scripts/electron-dev-runner.mjs`. An
+//     absolute needle never matches that, so the sweep found nothing even when
+//     an orphan was sitting right there.
+//   - Multi-worktree dev is the normal workflow here, so a runner stranded by
+//     one checkout has to be reapable from any other. Absolute needles scoped
+//     the sweep to the launching checkout and made cross-worktree orphans
+//     permanently invisible.
+// `electron-dev-runner.mjs` is itself in the list because a stranded
+// supervisor is precisely the orphan that used to survive indefinitely: the
+// old list covered a runner's children but never a runner.
+const managedCommandBasenames = [
+  "electron-dev-runner.mjs",
+  "dev-electron-build.mjs",
+  "dev-electron.mjs",
+  "vite.js",
+  "vite",
 ];
-const managedCommandNeedles = [viteBinPath, ...managedScriptPaths];
+// Anchored on a path separator (and, for Vite, scoped to `node_modules`) so a
+// stray argument or an unrelated binary that merely contains one of these
+// names cannot match. This is the precise pass; `managedCommandBasenames` is
+// only ever used as a coarse prefilter.
+const MANAGED_COMMAND_PATTERN =
+  /(?:[\\/](?:electron-dev-runner|dev-electron-build|dev-electron)\.mjs|node_modules[\\/](?:\.bin[\\/]vite|vite[\\/]bin[\\/]vite\.js))(?:\s|$)/;
+const commandMatchesManagedTool = (command) =>
+  MANAGED_COMMAND_PATTERN.test(command);
+// A live parent means the process is supervised and doing its job; only a
+// process whose launcher is gone is an orphan. On POSIX that shows up as
+// reparenting to init (ppid 1); on Windows the ppid simply stops resolving.
+const isOrphanParent = (ppid) => {
+  if (!Number.isFinite(ppid) || ppid <= 0 || ppid === 1) {
+    return true;
+  }
+  try {
+    process.kill(ppid, 0);
+    return false;
+  } catch (error) {
+    return error?.code === "ESRCH";
+  }
+};
 
 if (!existsSync(viteBinPath)) {
   console.error(
@@ -212,7 +250,7 @@ async function stopOrphanedDevChildren() {
     let output = "";
     try {
       // PowerShell string literal escape: single-quote → doubled.
-      const escapedNeedles = managedCommandNeedles.map((needle) =>
+      const escapedNeedles = managedCommandBasenames.map((needle) =>
         needle.replace(/'/g, "''"),
       );
       // Push needle filtering INTO WMI via a server-side -Filter (CommandLine
@@ -221,28 +259,26 @@ async function stopOrphanedDevChildren() {
       // scan. The WQL pattern is intentionally left permissive: any LIKE
       // metacharacters in a path ('%', '_', '[') stay as wildcards, so the
       // filter can only over-match, never drop a real orphan. The unchanged
-      // client-side Contains() pass below restores the exact original
-      // substring-match semantics, so the same needles and kill behavior hold.
-      // (Same coarse-prefilter + precise-Contains idiom as findPreviewProcessIds
+      // client-side pass below applies the precise match and the orphan test.
+      // (Same coarse-prefilter + precise-match idiom as findPreviewProcessIds
       // in desktop/electron/bootstrap/office-preview-bridge.ts.)
+      //
+      // The projection now carries ParentProcessId and CommandLine so the
+      // JS side can apply MANAGED_COMMAND_PATTERN and isOrphanParent — the
+      // same two rules the POSIX branch uses. Without the parent test this
+      // branch would kill a *live* sibling dev instance now that the sweep is
+      // no longer gated on a stale pid file.
       const filterClause = escapedNeedles
         .map((needle) => `CommandLine LIKE '%${needle}%'`)
         .join(" OR ");
       const script = [
         "$ErrorActionPreference = 'SilentlyContinue'",
-        `$needles = @(${escapedNeedles.map((needle) => `'${needle}'`).join(",")})`,
         "$currentPid = $PID",
-        "$matches = @()",
-        `Get-CimInstance Win32_Process -Filter "${filterClause}" | ForEach-Object {`,
-        "  $line = [string]$_.CommandLine",
-        "  if ($line -and [int]$_.ProcessId -ne $currentPid) {",
-        "    foreach ($needle in $needles) {",
-        "      if ($line.Contains($needle)) { $matches += [int]$_.ProcessId; break }",
-        "    }",
-        "  }",
-        "}",
-        "$matches | Sort-Object -Unique | ConvertTo-Json -Compress",
-      ].join("; ");
+        `Get-CimInstance Win32_Process -Filter "${filterClause}" |`,
+        "  Where-Object { $_.CommandLine -and [int]$_.ProcessId -ne $currentPid } |",
+        "  Select-Object ProcessId, ParentProcessId, CommandLine |",
+        "  ConvertTo-Json -Compress",
+      ].join(" ");
       output = execFileSync(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-Command", script],
@@ -266,11 +302,16 @@ async function stopOrphanedDevChildren() {
       const value = JSON.parse(raw);
       parsed = Array.isArray(value) ? value : [value];
     } catch {
-      parsed = raw.split(/\s+/);
+      return;
     }
 
     const pids = parsed
-      .map((value) => Number.parseInt(String(value), 10))
+      .filter(
+        (entry) =>
+          commandMatchesManagedTool(String(entry?.CommandLine ?? "")) &&
+          isOrphanParent(Number.parseInt(String(entry?.ParentProcessId), 10)),
+      )
+      .map((entry) => Number.parseInt(String(entry?.ProcessId), 10))
       .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
 
     if (pids.length > 0) {
@@ -313,14 +354,16 @@ async function stopOrphanedDevChildren() {
     if (
       Number.isFinite(pid) &&
       pid !== process.pid &&
-      ppid === 1 &&
-      managedCommandNeedles.some((needle) => command.includes(needle))
+      pid !== process.ppid &&
+      isOrphanParent(ppid) &&
+      commandMatchesManagedTool(command)
     ) {
       pids.push(pid);
     }
   }
 
   for (const pid of pids) {
+    log(`reaping orphaned dev process ${pid}`);
     signalProcessGroup(pid, "SIGTERM");
   }
   if (pids.length === 0) {
@@ -332,15 +375,14 @@ async function stopOrphanedDevChildren() {
   }
 }
 
-// Only sweep for orphaned dev children when a prior runner pid file is
-// present — that indicates the previous run did not shut down cleanly
-// (clean exits remove it via removeOwnPidFile). On a first-ever launch or a
-// clean restart there is nothing to reap, so we skip the scan entirely; on
-// Windows that scan is a PowerShell cold start + full WMI/CIM Win32_Process
-// enumeration that would otherwise be paid on every `electron:dev` launch.
-if (existsSync(pidFilePath)) {
-  await stopOrphanedDevChildren();
-}
+// Sweep unconditionally. This used to be gated on `existsSync(pidFilePath)`,
+// on the theory that a leftover pid file is the only evidence a previous run
+// died badly — but that pid file is per-checkout and a clean exit removes it,
+// so the gate meant a stranded runner from *another* worktree could never be
+// reaped by any launch. One survived 11 days at 100% CPU that way. An orphan
+// costs a core indefinitely; the scan costs one `ps` (or one WMI query) at
+// startup, so paying it on every launch is the cheaper side of the trade.
+await stopOrphanedDevChildren();
 writePidFile();
 
 // The Electron child reads these from its inherited env: the ready file is
@@ -387,6 +429,37 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     exitCode = 0;
     void shutdownAll(`received ${signal}`);
   });
+}
+
+// Parent-death watchdog. Closing the launching terminal (or killing the
+// launcher app) leaves this supervisor reparented to init with nothing left to
+// supervise for, and nothing signals it — which is how a runner ends up
+// burning a core for days. Poll for reparenting and shut down the way a
+// SIGTERM would, so the Vite server and the Electron child are torn down
+// rather than orphaned in turn.
+//
+// Deliberately skipped when we are *started* orphaned (ppid already 1), which
+// is what a detached/nohup launch looks like: that is someone intentionally
+// running headless, not a stranding.
+//
+// This is best-effort, not the primary defense. A runner wedged in a busy loop
+// never runs this timer at all — the startup sweep in stopOrphanedDevChildren
+// is what actually catches that case.
+const PARENT_LIVENESS_POLL_MS = 30_000;
+const launcherPid = process.ppid;
+if (process.platform !== "win32" && launcherPid !== 1) {
+  const parentWatchdog = setInterval(() => {
+    if (process.ppid !== 1) {
+      return;
+    }
+    clearInterval(parentWatchdog);
+    exitCode = 0;
+    void shutdownAll(
+      `launcher (pid ${launcherPid}) exited; shutting down stranded dev runner`,
+    );
+  }, PARENT_LIVENESS_POLL_MS);
+  // Never hold the event loop open on the watchdog's account.
+  parentWatchdog.unref?.();
 }
 
 process.on("uncaughtException", (error) => {
