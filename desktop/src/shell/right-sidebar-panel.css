@@ -21,6 +21,14 @@
   overflow: hidden;
   contain: layout paint;
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
+  /* Container context for the whole panel. It sits on the frame rather than
+     the body so it covers the chrome too — the tab rail sheds its labels
+     against this, and it is a sibling of the body, not a descendant. User apps
+     rendered in the Apps section size against it as well: they are authored as
+     full pages with `vw` units and viewport media queries, which would
+     otherwise read the whole window and overflow a narrow panel. */
+  container-type: inline-size;
+  container-name: display-panel;
 }
 
 :root[data-shell-panel-chrome="true"]
@@ -126,13 +134,6 @@ body[data-display-expanding="true"]
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Container context for everything inside the panel. The tab rail collapses
-     its labels against this, and user apps rendered in the Apps section size
-     against it too — they are authored as full pages with `vw` units and
-     viewport media queries, which would otherwise read the whole window and
-     overflow a ~400px panel. */
-  container-type: inline-size;
-  container-name: display-panel;
   /* Hold the viewer at the open width while the frame animates so the
      contents (e.g. a media image) stay laid out at their final size and
      get clip-revealed rather than reflowed/rescaled during the slide. */
