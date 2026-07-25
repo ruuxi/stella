@@ -14,10 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import {
-  ChevronDown,
-  Eye,
-} from "@/ui/icons";
+import { ChevronDown, Eye } from "@/ui/icons";
 import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -88,7 +85,7 @@ import "@/app/chat/chat-workspace-strip.css";
 // (see `caps` below) and pages in the full dataset.
 const SECTION_CAPS = {
   strip: { activity: 8, files: 5, schedule: 4, store: 5 },
-  overview: { activity: 6, files: 6, schedule: 6, store: 6 },
+  overview: { activity: 12, files: 6, schedule: 6, store: 6 },
 } as const;
 // Search still scans every loaded record, but rendering an unbounded match
 // set made a common query mount hundreds of rows at once.
@@ -97,8 +94,6 @@ const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 const EMPTY_UPDATES: ReadonlyArray<string> = [];
 /** Agent-authored messages shown under an expanded RUNNING agent. */
 const AGENT_UPDATE_CAP = 1;
-/** File rows shown under an expanded agent before "View all (N)" kicks in. */
-const AGENT_FILE_CAP = 5;
 
 const activityRowText = (row: ActivityRow): string =>
   getActivityRowSearchText(row);
@@ -353,8 +348,10 @@ const TaskRow = memo(function TaskRow({
   // most recent line); finished rows keep just title, status, and files.
   const agentUpdates =
     task.status === "running" ? getTaskAgentUpdates(task) : EMPTY_UPDATES;
+  // Produced files hide behind one "View N files" disclosure row in every
+  // status — the per-file rows were the noisiest part of a finished thread.
   // Per-session only; resets when the row unmounts, which is fine.
-  const [showAllFiles, setShowAllFiles] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const hasAgentUpdates = agentUpdates.length > 0;
   const managerDetail =
     task.agentType === AGENT_IDS.MANAGER
@@ -366,9 +363,6 @@ const TaskRow = memo(function TaskRow({
         : task.outputPreview?.trim() || undefined
       : undefined;
   const hasFiles = files.length > 0;
-  const filesCapped = files.length > AGENT_FILE_CAP;
-  const visibleFiles =
-    filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
   const compactTasks = useMemo(
     () => (compactChildren ? flattenActivityTasks(compactChildren) : undefined),
     [compactChildren],
@@ -479,61 +473,63 @@ const TaskRow = memo(function TaskRow({
                   {managerDetail}
                 </p>
               ) : null}
-              {hasAgentUpdates ? (
-                <AgentAssistantUpdates
-                  messages={agentUpdates}
-                  max={AGENT_UPDATE_CAP}
-                />
+              {hasAgentUpdates || hasFiles ? (
+                <div className="chat-workspace-strip__task-rail">
+                  {hasAgentUpdates ? (
+                    <AgentAssistantUpdates
+                      messages={agentUpdates}
+                      max={AGENT_UPDATE_CAP}
+                    />
+                  ) : null}
+                  {hasFiles ? (
+                    <button
+                      type="button"
+                      className="chat-workspace-strip__file-button chat-workspace-strip__files-toggle"
+                      onClick={() => setFilesExpanded((value) => !value)}
+                      aria-expanded={filesExpanded}
+                    >
+                      <ChevronDown
+                        size={13}
+                        strokeWidth={2}
+                        aria-hidden="true"
+                        className="chat-workspace-strip__files-toggle-chevron"
+                        data-expanded={filesExpanded ? "true" : undefined}
+                      />
+                      <span className="chat-workspace-strip__file-name">
+                        {`View ${files.length} ${
+                          files.length === 1 ? "file" : "files"
+                        }`}
+                      </span>
+                    </button>
+                  ) : null}
+                  {hasFiles && filesExpanded ? (
+                    <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
+                      {files.map((file) => (
+                        <li
+                          key={file.path}
+                          className="chat-workspace-strip__row"
+                          title={file.path}
+                        >
+                          <button
+                            type="button"
+                            className="chat-workspace-strip__file-button"
+                            onClick={() => onOpenFile(file)}
+                          >
+                            <DisplayTabIcon
+                              kind={displayTabKindForPayload(file.payload)}
+                              size={15}
+                            />
+                            <span className="chat-workspace-strip__file-name">
+                              {basenameOf(file.path)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ) : null}
               {childContent}
-              {hasFiles ? (
-                <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
-                  {visibleFiles.map((file) => (
-                    <li
-                      key={file.path}
-                      className="chat-workspace-strip__row"
-                      title={file.path}
-                    >
-                      <button
-                        type="button"
-                        className="chat-workspace-strip__file-button"
-                        onClick={() => onOpenFile(file)}
-                      >
-                        <DisplayTabIcon
-                          kind={displayTabKindForPayload(file.payload)}
-                          size={15}
-                        />
-                        <span className="chat-workspace-strip__file-name">
-                          {basenameOf(file.path)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {filesCapped ? (
-                    <li className="chat-workspace-strip__row">
-                      <button
-                        type="button"
-                        className="chat-workspace-strip__file-button chat-workspace-strip__files-toggle"
-                        onClick={() => setShowAllFiles((value) => !value)}
-                        aria-expanded={showAllFiles}
-                      >
-                        <ChevronDown
-                          size={13}
-                          strokeWidth={2}
-                          aria-hidden="true"
-                          className="chat-workspace-strip__files-toggle-chevron"
-                          data-expanded={showAllFiles ? "true" : undefined}
-                        />
-                        <span className="chat-workspace-strip__file-name">
-                          {showAllFiles
-                            ? "Show less"
-                            : `View all (${files.length})`}
-                        </span>
-                      </button>
-                    </li>
-                  ) : null}
-                </ul>
-              ) : null}
             </div>
           ) : null}
         </div>

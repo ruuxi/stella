@@ -192,12 +192,10 @@
 
 .chat-workspace-strip__task-progress {
   list-style: none;
-  /* Indent under the status icon so the rail sits where the row label
-     starts (13px margin + 1px rail + 9px gap = the 23px label indent). */
-  margin: 3px 0 1px 13px;
-  padding: 0 2px 0 9px;
-  /* Hairline rail grouping the live summary lines. */
-  border-left: 1px solid var(--border-base);
+  /* The hairline rail lives on the enclosing __task-rail wrapper so it also
+     runs beside the files disclosure; this list only stacks the lines. */
+  margin: 0;
+  padding: 0 2px 0 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -637,12 +635,19 @@
   overflow: hidden;
 }
 
-.chat-workspace-strip__task-detail .chat-workspace-strip__task-progress {
-  /* The detail block starts under the label. Pull only the reasoning rail
-     back to the center of the 15px status-icon column; file rows retain the
-     label indent below it. */
-  margin: 0 0 0 -16px;
+/* Hairline rail beside everything the thread itself produced — the live
+   assistant line plus the files disclosure ("View N files" and, expanded,
+   the file rows). The detail block starts under the label (23px); pull the
+   rail back to the center of the 15px status-icon column so its content
+   rests at a 17px indent. */
+.chat-workspace-strip__task-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin-left: -16px;
   padding-left: 9px;
+  border-left: 1px solid var(--border-base);
 }
 
 .chat-workspace-strip__task-files {
@@ -712,7 +717,7 @@
   color: var(--text-strong);
 }
 
-/* Quiet "View all (N)" / "Show less" toggle under a capped file list. */
+/* Quiet "View N files" disclosure row that hides the file list. */
 .chat-workspace-strip__files-toggle {
   color: var(--text-weak);
   font-size: var(--font-size-xs);
