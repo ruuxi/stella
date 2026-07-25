@@ -2,9 +2,17 @@
  * Sub-agent management tools.
  *
  * Three tools manipulate the durable agent thread surface: `spawn_agent`,
- * `send_input`, and `pause_agent`. The orchestrator and General agents share
- * them, so a General agent can run its own subagents; how deep that can nest
- * is bounded by `maxAgentDepth` rather than by agent type.
+ * `send_input`, and `pause_agent`. Exposure is two-tier and depends on who
+ * owns the running thread, not only on its agent type:
+ *
+ *   - the orchestrator and a top-level (root-spawned) General agent get all
+ *     three, so a General agent can run its own subagents;
+ *   - a parent-owned General agent — one spawned BY another agent — gets the
+ *     same toolset as a top-level General MINUS these three.
+ *
+ * The second tier is enforced by absence from the catalog rather than by the
+ * depth-limit tool error, so a subagent cannot attempt a third level or steer
+ * a sibling thread at all. See `getToolCatalog`'s `parentOwned` option.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
@@ -18,6 +26,16 @@ import type { ToolDefinition } from "../types.js";
 const AGENT_SPAWNERS: readonly string[] = [
   AGENT_IDS.ORCHESTRATOR,
   AGENT_IDS.GENERAL,
+];
+
+/**
+ * Tools withheld from a parent-owned agent. Kept as one exported list so the
+ * catalog filter and the execute-time gate can never drift apart.
+ */
+export const AGENT_ORCHESTRATION_TOOL_NAMES: readonly string[] = [
+  "spawn_agent",
+  "send_input",
+  "pause_agent",
 ];
 
 export const createAgentTools = (

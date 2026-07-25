@@ -54,6 +54,7 @@ import {
   registerExtensionToolHandlers,
 } from "./registry.js";
 import { buildBuiltinTools } from "./defs/index.js";
+import { AGENT_ORCHESTRATION_TOOL_NAMES } from "./defs/task.js";
 import type { ToolDefinition as BuiltinToolDefinition } from "./types.js";
 import { sanitizeToolError, sanitizeToolResult } from "./safety.js";
 import { NodeReplKernelRegistry } from "../computer-use/kernel.js";
@@ -283,6 +284,19 @@ export const createToolHost = ({
     return tool.agentTypes.includes(agentType);
   };
 
+  /**
+   * Second, ownership-based gate. A parent-owned agent (one spawned BY another
+   * agent) runs with a top-level agent's toolset minus the orchestration
+   * tools, so it cannot open a third level or steer a sibling thread. Applied
+   * at catalog build time so the tools are simply absent from what the model
+   * sees, and mirrored at executeTool time as defense in depth.
+   */
+  const isOrchestrationToolWithheld = (
+    toolName: string,
+    parentOwned: boolean | undefined,
+  ): boolean =>
+    parentOwned === true && AGENT_ORCHESTRATION_TOOL_NAMES.includes(toolName);
+
   executeTool = async (
     toolName: string,
     toolArgs: Record<string, unknown>,
@@ -298,6 +312,15 @@ export const createToolHost = ({
       args: toolArgs,
       context,
     });
+
+    // Ownership gate, mirroring the catalog filter for the same
+    // catalog-bypass reasons. A parent-owned agent never sees these tools, so
+    // reaching here means a hallucinated or replayed call.
+    if (isOrchestrationToolWithheld(toolName, Boolean(context.parentAgentId))) {
+      return {
+        error: `${toolName} is not available to a subagent. Complete the work in this task and report the result to the agent that started you.`,
+      };
+    }
 
     // Declarative agent-type gate. Mirrors the catalog filter so a tool that
     // declares `agentTypes` is rejected here too, defending against
@@ -439,6 +462,8 @@ export const createToolHost = ({
       model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
       agentEngine?: FileEditAgentEngine;
       includeDeferred?: boolean;
+      /** This thread was spawned by another agent; withhold orchestration tools. */
+      parentOwned?: boolean;
     },
   ) => {
     const fileEditToolFamily = getFileEditToolFamily({
@@ -452,6 +477,9 @@ export const createToolHost = ({
       // frontmatter `tools:` allowlist (applied downstream in
       // tool-adapters) decides what each agent is actually offered.
       if (!isAgentAllowedForTool(tool, agentType)) return false;
+      if (isOrchestrationToolWithheld(tool.name, options?.parentOwned)) {
+        return false;
+      }
       if (tool.deferred && options?.includeDeferred !== true) return false;
       // Swap the file-edit tool family to the agent's engine: Claude Code
       // wants Write/Edit, Stella wants apply_patch.

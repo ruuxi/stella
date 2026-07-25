@@ -486,6 +486,7 @@ type RuntimeToolContextArgs = {
   stellaAppDir?: string;
   stellaDataDir?: string;
   toolWorkspaceRoot?: string;
+  parentAgentId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
   modelConfigSnapshot?: AgentModelConfigSnapshot;
@@ -515,6 +516,7 @@ export const buildRuntimeToolContext = (
     : {}),
   storageMode: "local",
   ...(args.agentId ? { agentId: args.agentId } : {}),
+  ...(args.parentAgentId ? { parentAgentId: args.parentAgentId } : {}),
   ...(typeof args.agentDepth === "number"
     ? { agentDepth: args.agentDepth }
     : {}),
@@ -621,6 +623,7 @@ export const createPiTools = (opts: {
   stellaAppDir?: string;
   stellaDataDir?: string;
   toolWorkspaceRoot?: string;
+  parentAgentId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
   modelConfigSnapshot?: AgentModelConfigSnapshot;
@@ -762,6 +765,7 @@ export const createPiTools = (opts: {
           stellaAppDir: opts.stellaAppDir,
           stellaDataDir: opts.stellaDataDir,
           toolWorkspaceRoot: opts.toolWorkspaceRoot,
+          parentAgentId: opts.parentAgentId,
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,
           modelConfigSnapshot: opts.modelConfigSnapshot,

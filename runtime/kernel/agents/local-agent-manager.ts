@@ -37,6 +37,7 @@ import type {
   TerminalTaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import { AGENT_ORCHESTRATION_TOOL_NAMES } from "../tools/defs/task.js";
 import type {
   FileChangeRecord,
   ProducedFileRecord,
@@ -85,6 +86,11 @@ export type LocalAgentContext = {
   reasoningEffort?: ReasoningEffort;
   agentDepth?: number;
   maxAgentDepth: number;
+  /**
+   * Thread of the agent that spawned this one, when it was spawned by another
+   * agent rather than from the root. Decides the parent-owned tool tier.
+   */
+  parentAgentId?: string;
   coreMemory?: string;
   /** Dream's routing map (memory_map.md), push-injected as a resident startup doc. */
   memoryMap?: string;
@@ -1496,6 +1502,17 @@ export class LocalAgentManager implements AgentToolApi {
           ? Math.min(context.maxAgentDepth, task.maxAgentDepth)
           : context.maxAgentDepth;
       context.agentDepth = task.agentDepth;
+      context.parentAgentId = task.parentAgentId;
+      if (task.parentAgentId && context.toolsAllowlist) {
+        // A parent-owned agent runs a top-level agent's toolset minus the
+        // orchestration tools. Pruned from the allowlist, not just from the
+        // catalog: the allowlist is the authoritative activation list, and a
+        // name on it that is missing from the catalog is still registered
+        // against synthesized metadata rather than dropped.
+        context.toolsAllowlist = context.toolsAllowlist.filter(
+          (toolName) => !AGENT_ORCHESTRATION_TOOL_NAMES.includes(toolName),
+        );
+      }
       context.attemptGeneration = attempt.generation;
 
       const taskPrompt = this.buildTaskPrompt(task);

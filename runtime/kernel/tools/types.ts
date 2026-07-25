@@ -35,6 +35,12 @@ export type ToolContext = {
   storageMode?: "cloud" | "local";
   agentId?: string;
   cloudAgentId?: string;
+  /**
+   * Thread of the agent that spawned this one. Set only for a parent-owned
+   * thread; a root-spawned agent has no agent parent. Drives the ownership
+   * tier that withholds the orchestration tools.
+   */
+  parentAgentId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
   modelConfigSnapshot?: AgentModelConfigSnapshot;

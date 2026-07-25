@@ -444,6 +444,8 @@ export type RunnerContext = {
         model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
         agentEngine?: import("../tools/file-edit-policy.js").FileEditAgentEngine;
         includeDeferred?: boolean;
+        /** This thread was spawned by another agent; withhold orchestration tools. */
+        parentOwned?: boolean;
       },
     ) => ToolMetadata[];
     executeTool: (

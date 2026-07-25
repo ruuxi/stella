@@ -1070,6 +1070,10 @@ export const createAgentOrchestration = (
             model: resolvedLlm.toolPolicyModel ?? resolvedLlm.model,
             agentEngine: agentContext.agentEngine,
             includeDeferred: true,
+            // A subagent runs a top-level General's toolset minus the
+            // orchestration tools, so it cannot open a third level or steer a
+            // sibling thread.
+            parentOwned: Boolean(agentContext.parentAgentId),
           }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
