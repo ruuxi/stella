@@ -924,7 +924,7 @@ export class LocalAgentManager implements AgentToolApi {
       .join("\n");
     const isManager = task.agentType === AGENT_IDS.MANAGER;
     const updateInstruction = isManager
-      ? "Interpret the orchestrator's message by its natural-language intent. Your assistant response remains private. Use report only for a genuine blocker that prevents progress and requires outside action after reasonable recovery is exhausted, or exactly once with final true after all work and review/fix rounds are settled. Never report status, milestones, child completions, or recoverable failures. If the message changes instructions, apply the steering and continue. Newer updates override conflicting earlier instructions."
+      ? "Interpret the orchestrator's message by its natural-language intent. Your assistant response remains private. Use report for every upward message: non-final sparingly for blockers, questions, or requested progress, and final true exactly once for the fleet-idle consolidated completion. If the message changes instructions, apply the steering and continue. Newer updates override conflicting earlier instructions."
       : "Apply the orchestrator's message according to its intent. If it asks a question, requests status, or asks for a report, answer that request and then stop; do not continue the underlying task. If it gives new or changed work instructions, apply them and continue the task. Newer updates override conflicting earlier instructions.";
     if (task.turnCount === 0) {
       return [

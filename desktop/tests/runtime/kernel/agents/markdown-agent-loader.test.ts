@@ -71,27 +71,13 @@ describe("loadParsedAgentsFromDir", () => {
     expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
     expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
     expect(prompt).toMatch(/`report` is your only upward channel/i);
+    expect(prompt).toMatch(/final: false[\s\S]*sparingly/i);
     expect(prompt).toMatch(/assistant responses[\s\S]*private/i);
     expect(prompt).toMatch(
       /child and descendant lifecycle messages[\s\S]*internal/i,
     );
-    expect(prompt).toMatch(
-      /final: true[\s\S]*exactly once[\s\S]*only after ALL requested work[\s\S]*every child, review, fix, and re-review round[\s\S]*deliberately canceled/i,
-    );
-    expect(prompt).toMatch(
-      /final: false[\s\S]*only for a genuine blocker[\s\S]*requires orchestrator or user action, judgment, credentials, money, access, or a scope decision/i,
-    );
-    expect(prompt).toContain("It is not a progress-update channel.");
-    expect(prompt).toMatch(
-      /Never report child or reviewer spawn, start, or completion[\s\S]*review PASS\/FAIL[\s\S]*routine status[\s\S]*partial milestones[\s\S]*recoverable child failures/i,
-    );
-    expect(prompt).toMatch(
-      /absorb the result and immediately continue[\s\S]*siblings remain, wait[\s\S]*send them to the fixer and re-review without reporting upward/i,
-    );
-    expect(prompt).toMatch(/No keep-alives/i);
-    expect(prompt).toMatch(/production credentials[\s\S]*is valid/i);
-    expect(prompt).toMatch(/one child is still running[\s\S]*is never valid/i);
-    expect(prompt).not.toMatch(/explicitly requested progress updates/i);
+    expect(prompt).toMatch(/fleet is idle[\s\S]*final: true/i);
+    expect(prompt).toMatch(/final: true[\s\S]*exactly once/i);
   });
 
   it("loads agents when given a directory string path", () => {
