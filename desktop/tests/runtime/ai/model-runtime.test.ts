@@ -40,6 +40,31 @@ const validRemoteCatalogModel = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/**
+ * A request that never answers but still honours its abort signal, the way a
+ * real hung endpoint behaves. Mocks that ignore the signal hang the test
+ * instead of exercising the deadline.
+ */
+const neverResolvingRequest = (init?: RequestInit): Promise<Response> => {
+  const signal = init?.signal;
+  return new Promise<Response>((_resolve, reject) => {
+    const abort = () =>
+      reject(
+        new DOMException(
+          signal?.reason instanceof Error
+            ? signal.reason.message
+            : "The operation was aborted.",
+          "AbortError",
+        ),
+      );
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+};
+
 const refreshXaiCatalog = async (
   buildEntries: (runtime: ModelRuntime) => unknown[],
 ): Promise<ModelRuntime> => {
@@ -1617,6 +1642,132 @@ describe("ModelRuntime", () => {
       expect(snapshot.catalogError).toMatch(
         /xai: xAI catalog unavailable/u,
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("refreshes every provider when each is individually fast but the batch is not", async () => {
+    const stellaDataDir = await makeTempDir();
+    const runtime = new ModelRuntime();
+    const originalFetch = globalThis.fetch;
+    // Every provider answers well inside the per-request deadline, but there
+    // are far more providers than there are concurrent slots, so the batch as a
+    // whole runs much longer than any single request. A deadline shared by the
+    // whole fan-out kills whichever providers are still queued when it expires;
+    // per-provider deadlines let all of them through. This is the shape that
+    // produced six identical "The operation was aborted." failures in the wild.
+    globalThis.fetch = ((_input, init) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(
+          () => resolve(new Response("", { status: 404 })),
+          50,
+        );
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          },
+          { once: true },
+        );
+      })) as typeof fetch;
+
+    try {
+      await runtime.initialize({
+        stellaDataDir,
+        allowNetwork: true,
+        catalogRequestTimeoutMs: 150,
+      });
+      const snapshot = runtime.getSnapshot();
+      expect(snapshot.catalogError).toBeUndefined();
+      expect(snapshot.refreshedAt).not.toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("names the provider that timed out instead of reporting a bare abort", async () => {
+    const stellaDataDir = await makeTempDir();
+    const runtime = new ModelRuntime();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((input, init) =>
+      String(input).endsWith("/xai")
+        ? neverResolvingRequest(init)
+        : Promise.resolve(new Response("", { status: 404 }))) as typeof fetch;
+
+    try {
+      await runtime.initialize({
+        stellaDataDir,
+        allowNetwork: true,
+        catalogRequestTimeoutMs: 50,
+      });
+      const snapshot = runtime.getSnapshot();
+      // Only the hung endpoint is named, and it says why rather than leaking
+      // the AbortError's uninformative default message.
+      expect(snapshot.catalogError).toBe(
+        "Model catalog refresh failed for xai: Model catalog request for xai timed out after 50ms",
+      );
+      expect(snapshot.catalogError).not.toMatch(/operation was aborted/iu);
+      expect(snapshot.refreshedAt).not.toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps a timed-out provider retryable while advancing its siblings", async () => {
+    const stellaDataDir = await makeTempDir();
+    const runtime = new ModelRuntime();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((input, init) =>
+      String(input).endsWith("/xai")
+        ? neverResolvingRequest(init)
+        : Promise.resolve(new Response("", { status: 404 }))) as typeof fetch;
+
+    try {
+      await runtime.initialize({
+        stellaDataDir,
+        allowNetwork: true,
+        catalogRequestTimeoutMs: 50,
+      });
+      expect(runtime.getSnapshot().catalogError).toMatch(/timed out/u);
+
+      // The failed provider never recorded a checkedAt, so an unforced refresh
+      // retries just it while the providers that succeeded stay within their
+      // interval. That is what makes the error self-healing rather than sticky.
+      let requests = 0;
+      globalThis.fetch = ((input) => {
+        requests += 1;
+        expect(String(input)).toMatch(/\/xai$/u);
+        return Promise.resolve(new Response("", { status: 404 }));
+      }) as typeof fetch;
+      await runtime.refresh({ allowNetwork: true });
+
+      expect(requests).toBe(1);
+      expect(runtime.getSnapshot().catalogError).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("reports nothing per provider when a refresh is cancelled by its caller", async () => {
+    const stellaDataDir = await makeTempDir();
+    const runtime = new ModelRuntime();
+    await runtime.initialize({ stellaDataDir, allowNetwork: false });
+    const originalFetch = globalThis.fetch;
+    const controller = new AbortController();
+    globalThis.fetch = ((_input, init) => {
+      controller.abort();
+      return neverResolvingRequest(init);
+    }) as typeof fetch;
+
+    try {
+      await runtime.refresh({ allowNetwork: true, signal: controller.signal });
+      // Tearing the refresh down is not a catalog failure; it must not surface
+      // one scary line per provider that never got its turn.
+      expect(runtime.getSnapshot().catalogError).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
     }
