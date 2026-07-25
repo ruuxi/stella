@@ -368,13 +368,13 @@ const hasShellToolGuidance = (context: LocalAgentContext): boolean => {
  * Runtime facts about waiting, stated wherever an agent has a shell rather
  * than left to each agent's prompt body.
  *
- * The load-bearing fact is that an `exec_command` session outlives the turn
- * that started it AND now reports back: the runtime watches sessions left
- * running at turn end and resumes the thread when they exit. Agents were
- * writing checks the runtime couldn't cash ("I'll report back when the
- * benchmark lands") and threads were stopping forever — one left a GPU pod
- * idle-billing for hours. Now that promise is keepable, but only for
- * sessions the tool host can see, so the boundary has to be explicit too.
+ * Agents were writing checks the runtime couldn't cash — "I'll report back
+ * when the benchmark lands" — and their threads stopped forever; one left a
+ * GPU pod idle-billing for hours. There are exactly two ways to wait now
+ * and no tool for either: a background `exec_command` session wakes the
+ * thread when it exits, and everything else is polled inside the turn.
+ * Since the covered case is defined by what the tool host can see, the
+ * boundary has to be spelled out too.
  */
 const buildBackgroundWaitPrompt = (
   context: LocalAgentContext,
@@ -382,21 +382,13 @@ const buildBackgroundWaitPrompt = (
   if (!hasShellToolGuidance(context)) {
     return null;
   }
-  const lines = [
-    "Long-running commands:",
+  return [
+    "Waiting on long work:",
     "- A command still running when `exec_command` yields keeps running after your turn ends, and the runtime watches it for you. When it exits you are resumed in this thread, with your history, holding its command, exit code, and output. So you may start a long job, end your turn, and genuinely be woken when it finishes — several exits close together arrive as one wake.",
-    "- This covers sessions `exec_command` gives you a `session_id` for. It does NOT cover a process you detach from that session (`nohup … &`, `disown`, a daemon that forks away): the session exits immediately, and the thing you actually care about is invisible to the runtime. Run long work in the foreground of its own session and let it hold the session open.",
-    "- For a short wait, prefer finishing in-turn: poll with `write_stdin` and empty `chars`, which blocks until the process prints something or exits (up to 5 minutes per call). Only end your turn when the wait is long enough that holding it open would be wasteful.",
-  ];
-  if (hasToolGuidance(context, ["WakeWhen"])) {
-    lines.push(
-      "- `WakeWhen` covers waits that are not a command exiting — a file appearing, a remote job flipping to done, a deploy going healthy. It polls a shell check from outside your session and resumes you when it passes or times out. Reach for it only when process exit can't express the wait.",
-    );
-  }
-  lines.push(
-    "- Never claim you'll report back on something outside these paths. If a wait is genuinely unattended, say so plainly and hand over the exact command to check it.",
-  );
-  return lines.join("\n");
+    "- That covers sessions `exec_command` gave you a `session_id` for. It does NOT cover a process you detach from that session (`nohup … &`, `disown`, a daemon that forks away): the session exits immediately and the thing you actually care about is invisible to the runtime. Run long work in the foreground of its own session and let it hold the session open.",
+    "- For anything else you need to wait on — a file appearing, a remote job flipping to done, an endpoint going healthy — poll inside the current turn. `write_stdin` with empty `chars` blocks on a session until it prints or exits, up to 5 minutes per call; a foreground `sleep N && check` loop works for the rest. There is no tool that wakes you later, so a wait you do not either background as a session or finish in-turn is a wait nobody is keeping.",
+    "- Never claim you'll report back on something outside those two paths. If a wait is genuinely unattended, say so plainly and hand over the exact command to check it.",
+  ].join("\n");
 };
 
 const buildFileEditingPrompt = (context: LocalAgentContext): string | null => {

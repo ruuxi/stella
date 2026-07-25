@@ -55,23 +55,22 @@ describe("buildSystemPrompt", () => {
     // The coverage boundary is the whole point of saying it out loud.
     expect(prompt).toContain("nohup");
     expect(prompt).toContain("invisible to the runtime");
-    // No WakeWhen in the allowlist, so don't advertise it.
-    expect(prompt).not.toContain("`WakeWhen` covers waits");
   });
 
-  it("mentions WakeWhen only when the agent has it, and only as the exception", () => {
+  it("sends every other wait to in-turn polling, since no wake tool exists", () => {
     const prompt = buildSystemPrompt({
       systemPrompt: "system",
       dynamicContext: "",
       maxAgentDepth: 1,
       threadHistory: [],
-      toolsAllowlist: ["exec_command", "WakeWhen"],
+      toolsAllowlist: ["exec_command", "apply_patch"],
     });
 
-    expect(prompt).toContain(
-      "`WakeWhen` covers waits that are not a command exiting",
-    );
-    expect(prompt).toContain("only when process exit can't express the wait");
+    expect(prompt).toContain("poll inside the current turn");
+    expect(prompt).toContain("`write_stdin` with empty `chars`");
+    expect(prompt).toContain("There is no tool that wakes you later");
+    // Nothing may point at a tool that no longer exists.
+    expect(prompt).not.toContain("WakeWhen");
   });
 
   it("stays quiet for agents that cannot start anything long-running", () => {
@@ -83,7 +82,7 @@ describe("buildSystemPrompt", () => {
       toolsAllowlist: ["Read", "Grep"],
     });
 
-    expect(prompt).not.toContain("Long-running commands:");
+    expect(prompt).not.toContain("Waiting on long work:");
   });
 });
 

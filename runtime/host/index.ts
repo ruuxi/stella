@@ -3209,8 +3209,6 @@ export class StellaRuntimeHost {
               },
             ),
           getActiveOrchestratorRun: async () => await this.getActiveRun(),
-          sendAgentInput: async (payload) =>
-            await this.sendAgentInput(payload),
           }),
       },
       // Pop a native banner whenever a scheduled fire delivers a message.
