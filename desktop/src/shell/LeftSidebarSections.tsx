@@ -94,8 +94,9 @@ const SECTION_CAPS = {
 // set made a common query mount hundreds of rows at once.
 const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
-/** Most-recent agent-authored messages shown under an expanded agent. */
-const AGENT_UPDATE_CAP = 3;
+const EMPTY_UPDATES: ReadonlyArray<string> = [];
+/** Agent-authored messages shown under an expanded RUNNING agent. */
+const AGENT_UPDATE_CAP = 1;
 /** File rows shown under an expanded agent before "View all (N)" kicks in. */
 const AGENT_FILE_CAP = 5;
 
@@ -347,11 +348,13 @@ const TaskRow = memo(function TaskRow({
   // intentionally reserved for the inline chat card, so it cannot replace
   // the stable description here or leak into activity search.
   const label = task.description.trim();
-  const agentUpdates = getTaskAgentUpdates(task);
+  // Agent-authored assistant messages replace generated/tool-status summary
+  // text. Only a still-running agent surfaces them (capped to the single
+  // most recent line); finished rows keep just title, status, and files.
+  const agentUpdates =
+    task.status === "running" ? getTaskAgentUpdates(task) : EMPTY_UPDATES;
   // Per-session only; resets when the row unmounts, which is fine.
   const [showAllFiles, setShowAllFiles] = useState(false);
-  // Agent-authored assistant messages replace generated/tool-status summary
-  // text and remain available after completion without extra inference.
   const hasAgentUpdates = agentUpdates.length > 0;
   const managerDetail =
     task.agentType === AGENT_IDS.MANAGER
