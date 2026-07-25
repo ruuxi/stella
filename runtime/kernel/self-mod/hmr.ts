@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "timers/promises";
 
@@ -10,11 +10,12 @@ import {
   type RunStatus,
 } from "./contention-tracker.js";
 import {
-  isFullWindowReloadRelevantPath,
+  isFullWindowReloadRelevantChange,
   isWorkerRestartRelevantPath,
   isRestartRequiredNonHmrPath,
   isViteTrackablePath,
   toSelfModRelevantKey,
+  type SelfModChangeKind,
 } from "./path-relevance.js";
 
 const HMR_ENDPOINT_BASE = "/__stella/self-mod/hmr";
@@ -216,8 +217,24 @@ const partitionProcessRestartPaths = (paths: string[]): string[] =>
       !isWorkerRestartRelevantPath(repoRelativePath),
   );
 
-const partitionFullReloadPaths = (paths: string[]): string[] =>
-  paths.filter(isFullWindowReloadRelevantPath);
+/**
+ * Change-kind-aware full-reload partition. A path can enter the
+ * full-window-reload apply class either by shape (index.html, app metadata,
+ * theme modules) or because this run CREATED or DELETED a glob-expansion
+ * member (e.g. a new desktop/src/app/_user/<slug>.tsx): targeted HMR cannot
+ * surface those — the glob importer needs a re-transform, which only a full
+ * window reload delivers reliably (see path-relevance.ts).
+ */
+const partitionFullReloadPaths = (
+  paths: string[],
+  changeKindForPath: (repoRelativePath: string) => SelfModChangeKind,
+): string[] =>
+  paths.filter((repoRelativePath) =>
+    isFullWindowReloadRelevantChange(
+      repoRelativePath,
+      changeKindForPath(repoRelativePath),
+    ),
+  );
 
 const readSnapshotContent = (
   repoRoot: string,
@@ -260,38 +277,56 @@ const expandGeneratedDependentPaths = (
 const buildAppliedRuns = (
   batch: ContendedRun[],
   snapshots: Map<string, Map<string, string | null>>,
+  createdPathsByRun: Map<string, Set<string>>,
   repoRoot: string,
 ): AppliedRun[] =>
   batch.map((run) => {
     const paths = Array.from(run.touchedPaths);
     const snapshot = snapshots.get(run.runId);
+    const files = paths.map((filePath) => {
+      if (snapshot?.has(filePath)) {
+        const content = snapshot.get(filePath);
+        return content == null
+          ? { path: filePath, deleted: true }
+          : { path: filePath, content };
+      }
+      return { path: filePath, ...readSnapshotContent(repoRoot, filePath) };
+    });
+    const deletedPaths = new Set(
+      files.filter((file) => file.deleted === true).map((file) => file.path),
+    );
+    const createdPaths = createdPathsByRun.get(run.runId);
+    const changeKindForPath = (
+      repoRelativePath: string,
+    ): SelfModChangeKind => {
+      if (deletedPaths.has(repoRelativePath)) return "delete";
+      if (createdPaths?.has(repoRelativePath)) return "create";
+      return "modify";
+    };
     return {
       runId: run.runId,
       paths,
-      files: paths.map((filePath) => {
-        if (snapshot?.has(filePath)) {
-          const content = snapshot.get(filePath);
-          return content == null
-            ? { path: filePath, deleted: true }
-            : { path: filePath, content };
-        }
-        return { path: filePath, ...readSnapshotContent(repoRoot, filePath) };
-      }),
+      files,
       runtimeRestartRelevantPaths: partitionRuntimeRestartPaths(paths),
       processRestartRelevantPaths: partitionProcessRestartPaths(paths),
       restartRelevantPaths: partitionRestartPaths(paths),
-      fullReloadRelevantPaths: partitionFullReloadPaths(paths),
+      fullReloadRelevantPaths: partitionFullReloadPaths(
+        paths,
+        changeKindForPath,
+      ),
     };
   });
 
 const buildApplyResult = (
   decision: ApplyDecision,
   snapshots: Map<string, Map<string, string | null>>,
+  createdPathsByRun: Map<string, Set<string>>,
   repoRoot: string,
 ): ApplyResult => {
   const appliedRuns = buildAppliedRuns(
     decision.applyBatch,
     snapshots,
+    createdPathsByRun,
     repoRoot,
   );
   const restartRelevantRunIds = appliedRuns.map((run) => run.runId);
@@ -399,6 +434,24 @@ export const createSelfModHmrController = (
     string,
     Map<string, string | null>
   >();
+  /**
+   * Paths that did not exist on disk when this run first claimed them —
+   * i.e. files the run is CREATING. Feeds the change-kind-aware full-reload
+   * classification (a new glob-expansion member cannot be surfaced by
+   * targeted HMR). Only exact for writes recorded before the file lands
+   * (the pre-write tool hook); post-hoc recordings (shell mutations) fall
+   * back to the Vite plugin's module-graph detection at apply time.
+   */
+  const createdPathsByRun = new Map<string, Set<string>>();
+
+  const markCreatedPath = (runId: string, repoRelativePath: string): void => {
+    let created = createdPathsByRun.get(runId);
+    if (!created) {
+      created = new Set();
+      createdPathsByRun.set(runId, created);
+    }
+    created.add(repoRelativePath);
+  };
 
   const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
@@ -529,6 +582,7 @@ export const createSelfModHmrController = (
     for (const runId of runIds) {
       touchedPathsByRun.delete(runId);
       finalizedSnapshotsByRun.delete(runId);
+      createdPathsByRun.delete(runId);
     }
   };
 
@@ -536,6 +590,7 @@ export const createSelfModHmrController = (
     const result = buildApplyResult(
       decision,
       finalizedSnapshotsByRun,
+      createdPathsByRun,
       options.repoRoot,
     );
     dropRunState(result.appliedRuns.map((run) => run.runId));
@@ -604,6 +659,14 @@ export const createSelfModHmrController = (
       const newlyOwnedPaths = expandedRepoRelative.filter(
         (repoRelativePath) => !alreadyOwnedPaths.includes(repoRelativePath),
       );
+      // Capture created-ness synchronously at first claim, before any await:
+      // the pre-write hook runs before the tool writes, so a missing file
+      // here means this run is creating it.
+      for (const repoRelativePath of newlyOwnedPaths) {
+        if (!existsSync(path.resolve(options.repoRoot, repoRelativePath))) {
+          markCreatedPath(runId, repoRelativePath);
+        }
+      }
       const viteTrackablePaths = newlyOwnedPaths.filter(isViteTrackablePath);
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
@@ -632,6 +695,7 @@ export const createSelfModHmrController = (
         touchedPathsByRun.delete(runId);
         if (result.appliedRuns.every((run) => run.runId !== runId)) {
           finalizedSnapshotsByRun.delete(runId);
+          createdPathsByRun.delete(runId);
         }
       }
       return result;
@@ -700,6 +764,7 @@ export const createSelfModHmrController = (
       }
       touchedPathsByRun.clear();
       finalizedSnapshotsByRun.clear();
+      createdPathsByRun.clear();
       if (!options.enabled) return true;
       return await postWithRetry({
         getDevServerUrl: options.getDevServerUrl,

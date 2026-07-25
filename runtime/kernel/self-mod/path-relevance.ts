@@ -128,6 +128,30 @@ const SIDEBAR_APP_METADATA_RE = /^desktop\/src\/app\/[^/]+\/metadata\.ts$/;
 const THEME_REGISTRY_MODULE_RE = /^desktop\/src\/shared\/theme\/themes\/[^/]+\.ts$/;
 
 /**
+ * Renderer files whose ADDITION or DELETION changes an `import.meta.glob`
+ * expansion in a registry module. Editing such a file is plain renderer HMR,
+ * but creating or deleting one requires re-transforming the glob *importer* —
+ * a module the apply batch never names. Targeted `reloadModule` cannot reach
+ * it (a brand-new file has no module-graph entry at all), and the synthetic
+ * watcher-event path resolves asynchronously after the apply's client-update
+ * release window closes, so its importGlob `update` gets suppressed. The only
+ * robust apply class for these changes is a full window reload.
+ *
+ * Keep in sync with the `import.meta.glob` call sites:
+ *   - desktop/src/app/_user/user-apps-registry.ts   -> "./*.tsx"
+ *   - desktop/src/shared/i18n/catalogs.ts           -> "./locales/*.json"
+ * (desktop/src/app/<id>/metadata.ts and theme modules are glob-discovered
+ * too, but those are already unconditionally in the full-reload class above;
+ * desktop/src/routes/ additions flow through routeTree.gen.ts instead.)
+ */
+const GLOB_EXPANSION_MEMBER_RES: ReadonlyArray<RegExp> = [
+  /^desktop\/src\/app\/_user\/[^/]+\.tsx$/,
+  /^desktop\/src\/shared\/i18n\/locales\/[^/]+\.json$/,
+];
+
+export type SelfModChangeKind = "modify" | "create" | "delete";
+
+/**
  * Top-level files (no directory prefix) that still count as relevant —
  * config / manifests that affect the app, but are not renderer-HMR-able.
  */
@@ -306,6 +330,33 @@ export const isFullWindowReloadRelevantPath = (repoRelativePath: string): boolea
     THEME_REGISTRY_MODULE_RE.test(normalized)
   );
 };
+
+/**
+ * True for renderer paths that are members of a registry `import.meta.glob`
+ * expansion (see GLOB_EXPANSION_MEMBER_RES). Path-shape only; combine with a
+ * change kind via `isFullWindowReloadRelevantChange`.
+ */
+export const isGlobExpansionMemberPath = (repoRelativePath: string): boolean => {
+  if (!repoRelativePath) return false;
+  const normalized = stripTrailingSlash(toPosix(repoRelativePath));
+  for (const pattern of GLOB_EXPANSION_MEMBER_RES) {
+    if (pattern.test(normalized)) return true;
+  }
+  return false;
+};
+
+/**
+ * Change-kind-aware variant of `isFullWindowReloadRelevantPath`: a created or
+ * deleted glob-expansion member escalates to the full-window-reload apply
+ * class, while an in-place modification of the same path stays in the
+ * targeted renderer-HMR class.
+ */
+export const isFullWindowReloadRelevantChange = (
+  repoRelativePath: string,
+  changeKind: SelfModChangeKind,
+): boolean =>
+  isFullWindowReloadRelevantPath(repoRelativePath) ||
+  (changeKind !== "modify" && isGlobExpansionMemberPath(repoRelativePath));
 
 export const isRestartRequiredNonHmrPath = (
   repoRelativePath: string,

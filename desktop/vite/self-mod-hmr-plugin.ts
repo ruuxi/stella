@@ -10,6 +10,7 @@ import fs from "fs"
 import path from "path"
 import type { Plugin } from "vite"
 import {
+  isGlobExpansionMemberPath,
   isViteTrackablePath,
   normalizeContentionPath,
 } from "../../runtime/kernel/self-mod/path-relevance.js"
@@ -756,6 +757,18 @@ export function selfModHmrControl(): Plugin {
           absPath: string
         }> = []
         let hasNewFileForGlobInvalidation = false
+        // A created/deleted member of a registry `import.meta.glob` (e.g. a
+        // new desktop/src/app/_user/<slug>.tsx). Targeted reloadModule can't
+        // surface it: the new file has no module-graph entry, and the glob
+        // importer's synthetic-watcher `update` lands asynchronously AFTER
+        // this apply's release window closes, where the parked ws.send patch
+        // swallows it. Report `requiresClientFullReload` so the host runs its
+        // covered reload instead of silently finishing the HMR tier. The
+        // kernel escalates most of these up front via
+        // isFullWindowReloadRelevantChange; this is the module-graph-side
+        // safety net for creations the worker recorded only after the file
+        // already existed on disk (shell mutations, external self-mod).
+        let hasGlobExpansionChange = false
 
         for (const run of runs) {
           releaseRuns([run.runId])
@@ -775,6 +788,15 @@ export function selfModHmrControl(): Plugin {
 
             const mods = server.moduleGraph.getModulesByFile(absPath)
             const hadExistingModules = !!mods && mods.size > 0
+            if (file.deleted || !hadExistingModules) {
+              const repoRelative = normalizeContentionPath(
+                absPath,
+                STELLA_REPO_ROOT,
+              )
+              if (repoRelative && isGlobExpansionMemberPath(repoRelative)) {
+                hasGlobExpansionChange = true
+              }
+            }
             if (!hadExistingModules) {
               if (!file.deleted) hasNewFileForGlobInvalidation = true
             } else {
@@ -889,10 +911,14 @@ export function selfModHmrControl(): Plugin {
           return {
             appliedPaths,
             reloadedModules,
+            // hasGlobExpansionChange intentionally does NOT ws-broadcast a
+            // full-reload here: the host owns the renderer swap and performs
+            // a covered reloadIgnoringCache when this flag comes back true.
             requiresClientFullReload:
               forceClientFullReload ||
               reloadFailed ||
-              clientFullReloadRequestedDuringApply,
+              clientFullReloadRequestedDuringApply ||
+              hasGlobExpansionChange,
           }
         } finally {
           for (const absPath of appliedOverlayPaths) {
