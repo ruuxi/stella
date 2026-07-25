@@ -587,23 +587,28 @@ describe("subagent orchestration production routing", () => {
           event.type === "agent-started" &&
           event.agentId === parentTask.threadId,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
 
-    // 3. Internal coordination must not look like a new top-level send_input:
-    //    the woken re-entry emits neither agent-started nor agent-progress.
-    expect(
-      appendedEvents
-        .slice(rootEventsBeforeChild)
-        .filter((event) => event.type === "agent-started"),
-    ).toEqual([]);
+    // 3. The wake is an ordinary follow-up on the parent's own thread, not a
+    //    hidden coordination boundary: it emits a normal `agent-started`
+    //    flagged `isFollowUp`, exactly as an external send_input would. The
+    //    parent is a root-spawned agent, so its own lifecycle is the user's
+    //    business; only the CHILD's events are withheld from root, which is
+    //    what the assertions above pin.
+    const startsAfterChild = appendedEvents
+      .slice(rootEventsBeforeChild)
+      .filter((event) => event.type === "agent-started");
+    expect(startsAfterChild).toHaveLength(1);
+    expect(startsAfterChild[0]?.payload).toMatchObject({
+      agentId: parentTask.threadId,
+      isFollowUp: true,
+    });
     expect(
       streamedAgentEvents
         .slice(streamedBeforeChild)
-        .filter(
-          (event) =>
-            event.type === "agent-started" || event.type === "agent-progress",
-        ),
-    ).toEqual([]);
+        .filter((event) => event.type === "agent-started")
+        .map((event) => event.agentId),
+    ).toEqual([parentTask.threadId]);
 
     // The parent's own completions still reach root, once per finished turn.
     expect(
@@ -937,8 +942,11 @@ describe("subagent orchestration production routing", () => {
         "agent-canceled",
       ].includes(event.type),
     );
-    // Only the parent is ever projected into root: one start (spawn) and one
-    // completion per finished turn. Child-report re-entries emit no start.
+    // Only the parent is ever projected into root — never a subagent. Its own
+    // turns are paired: one start and one completion each, including the turns
+    // a child report woke, which behave like any other input rather than as a
+    // hidden coordination boundary. Pairing is the point: a completion without
+    // a matching start is what the card lifecycle cannot bind.
     expect(
       rootLifecycle.every(
         (event) =>
@@ -948,7 +956,10 @@ describe("subagent orchestration production routing", () => {
     ).toBe(true);
     expect(
       rootLifecycle.filter((event) => event.type === "agent-started"),
-    ).toHaveLength(1);
+    ).toHaveLength(parentRuns.length);
+    expect(rootLifecycle.map((event) => event.type)).toEqual(
+      parentRuns.flatMap(() => ["agent-started", "agent-completed"]),
+    );
     expect(
       rootLifecycle
         .filter((event) => event.type === "agent-completed")
@@ -992,9 +1003,18 @@ describe("subagent orchestration production routing", () => {
           event.type === "agent-started" &&
           event.agentId === parentTask.threadId,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(parentRuns.length);
+    // The resumed turn is labelled, never captioned with the report itself:
+    // a start event's statusText is projected into root, so deriving it from
+    // the delivered text would leak the subagent's report there.
     expect(JSON.stringify(streamedAgentEvents)).not.toContain(
       PARENT_TERMINAL_REMINDER,
+    );
+    expect(JSON.stringify(streamedAgentEvents)).not.toContain(
+      "First subagent private result.",
+    );
+    expect(JSON.stringify(appendedEvents)).not.toContain(
+      "Second subagent private result.",
     );
     expect(
       sentMessages.some((message) =>

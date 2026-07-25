@@ -318,6 +318,27 @@ export const isOrchestratorReservedBuiltinAgentId = (
   agentId: string,
 ): boolean => ORCHESTRATOR_RESERVED_BUILTIN_AGENT_ID_SET.has(agentId);
 
+/**
+ * Agent types that existed in earlier versions and no longer do, mapped to
+ * what a persisted row of that type should read as now.
+ *
+ * Applied when loading `runtime_agents` rows, so a thread written by an older
+ * install degrades into an ordinary thread rather than an unknown type: it
+ * keeps its history, still appears in Activity (the feed admits only known
+ * types), renders its subagents as a normal parent/child hierarchy, and runs
+ * with a real toolset if the user resumes it. The stored value is left alone —
+ * this is a read-time reinterpretation, not a migration that rewrites rows.
+ */
+const RETIRED_AGENT_TYPE_REPLACEMENTS: Readonly<Record<string, AgentId>> =
+  Object.freeze({
+    // Removed with the Manager agent; its threads were ordinary coordination
+    // threads whose children are plain General subagents.
+    manager: AGENT_IDS.GENERAL,
+  });
+
+export const normalizeRetiredAgentType = (agentType: string): string =>
+  RETIRED_AGENT_TYPE_REPLACEMENTS[agentType] ?? agentType;
+
 export const MODEL_SETTINGS_AGENTS = Object.freeze(
   BUILTIN_AGENT_DEFINITIONS.filter(
     (

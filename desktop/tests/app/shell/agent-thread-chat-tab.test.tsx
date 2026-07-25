@@ -4,7 +4,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadActivityUpdatedPayload } from "../../../../runtime/contracts/local-chat.js";
-import { AgentThreadChatTab } from "@/shell/display/AgentThreadChatTab";
+
+const openAgentThreadTab = vi.hoisted(() => vi.fn());
+vi.mock("@/features/workspace-display/open-payload", () => ({
+  openAgentThreadTab,
+}));
+
+const { AgentThreadChatTab } = await import(
+  "@/shell/display/AgentThreadChatTab"
+);
 
 describe("AgentThreadChatTab", () => {
   let container: HTMLDivElement;
@@ -83,6 +91,7 @@ describe("AgentThreadChatTab", () => {
           : 0;
       },
     });
+    openAgentThreadTab.mockClear();
     listAgentThreadMessages.mockReset().mockResolvedValue(initialMessages);
     Object.defineProperty(window, "electronAPI", {
       configurable: true,
@@ -131,6 +140,32 @@ describe("AgentThreadChatTab", () => {
       await Promise.resolve();
     });
   };
+
+  it("renders a subagent card that drills into that subagent's own read-only thread", async () => {
+    // Viewing a parent agent's thread: its subagent's spawn/completion is a
+    // card here, not a transcript line, and the card opens the SUBAGENT's own
+    // read-only view — the nested drill-down, one level down from this tab.
+    await renderThread("parent-thread-1", "conversation-a", "general");
+
+    const viewButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="View activity"]',
+    );
+    expect(viewButton).not.toBeNull();
+
+    await act(async () => {
+      viewButton!.click();
+      await Promise.resolve();
+    });
+
+    expect(openAgentThreadTab).toHaveBeenCalledTimes(1);
+    // Targets the child, not the parent whose thread is currently open.
+    expect(openAgentThreadTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "child",
+        conversationId: "conversation-a",
+      }),
+    );
+  });
 
   it("renders the exact transcript read-only and refreshes on live activity", async () => {
     await renderThread();

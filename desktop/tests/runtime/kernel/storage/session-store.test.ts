@@ -2155,6 +2155,66 @@ describe("session-store", () => {
 });
 
 describe("thread activity rows", () => {
+  it("degrades a persisted retired-type thread into an ordinary one", () => {
+    const { store, db } = createTestContext();
+    // A row written by an install that still had the Manager agent, with a
+    // General child hanging off it — exactly what an existing user DB holds.
+    db.exec(`
+      INSERT INTO runtime_agents (
+        thread_id, conversation_id, agent_type, description, agent_depth,
+        status, started_at, completed_at, result, updated_at,
+        manager_turn_state_json
+      ) VALUES (
+        'legacy-manager', 'conv-legacy', 'manager', 'Coordinate the rollout', 1,
+        'completed', 1000, 2000, 'Consolidated report.', 2000,
+        '{"reportSequence":2,"finalMessage":"Consolidated report."}'
+      );
+    `);
+    store.saveAgentRecord({
+      threadId: "legacy-child",
+      conversationId: "conv-legacy",
+      agentType: "general",
+      description: "Managed child",
+      agentDepth: 2,
+      parentAgentId: "legacy-manager",
+      status: "completed",
+      startedAt: 1_100,
+      completedAt: 1_900,
+      result: "Child done.",
+      updatedAt: 1_900,
+    });
+
+    // Reads as a plain General thread rather than an unknown type, so the
+    // Activity feed (which admits only known types) still shows it and its
+    // child still renders beneath it as an ordinary parent/child hierarchy.
+    const record = store.getAgentRecord("legacy-manager");
+    expect(record).toMatchObject({
+      threadId: "legacy-manager",
+      agentType: "general",
+      status: "completed",
+      result: "Consolidated report.",
+    });
+
+    const rows = store.listThreadActivity("conv-legacy");
+    expect(rows.map((row) => row.threadId).sort()).toEqual([
+      "legacy-child",
+      "legacy-manager",
+    ]);
+    const projected = rows.find((row) => row.threadId === "legacy-manager");
+    expect(projected?.agentType).toBe("general");
+    expect(projected?.description).toBe("Coordinate the rollout");
+    expect(
+      rows.find((row) => row.threadId === "legacy-child")?.parentAgentId,
+    ).toBe("legacy-manager");
+
+    // Reinterpreted on read, never rewritten: the stored row is untouched and
+    // the retired column is simply ignored.
+    const stored = db
+      .prepare("SELECT agent_type FROM runtime_agents WHERE thread_id = ?")
+      .get("legacy-manager") as { agent_type: string };
+    expect(stored.agent_type).toBe("manager");
+  });
+
   it("projects one authoritative row per thread", () => {
     const { store } = createTestContext();
     store.saveAgentRecord({

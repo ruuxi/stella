@@ -242,14 +242,6 @@ type RuntimeAgentRecord = {
    * reads as a spawn.
    */
   pendingStartIsFollowUp?: boolean;
-  /**
-   * The next turn was queued solely because a subagent lifecycle report was
-   * persisted into this (parent) thread. The parent still re-enters and the
-   * authoritative runtime_agents row still moves to running, but this
-   * internal coordination boundary must not look like a new top-level
-   * send_input occurrence in the root transcript.
-   */
-  pendingStartIsChildReport?: boolean;
 };
 
 const formatTaskUpdateStatusText = (text: string): string =>
@@ -1157,7 +1149,6 @@ export class LocalAgentManager implements AgentToolApi {
     // Cleared here so a bare reset reads as a spawn; the follow-up callers
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
-    task.pendingStartIsChildReport = undefined;
     if (!options?.preserveSelfModRun) {
       // A terminal pause/cancel closes the prior run in the runner's finally
       // path. The resumed ownership epoch must begin a new run rather than
@@ -1202,7 +1193,6 @@ export class LocalAgentManager implements AgentToolApi {
       // Resuming an evicted/persisted thread is always a `send_input`
       // follow-up (this helper is only reached from that path).
       pendingStartIsFollowUp: true,
-      pendingStartIsChildReport: false,
       attemptGeneration: Number.isFinite(record.attemptGeneration)
         ? Math.max(0, Math.floor(record.attemptGeneration))
         : 0,
@@ -1235,7 +1225,6 @@ export class LocalAgentManager implements AgentToolApi {
    */
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
     const pendingStartStatusText = task.pendingStartStatusText;
-    const pendingStartIsChildReport = task.pendingStartIsChildReport;
     const prompt = this.buildTaskPrompt(task);
     this.resetTaskForNextAttempt(task, prompt, { preserveSelfModRun: true });
     // The superseded turn's boundary emitted no completion event (the
@@ -1245,7 +1234,6 @@ export class LocalAgentManager implements AgentToolApi {
     task.pendingStartStatusText = pendingStartStatusText;
     // Interjected in-flight work is a `send_input` follow-up, not a spawn.
     task.pendingStartIsFollowUp = true;
-    task.pendingStartIsChildReport = pendingStartIsChildReport;
     task.recentActivity = [
       pendingStartStatusText ?? "Applying task update from orchestrator.",
     ];
@@ -1366,42 +1354,28 @@ export class LocalAgentManager implements AgentToolApi {
       const controller = task.controller;
       const startStatusText = task.pendingStartStatusText ?? task.description;
       const startIsFollowUp = task.pendingStartIsFollowUp ?? false;
-      const startIsChildReport = task.pendingStartIsChildReport ?? false;
       task.pendingStartStatusText = undefined;
       task.pendingStartIsFollowUp = undefined;
-      task.pendingStartIsChildReport = undefined;
       this.persistTask(task);
-      if (!startIsChildReport) {
-        this.opts.onAgentEvent?.({
-          type: "agent-started",
-          conversationId: task.conversationId,
-          rootRunId: task.rootRunId,
-          agentId: task.threadId,
-          agentType: task.agentType,
-          description: task.description,
-          parentAgentId: task.parentAgentId,
-          attemptGeneration: generation,
-          ...(startStatusText ? { statusText: startStatusText } : {}),
-          ...(startIsFollowUp ? { isFollowUp: true } : {}),
-        });
-        logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
-          threadId: task.threadId,
-          conversationId: task.conversationId,
-          rootRunId: task.rootRunId,
-          description: task.description,
-          statusText: startStatusText,
-        });
-      } else {
-        logWorkingIndicatorTrace(
-          "[stella:working-indicator:child-report-resumed]",
-          {
-            threadId: task.threadId,
-            conversationId: task.conversationId,
-            rootRunId: task.rootRunId,
-            description: task.description,
-          },
-        );
-      }
+      this.opts.onAgentEvent?.({
+        type: "agent-started",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        attemptGeneration: generation,
+        ...(startStatusText ? { statusText: startStatusText } : {}),
+        ...(startIsFollowUp ? { isFollowUp: true } : {}),
+      });
+      logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
+        threadId: task.threadId,
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        description: task.description,
+        statusText: startStatusText,
+      });
       const execution = this.executeTask(task, {
         generation,
         controller,
@@ -2242,7 +2216,6 @@ export class LocalAgentManager implements AgentToolApi {
       local.interruptedForFollowUp = false;
       local.pendingStartStatusText = undefined;
       local.pendingStartIsFollowUp = undefined;
-      local.pendingStartIsChildReport = undefined;
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: local.conversationId,
@@ -2332,9 +2305,19 @@ export class LocalAgentManager implements AgentToolApi {
   ): Promise<{ delivered: boolean; reason?: string }> {
     const text = message.trim();
     if (!text) return { delivered: false };
-    const updateStatusSource = options?.description?.trim()
-      ? options.description
-      : text;
+    // A child report is already persisted into this thread by the
+    // orchestration layer, so the delivered turn input is a pointer rather
+    // than a second copy of the report.
+    const isChildReport = options?.deliveryKind === "child-report";
+    // The parent is a root-spawned agent, so the status text on its resumed
+    // turn is projected into root chat and Activity. Deriving it from the
+    // delivered text would leak the subagent's report there — the one place
+    // that report must never appear. Label the boundary instead.
+    const updateStatusSource = isChildReport
+      ? "Reviewing a subagent's report"
+      : (options?.description?.trim() ?? "").length > 0
+        ? options!.description!
+        : text;
     const updateStatusText = formatTaskUpdateStatusText(updateStatusSource);
     const rootRunId = options?.rootRunId?.trim() || undefined;
     // An orchestrator follow-up re-tasks the thread, so the thread adopts
@@ -2346,10 +2329,6 @@ export class LocalAgentManager implements AgentToolApi {
       from === "orchestrator"
         ? options?.description?.trim() || undefined
         : undefined;
-    // A child report is already persisted into this thread by the
-    // orchestration layer, so the delivered turn input is a pointer rather
-    // than a second copy of the report.
-    const isChildReport = options?.deliveryKind === "child-report";
     const deliveredInput = isChildReport
       ? "A subagent you started has finished. Review its newly persisted report in this thread and continue your task."
       : text;
@@ -2393,7 +2372,6 @@ export class LocalAgentManager implements AgentToolApi {
         text,
         updateStatusText,
       );
-      resumedTask.pendingStartIsChildReport = isChildReport;
       if (rootRunId) {
         resumedTask.rootRunId = rootRunId;
       }
@@ -2464,21 +2442,18 @@ export class LocalAgentManager implements AgentToolApi {
       task.pendingStartStatusText = updateStatusText;
       // Re-activating a terminal thread is a `send_input` follow-up.
       task.pendingStartIsFollowUp = true;
-      task.pendingStartIsChildReport = isChildReport;
       task.recentActivity = [updateStatusText];
-      if (!isChildReport) {
-        this.opts.onAgentEvent?.({
-          type: "agent-progress",
-          conversationId: task.conversationId,
-          rootRunId: task.rootRunId,
-          agentId: task.threadId,
-          agentType: task.agentType,
-          description: task.description,
-          parentAgentId: task.parentAgentId,
-          attemptGeneration: task.attemptGeneration,
-          statusText: updateStatusText,
-        });
-      }
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        attemptGeneration: task.attemptGeneration,
+        statusText: updateStatusText,
+      });
       this.enqueueTask(task);
       return { delivered: true };
     }
@@ -2513,26 +2488,18 @@ export class LocalAgentManager implements AgentToolApi {
         task.description = followUpDescription;
       }
       task.pendingStartStatusText = updateStatusText;
-      // A user-authored send_input owns the visible follow-up even if a child
-      // report races into the same queued turn. Internal coordination can
-      // suppress a start only while it is the sole reason for re-entry.
-      if (!isChildReport || task.pendingStartIsChildReport === undefined) {
-        task.pendingStartIsChildReport = isChildReport;
-      }
       task.recentActivity = [updateStatusText];
-      if (!isChildReport) {
-        this.opts.onAgentEvent?.({
-          type: "agent-progress",
-          conversationId: task.conversationId,
-          rootRunId: task.rootRunId,
-          agentId: task.threadId,
-          agentType: task.agentType,
-          description: task.description,
-          parentAgentId: task.parentAgentId,
-          attemptGeneration: task.attemptGeneration,
-          statusText: updateStatusText,
-        });
-      }
+      this.opts.onAgentEvent?.({
+        type: "agent-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        description: task.description,
+        parentAgentId: task.parentAgentId,
+        attemptGeneration: task.attemptGeneration,
+        statusText: updateStatusText,
+      });
 
       if (task.status === "running" && !task.controller.signal.aborted) {
         // The follow-up is already in `toSubagentQueue` above. Aborting the

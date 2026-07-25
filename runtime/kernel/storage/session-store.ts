@@ -1,6 +1,7 @@
 import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
 import {
   AGENT_IDS,
+  normalizeRetiredAgentType,
   type TaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
 import type {
@@ -4947,7 +4948,7 @@ export class SessionStore {
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
-      agentType: row.agent_type,
+      agentType: normalizeRetiredAgentType(row.agent_type),
       description: row.description,
       agentDepth: row.agent_depth,
       ...(row.max_agent_depth == null
@@ -5026,7 +5027,7 @@ export class SessionStore {
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
-        agentType: row.agent_type,
+        agentType: normalizeRetiredAgentType(row.agent_type),
         description: row.description,
         agentDepth: row.agent_depth,
         ...(row.max_agent_depth == null
@@ -5117,7 +5118,7 @@ export class SessionStore {
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
-        agentType: row.agent_type,
+        agentType: normalizeRetiredAgentType(row.agent_type),
         description: row.description,
         status: row.status,
         attemptGeneration: row.attempt_generation,
