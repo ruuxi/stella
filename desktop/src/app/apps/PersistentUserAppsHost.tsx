@@ -1,4 +1,3 @@
-import { useMatchRoute } from "@tanstack/react-router";
 import {
   lazy,
   Suspense,
@@ -16,9 +15,17 @@ import {
   type UserAppModule,
 } from "@/app/_user/user-apps-registry";
 import {
-  clearLastUserAppSlug,
-  recordLastUserAppSlug,
-} from "./last-user-app-location";
+  useActiveSidebarSection,
+  useSidebarSectionLocation,
+} from "@/features/workspace-display/sidebar-sections";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
+import {
+  countingDownUserApps,
+  liveUserAppInputSlug,
+  mountedUserApps,
+  promoteRetainedUserApp,
+  USER_APP_TEARDOWN_MS,
+} from "./user-app-keep-alive";
 import {
   installUserAppInputGate,
   setInputActiveUserApp,
@@ -30,21 +37,6 @@ import {
 // no-op unless the app opts in via `meta.backgroundInput` — see
 // `user-app-input-gate.ts` for the full contract.
 installUserAppInputGate();
-
-/**
- * How long a user app stays mounted (hidden) after the user navigates away
- * before it is torn down. Navigating away hides the app instead of
- * unmounting it; returning within this window restores it exactly as left
- * (state, scroll, media) and resets the clock. Only a long *continuous*
- * absence unmounts the app.
- */
-export const USER_APP_TEARDOWN_MS = 30 * 60 * 1000; // 30 minutes
-
-/**
- * How many user apps are kept alive at once, most-recently-used first.
- * Opening more apps than this evicts (unmounts) the least recently used.
- */
-const MAX_RETAINED_USER_APPS = 3;
 
 /**
  * One lazy component per registry loader, keyed by loader identity. When a
@@ -70,69 +62,70 @@ const lazyComponentFor = (
 };
 
 /**
- * Keep-alive host for user apps (`/apps/$slug`). Mounted once in the root
- * shell — outside the router outlet, same pattern as the persistent chat
- * surface — so navigating to another route hides the app subtree instead of
- * unmounting it. Hidden apps sit under `visibility: hidden` +
- * `content-visibility: hidden`, so rendering work is skipped and
- * element-visibility signals (IntersectionObserver etc.) read as offscreen,
- * while DOM state (scroll positions, media elements) is preserved.
+ * Keep-alive host for user apps. Mounted once, inside the Apps sidebar
+ * section — which itself is never unmounted, not even when the panel closes —
+ * so an app survives switching sections, closing the panel and navigating the
+ * main content area. It is deliberately *not* a child of anything keyed by the
+ * open slug and never portalled: React portals preserve component state but
+ * move the DOM node, which destroys iframe browsing contexts and resets
+ * `<video>`/`<canvas>` and scroll. Every surface is mounted in its final home
+ * and only ever hidden.
+ *
+ * Hidden apps sit under `visibility: hidden` + `content-visibility: hidden`,
+ * so rendering work is skipped and element-visibility signals
+ * (IntersectionObserver etc.) read as offscreen, while DOM state (scroll
+ * positions, media elements) is preserved.
  *
  * Teardown happens through React unmount (the retained entry is dropped),
  * so app effects clean up object URLs and listeners normally.
  */
 export function PersistentUserAppsHost() {
   const apps = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const matchRoute = useMatchRoute();
-  const match = matchRoute({ to: "/apps/$slug" });
-  const activeSlug = match ? match.slug : null;
-  const onAppsLibrary = Boolean(matchRoute({ to: "/apps" }));
-  const isActiveApp =
-    activeSlug !== null && apps.some((app) => app.slug === activeSlug);
+  const openSlug = useSidebarSectionLocation("apps");
+  const activeSection = useActiveSidebarSection();
+  const panelOpen = useDisplayPanelOpen();
+  // A remembered slug outlives its file: locations persist across launches,
+  // the registry does not. The registry has the final say, and an app that no
+  // longer exists degrades to the library rather than to a broken surface.
+  const activeSlug =
+    openSlug !== null && apps.some((app) => app.slug === openSlug)
+      ? openSlug
+      : null;
 
   const [retained, setRetained] = useState<readonly string[]>([]);
   const teardownTimersRef = useRef(new Map<string, number>());
 
-  // Tell the input gate which app is visible. Layout effect so the flip
-  // happens synchronously with the route commit — the returning app's
-  // bindings work immediately; the hidden app's go quiet immediately.
+  // Tell the input gate which app is reachable by the keyboard. Layout effect
+  // so the flip commits with the section change — the returning app's
+  // bindings work immediately; the leaving app's go quiet immediately.
+  const inputSlug = liveUserAppInputSlug({
+    activeSlug,
+    activeSection,
+    panelOpen,
+  });
   useLayoutEffect(() => {
-    setInputActiveUserApp(isActiveApp && activeSlug !== null ? activeSlug : null);
-  }, [activeSlug, isActiveApp]);
+    setInputActiveUserApp(inputSlug);
+  }, [inputSlug]);
   useEffect(() => () => setInputActiveUserApp(null), []);
-
-  // Remember the most recent apps-area location so the sidebar Apps entry
-  // can return to the app the user was inside. Visiting the library clears
-  // it — Apps then goes to the library again.
-  useEffect(() => {
-    if (isActiveApp && activeSlug !== null) recordLastUserAppSlug(activeSlug);
-    else if (onAppsLibrary) clearLastUserAppSlug();
-  }, [activeSlug, isActiveApp, onAppsLibrary]);
 
   // Promote the active app to the front of the retained MRU list.
   useEffect(() => {
-    if (!isActiveApp || activeSlug === null) return;
-    setRetained((prev) => {
-      if (prev[0] === activeSlug) return prev;
-      return [activeSlug, ...prev.filter((slug) => slug !== activeSlug)].slice(
-        0,
-        MAX_RETAINED_USER_APPS,
-      );
-    });
-  }, [activeSlug, isActiveApp]);
+    if (activeSlug === null) return;
+    setRetained((prev) => promoteRetainedUserApp(prev, activeSlug));
+  }, [activeSlug]);
 
-  // The active app never counts down. Every retained-but-hidden app gets a
-  // teardown timer; returning to it (or eviction) clears the timer.
+  // Every retained app the user is not inside gets a teardown timer;
+  // returning to it (or eviction) clears the timer.
   useEffect(() => {
     const timers = teardownTimersRef.current;
+    const countingDown = new Set(countingDownUserApps(retained, activeSlug));
     for (const [slug, id] of timers) {
-      if (slug === activeSlug || !retained.includes(slug)) {
-        window.clearTimeout(id);
-        timers.delete(slug);
-      }
+      if (countingDown.has(slug)) continue;
+      window.clearTimeout(id);
+      timers.delete(slug);
     }
-    for (const slug of retained) {
-      if (slug === activeSlug || timers.has(slug)) continue;
+    for (const slug of countingDown) {
+      if (timers.has(slug)) continue;
       const id = window.setTimeout(() => {
         timers.delete(slug);
         setRetained((prev) => prev.filter((s) => s !== slug));
@@ -149,16 +142,9 @@ export function PersistentUserAppsHost() {
     };
   }, []);
 
-  // Render the active app immediately (before the retention effect commits)
-  // so there is no blank frame on first navigation into an app.
-  const mounted =
-    isActiveApp && activeSlug !== null && !retained.includes(activeSlug)
-      ? [activeSlug, ...retained].slice(0, MAX_RETAINED_USER_APPS)
-      : retained;
-
   return (
     <>
-      {mounted.map((slug) => {
+      {mountedUserApps(retained, activeSlug).map((slug) => {
         const app = apps.find((entry) => entry.slug === slug);
         // App file deleted while retained — let it unmount naturally.
         if (!app) return null;

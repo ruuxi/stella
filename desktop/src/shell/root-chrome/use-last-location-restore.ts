@@ -31,17 +31,10 @@ export function useLastLocationRestore(router: Router): void {
       string,
       unknown
     >;
-    // User apps live on the dynamic `/apps/$slug` route, which never
-    // appears in `routesByPath`, so restores to them were silently
-    // dropped — a self-mod covered reload or app restart while the user
-    // was on an app page dumped them back to /chat.
-    const isUserAppPath = /^\/apps\/[a-z][a-z0-9-]*$/.test(pathname);
-    if (
-      !isUserAppPath &&
-      !Object.prototype.hasOwnProperty.call(knownPaths, pathname)
-    ) {
-      return;
-    }
+    // Which user app the user was inside is not a URL: it is the Apps
+    // sidebar section's sub-location, which persists on its own and is
+    // restored by the section. Nothing here needs to know about apps.
+    if (!Object.prototype.hasOwnProperty.call(knownPaths, pathname)) return;
 
     const search = queryIndex === -1 ? "" : target.slice(queryIndex + 1);
     const searchParams = Object.fromEntries(new URLSearchParams(search));

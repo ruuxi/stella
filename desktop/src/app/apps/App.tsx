@@ -1,58 +1,36 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+/**
+ * The full-page user-app library.
+ *
+ * Apps themselves open in the right sidebar's Apps section, which also carries
+ * its own library list; this page is what remains for the window types that
+ * have no panel to open — the mobile WebView reaches it from the top-bar nav.
+ * Picking an app here still hands off to the sidebar rather than rendering it
+ * inline, so there is exactly one place a user app is ever mounted.
+ */
+
 import {
-  useCallback,
   useDeferredValue,
   useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
 import { Search } from "@/ui/icons";
-import { dispatchComposeText } from "@/shared/lib/stella-orb-chat";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import {
   getSnapshot,
   subscribe,
   type UserApp,
 } from "@/app/_user/user-apps-registry";
 import { AppCreationIllustration } from "./AppCreationIllustration";
+import {
+  formatUserAppCreatedAt,
+  isUserAppSort,
+  listUserApps,
+  USER_APP_SORT_LABELS,
+  useRequestUserApp,
+  type UserAppSort,
+} from "./user-app-library";
 import "./apps.css";
-
-type SortOption = "recent" | "name";
-
-const SORT_LABELS: Record<SortOption, string> = {
-  recent: "Most recent",
-  name: "Name",
-};
-
-const CREATE_APP_PROMPT = "Tell me what stella apps can you make for me?";
-
-const RELATIVE_UNITS: ReadonlyArray<{ ms: number; unit: Intl.RelativeTimeFormatUnit }> = [
-  { ms: 60 * 1000, unit: "second" },
-  { ms: 60 * 60 * 1000, unit: "minute" },
-  { ms: 24 * 60 * 60 * 1000, unit: "hour" },
-  { ms: 7 * 24 * 60 * 60 * 1000, unit: "day" },
-  { ms: 30 * 24 * 60 * 60 * 1000, unit: "week" },
-  { ms: 365 * 24 * 60 * 60 * 1000, unit: "month" },
-];
-
-const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-});
-
-function formatCreatedAt(iso: string): string {
-  const created = new Date(iso).getTime();
-  if (!Number.isFinite(created)) return "";
-  const diff = created - Date.now();
-  const abs = Math.abs(diff);
-  for (let i = 0; i < RELATIVE_UNITS.length - 1; i++) {
-    const current = RELATIVE_UNITS[i]!;
-    const next = RELATIVE_UNITS[i + 1]!;
-    if (abs < next.ms) {
-      return relativeTimeFormatter.format(Math.round(diff / current.ms), current.unit);
-    }
-  }
-  const last = RELATIVE_UNITS[RELATIVE_UNITS.length - 1]!;
-  return relativeTimeFormatter.format(Math.round(diff / last.ms), last.unit);
-}
 
 function useUserApps(): readonly UserApp[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -60,41 +38,15 @@ function useUserApps(): readonly UserApp[] {
 
 export function AppsApp() {
   const apps = useUserApps();
-  const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortOption>("recent");
+  const [sort, setSort] = useState<UserAppSort>("recent");
   const deferredQuery = useDeferredValue(query);
+  const handleCreateApp = useRequestUserApp();
 
-  const handleCreateApp = useCallback(() => {
-    void navigate({ to: "/chat" }).then(() => {
-      requestAnimationFrame(() => {
-        dispatchComposeText({ text: CREATE_APP_PROMPT });
-      });
-    });
-  }, [navigate]);
-
-  const visible = useMemo(() => {
-    const trimmed = deferredQuery.trim().toLowerCase();
-    const filtered = trimmed
-      ? apps.filter(
-          (app) =>
-            app.meta.label.toLowerCase().includes(trimmed) ||
-            app.slug.toLowerCase().includes(trimmed),
-        )
-      : apps.slice();
-    if (sort === "name") {
-      filtered.sort((a, b) => a.meta.label.localeCompare(b.meta.label));
-    } else {
-      filtered.sort((a, b) => {
-        const at = Date.parse(a.meta.createdAt);
-        const bt = Date.parse(b.meta.createdAt);
-        const av = Number.isFinite(at) ? at : 0;
-        const bv = Number.isFinite(bt) ? bt : 0;
-        return bv - av;
-      });
-    }
-    return filtered;
-  }, [apps, deferredQuery, sort]);
+  const visible = useMemo(
+    () => listUserApps(apps, deferredQuery, sort),
+    [apps, deferredQuery, sort],
+  );
 
   const hasApps = apps.length > 0;
 
@@ -130,16 +82,19 @@ export function AppsApp() {
               <select
                 className="apps-screen__sort-select"
                 value={sort}
-                onChange={(event) =>
-                  setSort(event.currentTarget.value as SortOption)
-                }
+                onChange={(event) => {
+                  const next = event.currentTarget.value;
+                  if (isUserAppSort(next)) setSort(next);
+                }}
                 aria-label="Sort"
               >
-                {(Object.keys(SORT_LABELS) as SortOption[]).map((option) => (
-                  <option key={option} value={option}>
-                    {SORT_LABELS[option]}
-                  </option>
-                ))}
+                {(Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]).map(
+                  (option) => (
+                    <option key={option} value={option}>
+                      {USER_APP_SORT_LABELS[option]}
+                    </option>
+                  ),
+                )}
               </select>
             </div>
             <button
@@ -159,16 +114,16 @@ export function AppsApp() {
             <ul className="apps-screen__grid">
               {visible.map((app) => (
                 <li key={app.slug} className="apps-card">
-                  <Link
-                    to="/apps/$slug"
-                    params={{ slug: app.slug }}
+                  <button
+                    type="button"
                     className="apps-card__link"
+                    onClick={() => sidebarSections.openLocation("apps", app.slug)}
                   >
                     <span className="apps-card__label">{app.meta.label}</span>
                     <span className="apps-card__meta">
-                      {formatCreatedAt(app.meta.createdAt)}
+                      {formatUserAppCreatedAt(app.meta.createdAt)}
                     </span>
-                  </Link>
+                  </button>
                 </li>
               ))}
             </ul>
