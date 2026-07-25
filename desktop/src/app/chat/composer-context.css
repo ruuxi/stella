@@ -224,53 +224,11 @@ button.mini-context-chip:focus-visible {
   border-radius: 999px;
 }
 
-.chat-composer-context-chip--text,
-.composer-context-chip--text,
-.mini-context-chip--text,
-.chat-composer-context-chip--app-selection,
-.composer-context-chip--app-selection,
-.mini-context-chip--app-selection,
-  .chat-composer-context-chip--activity,
-  .composer-context-chip--activity,
-  .mini-context-chip--activity,
-  .chat-composer-context-chip--pasted-text,
-  .composer-context-chip--pasted-text,
-  .mini-context-chip--pasted-text,
-  .chat-composer-context-chip--window,
-  .composer-context-chip--window {
+.chat-composer-context-chip--window,
+.composer-context-chip--window {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
-}
-
-.chat-composer-context-chip--text,
-.composer-context-chip--text,
-.mini-context-chip--text {
-  background: color-mix(in oklch, var(--primary) 12%, var(--card));
-  border-color: color-mix(in oklch, var(--primary) 28%, var(--border));
-}
-
-.dark .chat-composer-context-chip--text,
-.dark .composer-context-chip--text,
-.dark .mini-context-chip--text {
-  background: color-mix(in oklch, var(--primary) 18%, var(--card));
-  border-color: color-mix(in oklch, var(--primary) 42%, var(--border));
-}
-
-.chat-composer-context-chip--app-selection,
-.composer-context-chip--app-selection,
-.mini-context-chip--app-selection,
-.chat-composer-context-chip--activity,
-.composer-context-chip--activity,
-.mini-context-chip--activity,
-.chat-composer-context-chip--pasted-text,
-.composer-context-chip--pasted-text,
-.mini-context-chip--pasted-text {
-  background: var(--muted);
-}
-
-.chat-composer-context-chip--window,
-.composer-context-chip--window {
   background: color-mix(
     in oklch,
     var(--primary, var(--foreground)) 10%,
@@ -281,6 +239,73 @@ button.mini-context-chip:focus-visible {
     var(--primary, var(--foreground)) 22%,
     var(--border)
   );
+}
+
+/* ── Canonical context pill ──
+ * One visual system for attached-context pills before (composer) and
+ * after (sent message) send: leading type glyph, primary-tinted fill and
+ * border, compact medium type. Mirrors the sent-row treatment that also
+ * covers the channel badges and the "+N" overflow pill. */
+.context-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: min(100%, 340px);
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  text-align: left;
+  color: color-mix(in oklch, var(--text-strong) 80%, var(--primary));
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, var(--border));
+  background: color-mix(in oklch, var(--primary) 10%, var(--card));
+  cursor: default;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.context-pill__icon {
+  flex: 0 0 auto;
+  color: color-mix(in oklch, var(--primary) 70%, var(--foreground));
+}
+
+.context-pill__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quoted selections carry more text pre-send; give them extra room. */
+.context-pill--selected-text {
+  max-width: min(520px, 70vw);
+}
+
+.context-pill--mini {
+  max-width: 200px;
+}
+
+/* Same subtle strengthen-on-hover as the sent row's hovercard chips —
+ * applied when the surrounding shell (composer) or hovercard (sent row)
+ * is hovered or holds focus. */
+button.context-pill:hover,
+.composer-chip-shell:hover .context-pill,
+.composer-chip-shell:focus-within .context-pill,
+.event-window-badge-hovercard:hover .context-pill,
+.event-window-badge-hovercard:focus-within .context-pill {
+  border-color: color-mix(in oklch, var(--primary) 38%, var(--border));
+  background: color-mix(in oklch, var(--primary) 16%, var(--card));
+}
+
+button.context-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* ── Chip shell + top-right × remove control ──
@@ -356,7 +381,8 @@ button.chat-composer-file-chip.composer-chip-previewable {
 /* Window chip while its screenshot capture is still in flight: subtle
  * pulse so the user knows we're working on it without blocking input. */
 .chat-composer-context-chip--window[data-capture-pending="true"],
-.composer-context-chip--window[data-capture-pending="true"] {
+.composer-context-chip--window[data-capture-pending="true"],
+.composer-chip-shell[data-capture-pending="true"] .context-pill {
   animation: composer-context-pending-pulse 1.4s ease-in-out infinite;
 }
 
@@ -378,9 +404,6 @@ button.chat-composer-file-chip.composer-chip-previewable {
   }
 }
 
-.chat-composer-context-text,
-.composer-context-text,
-.mini-context-text,
 .chat-composer-context-window,
 .composer-context-window {
   display: inline-block;
@@ -390,16 +413,6 @@ button.chat-composer-file-chip.composer-chip-previewable {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.chat-composer-context-text,
-.composer-context-text,
-.mini-context-text {
-  color: var(--text-strong);
-}
-
-.chat-composer-context-window,
-.composer-context-window {
   color: var(--text-weak);
 }
 
@@ -492,15 +505,8 @@ button.chat-composer-file-chip.composer-chip-previewable {
   cursor: default;
 }
 
-.composer-context-chip--text,
-.composer-context-chip--app-selection,
-.composer-context-chip--pasted-text,
 .composer-context-chip--window {
   max-width: min(320px, 45vw);
-}
-
-.composer-context-chip--text {
-  max-width: min(520px, 70vw);
 }
 
 /* Window chip with an inline screenshot thumbnail: combine the screenshot
@@ -535,10 +541,6 @@ button.chat-composer-file-chip.composer-chip-previewable {
 .chat-composer-context-region-thumb {
   width: 72px;
   height: 54px;
-}
-
-.mini-context-text {
-  max-width: 200px;
 }
 
 /* ── File attachment chips ── */

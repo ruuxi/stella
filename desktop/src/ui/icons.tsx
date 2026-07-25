@@ -367,6 +367,16 @@ export const ClipboardPaste = createIcon(
   </>,
 );
 
+export const TextQuote = createIcon(
+  "text-quote",
+  <>
+    <path d="M4.75 6.75v10.5" />
+    <path d="M9.5 6.75H19.25" />
+    <path d="M9.5 12h9.75" />
+    <path d="M9.5 17.25h6.25" />
+  </>,
+);
+
 export const Archive = createIcon(
   "archive",
   <>

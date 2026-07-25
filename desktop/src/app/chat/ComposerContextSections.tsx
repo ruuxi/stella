@@ -34,13 +34,14 @@ type SelectedTextContextSectionProps = {
   setChatContext: SetChatContext;
 };
 
+/* The chip visuals live entirely in the shared components
+ * (`ContextPill`, `ImageAttachmentChip`, `FileAttachmentChip`) so the
+ * composer and the sent message row cannot drift apart. The variant maps
+ * below only add layout constraints (the mini composer's tighter width
+ * cap) plus the pending-capture shimmer's size classes. */
 const captureVariantClassNames = {
   full: {
     containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--screenshot composer-context-chip composer-context-chip--screenshot",
-    imageClassName:
-      "chat-composer-context-thumb composer-context-thumb",
     pendingClassName:
       "chat-composer-context-chip chat-composer-context-chip--pending composer-context-chip composer-context-chip--pending",
     pendingInnerClassName:
@@ -48,10 +49,6 @@ const captureVariantClassNames = {
   },
   mini: {
     containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot",
-    imageClassName:
-      "chat-composer-context-thumb mini-context-thumb",
     pendingClassName:
       "chat-composer-context-chip chat-composer-context-chip--pending mini-context-chip mini-context-chip--pending",
     pendingInnerClassName:
@@ -59,82 +56,14 @@ const captureVariantClassNames = {
   },
 } as const;
 
-const fileVariantClassNames = {
+const pillVariantClassNames = {
   full: {
     containerClassName: null,
-    chipClassName: "composer-context-chip",
+    chipClassName: undefined,
   },
   mini: {
     containerClassName: null,
-    chipClassName: "mini-context-chip",
-  },
-} as const;
-
-const selectedTextVariantClassNames = {
-  full: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--text composer-context-chip composer-context-chip--text",
-    textClassName:
-      "chat-composer-context-text composer-context-text",
-  },
-  mini: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--text mini-context-chip mini-context-chip--text",
-    textClassName:
-      "chat-composer-context-text mini-context-text",
-  },
-} as const;
-
-const pastedTextVariantClassNames = {
-  full: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--pasted-text composer-context-chip composer-context-chip--pasted-text",
-    textClassName:
-      "chat-composer-context-text composer-context-text",
-  },
-  mini: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--pasted-text mini-context-chip mini-context-chip--pasted-text",
-    textClassName:
-      "chat-composer-context-text mini-context-text",
-  },
-} as const;
-
-const appSelectionVariantClassNames = {
-  full: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--app-selection composer-context-chip composer-context-chip--app-selection",
-    textClassName:
-      "chat-composer-context-text composer-context-text",
-  },
-  mini: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--app-selection mini-context-chip mini-context-chip--app-selection",
-    textClassName:
-      "chat-composer-context-text mini-context-text",
-  },
-} as const;
-
-const activityVariantClassNames = {
-  full: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--activity composer-context-chip composer-context-chip--activity",
-    textClassName:
-      "chat-composer-context-text composer-context-text",
-  },
-  mini: {
-    containerClassName: null,
-    chipClassName:
-      "chat-composer-context-chip chat-composer-context-chip--activity mini-context-chip mini-context-chip--activity",
-    textClassName:
-      "chat-composer-context-text mini-context-text",
+    chipClassName: "context-pill--mini",
   },
 } as const;
 
@@ -196,8 +125,6 @@ export function ComposerCaptureContextSection({
           screenshots={screenshots}
           setChatContext={setChatContext}
           onPreviewScreenshot={onPreviewScreenshot}
-          chipClassName={classes.chipClassName}
-          imageClassName={classes.imageClassName}
         />
       ) : null}
       {isCapturePending ? (
@@ -217,24 +144,13 @@ export function ComposerCaptureContextSection({
 }
 
 export function ComposerFileContextSection({
-  variant,
   chatContext,
   setChatContext,
 }: SharedContextProps) {
   const files = chatContext?.files ?? [];
   if (files.length === 0) return null;
 
-  const classes = fileVariantClassNames[variant];
-  const content = (
-    <FileContextChips
-      files={files}
-      setChatContext={setChatContext}
-      chipClassName={classes.chipClassName}
-    />
-  );
-
-  if (!classes.containerClassName) return content;
-  return <div className={classes.containerClassName}>{content}</div>;
+  return <FileContextChips files={files} setChatContext={setChatContext} />;
 }
 
 export function ComposerPastedTextContextSection({
@@ -245,13 +161,12 @@ export function ComposerPastedTextContextSection({
   const pastedTexts = chatContext?.pastedTexts ?? [];
   if (pastedTexts.length === 0) return null;
 
-  const classes = pastedTextVariantClassNames[variant];
+  const classes = pillVariantClassNames[variant];
   const content = (
     <PastedTextChips
       pastedTexts={pastedTexts}
       setChatContext={setChatContext}
       className={classes.chipClassName}
-      textClassName={classes.textClassName}
     />
   );
 
@@ -268,13 +183,12 @@ export function ComposerAppSelectionContextSection({
     return null;
   }
 
-  const classes = appSelectionVariantClassNames[variant];
+  const classes = pillVariantClassNames[variant];
   const content = (
     <AppSelectionChip
       appSelection={chatContext.appSelection}
       setChatContext={setChatContext}
       className={classes.chipClassName}
-      textClassName={classes.textClassName}
     />
   );
 
@@ -291,13 +205,12 @@ export function ComposerActivityContextSection({
     return null;
   }
 
-  const classes = activityVariantClassNames[variant];
+  const classes = pillVariantClassNames[variant];
   const content = (
     <ActivityContextChip
       activity={chatContext.activity}
       setChatContext={setChatContext}
       className={classes.chipClassName}
-      textClassName={classes.textClassName}
     />
   );
 
@@ -315,14 +228,13 @@ export function ComposerSelectedTextContextSection({
     return null;
   }
 
-  const classes = selectedTextVariantClassNames[variant];
+  const classes = pillVariantClassNames[variant];
   const content = (
     <SelectedTextChip
       selectedText={selectedText}
       setSelectedText={setSelectedText}
       setChatContext={setChatContext}
       className={classes.chipClassName}
-      textClassName={classes.textClassName}
     />
   );
 

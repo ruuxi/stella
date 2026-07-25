@@ -1,13 +1,25 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useState,
+  type Dispatch,
+  type HTMLAttributes,
+  type ReactNode,
+  type Ref,
+  type SetStateAction,
+} from "react";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 import { cn } from "@/shared/lib/utils";
 import {
+  AppWindowMac,
   Archive,
+  ClipboardList,
+  ClipboardPaste,
   Code,
+  Crop,
   File,
   FileSpreadsheet,
   FileText,
   Music,
+  TextQuote,
   Video,
   X,
 } from "@/ui/icons";
@@ -70,6 +82,88 @@ function ChipRemoveButton({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Canonical context pill                                            */
+/* ------------------------------------------------------------------ */
+
+export type ContextPillKind =
+  | "window"
+  | "app-selection"
+  | "activity"
+  | "pasted-text"
+  | "selected-text";
+
+const CONTEXT_PILL_ICONS = {
+  window: AppWindowMac,
+  "app-selection": Crop,
+  activity: ClipboardList,
+  "pasted-text": ClipboardPaste,
+  "selected-text": TextQuote,
+} as const;
+
+type ContextPillProps = HTMLAttributes<HTMLElement> & {
+  kind: ContextPillKind;
+  label: ReactNode;
+  /** Render as a button when the pill body is itself a click/hover target. */
+  as?: "span" | "button";
+  pillRef?: Ref<HTMLElement>;
+  "data-has-preview"?: string;
+};
+
+/**
+ * Canonical attached-context pill: leading type glyph + label with the
+ * primary-tinted treatment. The single source of chip visuals for BOTH
+ * the composer (pre-send) and the sent user message row, so the two
+ * surfaces cannot drift apart. Wrappers add surface behavior: the
+ * composer contributes the × remove control and hover previews; the
+ * sent row contributes hovercards and the "+N" overflow.
+ */
+export function ContextPill({
+  kind,
+  label,
+  as = "span",
+  pillRef,
+  className,
+  children,
+  ...rest
+}: ContextPillProps) {
+  const Icon = CONTEXT_PILL_ICONS[kind];
+  const body = (
+    <>
+      <Icon
+        className="context-pill__icon"
+        size={13}
+        strokeWidth={1.75}
+        aria-hidden="true"
+      />
+      <span className="context-pill__label">{label}</span>
+      {children}
+    </>
+  );
+  const pillClassName = cn("context-pill", `context-pill--${kind}`, className);
+  if (as === "button") {
+    return (
+      <button
+        type="button"
+        ref={pillRef as Ref<HTMLButtonElement>}
+        className={pillClassName}
+        {...rest}
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <span
+      ref={pillRef as Ref<HTMLSpanElement>}
+      className={pillClassName}
+      {...rest}
+    >
+      {body}
+    </span>
+  );
+}
+
 type WindowContextChipProps = {
   chatWindow: NonNullable<ChatContext["window"]>;
   chatWindowScreenshot?: ChatContext["windowScreenshot"];
@@ -107,42 +201,44 @@ export function WindowContextChip({
   return (
     <div
       ref={triggerRef}
-      className={cn("composer-chip-shell", className)}
+      className={cn("composer-chip-shell", hasScreenshot && className)}
       data-included="true"
       data-capture-pending={capturePending ? "true" : undefined}
       data-with-thumb={hasScreenshot ? "true" : undefined}
     >
-      <button
-        type="button"
-        className={cn(
-          toggleClassName,
-          hasScreenshot &&
+      {hasScreenshot ? (
+        <button
+          type="button"
+          className={cn(
+            toggleClassName,
             "chat-composer-context-window-card composer-chip-previewable",
-        )}
-        title={
-          capturePending
-            ? `${baseLabel} — capturing window…`
-            : hasScreenshot
-              ? `${baseLabel} — click to enlarge`
-              : baseLabel
-        }
-        onClick={
-          hasScreenshot
-            ? () => {
-                setPreviewOpen(true);
-              }
-            : undefined
-        }
-      >
-        {hasScreenshot && (
+          )}
+          title={
+            capturePending
+              ? `${baseLabel} — capturing window…`
+              : `${baseLabel} — click to enlarge`
+          }
+          onClick={() => {
+            setPreviewOpen(true);
+          }}
+        >
           <img
             src={chatWindowScreenshot!.dataUrl}
             alt=""
             className="chat-composer-context-window-thumb"
           />
-        )}
-        <span className={cn(textClassName)}>{displayLabel}</span>
-      </button>
+          <span className={cn(textClassName)}>{displayLabel}</span>
+        </button>
+      ) : (
+        <ContextPill
+          as="button"
+          kind="window"
+          label={displayLabel}
+          title={
+            capturePending ? `${baseLabel} — capturing window…` : baseLabel
+          }
+        />
+      )}
       <ChipRemoveButton
         label={`Remove ${chatWindow.app} window context`}
         onRemove={() => clearComposerWindowContext(setChatContext)}
@@ -177,7 +273,6 @@ type SelectedTextChipProps = {
   setSelectedText: Dispatch<SetStateAction<string | null>>;
   setChatContext: SetChatContext;
   className?: string;
-  textClassName?: string;
 };
 
 export function SelectedTextChip({
@@ -185,14 +280,17 @@ export function SelectedTextChip({
   setSelectedText,
   setChatContext,
   className,
-  textClassName,
 }: SelectedTextChipProps) {
   const displayText = truncateChipLabel(selectedText, 36);
   return (
     <span className="composer-chip-shell">
-      <button type="button" className={cn(className)} title={`"${selectedText}"`}>
-        <span className={cn(textClassName)}>&quot;{displayText}&quot;</span>
-      </button>
+      <ContextPill
+        as="button"
+        kind="selected-text"
+        label={<>&quot;{displayText}&quot;</>}
+        title={`"${selectedText}"`}
+        className={className}
+      />
       <ChipRemoveButton
         label="Remove selected text"
         onRemove={() =>
@@ -207,14 +305,12 @@ type AppSelectionChipProps = {
   appSelection: NonNullable<ChatContext["appSelection"]>;
   setChatContext: SetChatContext;
   className?: string;
-  textClassName?: string;
 };
 
 export function AppSelectionChip({
   appSelection,
   setChatContext,
   className,
-  textClassName,
 }: AppSelectionChipProps) {
   const label = appSelection.label || "Selected area";
   const source = appSelection.source;
@@ -225,13 +321,13 @@ export function AppSelectionChip({
     : "";
   return (
     <span className="composer-chip-shell">
-      <button
-        type="button"
-        className={cn(className)}
+      <ContextPill
+        as="button"
+        kind="app-selection"
+        label={truncateChipLabel(label)}
         title={`${label}${sourceSuffix}`}
-      >
-        <span className={cn(textClassName)}>{truncateChipLabel(label)}</span>
-      </button>
+        className={className}
+      />
       <ChipRemoveButton
         label="Remove selected area"
         onRemove={() => clearComposerAppSelectionContext(setChatContext)}
@@ -244,22 +340,24 @@ type ActivityContextChipProps = {
   activity: NonNullable<ChatContext["activity"]>;
   setChatContext: SetChatContext;
   className?: string;
-  textClassName?: string;
 };
 
 export function ActivityContextChip({
   activity,
   setChatContext,
   className,
-  textClassName,
 }: ActivityContextChipProps) {
   const label = activity.label || "Activity";
   const displayLabel = truncateChipLabel(label, 28);
   return (
     <span className="composer-chip-shell">
-      <button type="button" className={cn(className)} title={label}>
-        <span className={cn(textClassName)}>{displayLabel}</span>
-      </button>
+      <ContextPill
+        as="button"
+        kind="activity"
+        label={displayLabel}
+        title={label}
+        className={className}
+      />
       <ChipRemoveButton
         label="Remove activity context"
         onRemove={() => clearComposerActivityContext(setChatContext)}
@@ -308,8 +406,11 @@ type ImageAttachmentChipProps = {
 
 /**
  * Canonical compact image-attachment chip used before and after send.
- * Composer callers add removal; sent-message callers keep the same visual
- * body and lightbox behavior without exposing a remove affordance.
+ * Owns its full class list — callers may add hooks via `chipClassName`
+ * but the card/thumb geometry lives here so the composer and the sent
+ * message row render identical thumbnails. Composer callers add removal;
+ * sent-message callers keep the same visual body and lightbox behavior
+ * without exposing a remove affordance.
  */
 export function ImageAttachmentChip({
   thumbnailUrl,
@@ -327,8 +428,9 @@ export function ImageAttachmentChip({
       <button
         type="button"
         className={cn(
-          chipClassName,
+          "chat-composer-context-chip chat-composer-context-chip--screenshot composer-context-chip composer-context-chip--screenshot",
           "chat-composer-context-window-card chat-composer-context-region-card composer-chip-previewable",
+          chipClassName,
         )}
         data-with-thumb="true"
         data-region-card="true"
@@ -338,8 +440,8 @@ export function ImageAttachmentChip({
         <img
           src={thumbnailUrl}
           className={cn(
+            "chat-composer-context-thumb composer-context-thumb chat-composer-context-window-thumb chat-composer-context-region-thumb",
             imageClassName,
-            "chat-composer-context-window-thumb chat-composer-context-region-thumb",
           )}
           alt={alt}
         />
@@ -614,13 +716,11 @@ function PastedTextChip({
   index,
   setChatContext,
   className,
-  textClassName,
 }: {
   text: string;
   index: number;
   setChatContext: SetChatContext;
   className?: string;
-  textClassName?: string;
 }) {
   const { triggerRef, open, previewProps } = useHoverPreview<HTMLButtonElement>();
   const stats = describePastedText(toPastedTextDescriptor(text));
@@ -630,14 +730,14 @@ function PastedTextChip({
       : text;
   return (
     <span className="composer-chip-shell">
-      <button
-        ref={triggerRef}
-        type="button"
-        className={cn(className)}
+      <ContextPill
+        as="button"
+        kind="pasted-text"
+        pillRef={triggerRef}
+        label={`Pasted text · ${stats}`}
         title={`Pasted text — ${stats}`}
-      >
-        <span className={cn(textClassName)}>{`Pasted text · ${stats}`}</span>
-      </button>
+        className={className}
+      />
       <ChipRemoveButton
         label="Remove pasted text"
         onRemove={() => removeComposerPastedTextContext(index, setChatContext)}
@@ -658,14 +758,12 @@ type PastedTextChipsProps = {
   pastedTexts: string[];
   setChatContext: SetChatContext;
   className?: string;
-  textClassName?: string;
 };
 
 export function PastedTextChips({
   pastedTexts,
   setChatContext,
   className,
-  textClassName,
 }: PastedTextChipsProps) {
   return (
     <>
@@ -676,7 +774,6 @@ export function PastedTextChips({
           index={index}
           setChatContext={setChatContext}
           className={className}
-          textClassName={textClassName}
         />
       ))}
     </>

@@ -29,12 +29,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  AppWindowMac,
-  ClipboardList,
-  ClipboardPaste,
-  Crop,
-} from "@/ui/icons";
+
 import {
   describePastedText,
   pastedTextPreview,
@@ -67,6 +62,7 @@ import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import { MessageActions } from "@/app/chat/MessageActions";
 import {
+  ContextPill,
   FileAttachmentChip,
   ImageAttachmentChip,
   fileAttachmentTypeLabel,
@@ -167,20 +163,13 @@ function UserWindowContextChip({
   const { triggerRef, open } = useHoverPreview<HTMLSpanElement>();
   return (
     <span className="event-window-badge-hovercard">
-      <span
-        ref={triggerRef}
-        className="event-context-chip event-context-chip--window"
+      <ContextPill
+        kind="window"
+        pillRef={triggerRef}
+        label={label}
         data-has-preview={previewImageUrl ? "true" : undefined}
         tabIndex={previewImageUrl ? 0 : undefined}
-      >
-        <AppWindowMac
-          className="event-context-chip__icon"
-          size={13}
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
-        <span className="event-context-chip__label">{label}</span>
-      </span>
+      />
       {previewImageUrl && (
         <ChipPreviewPortal
           triggerRef={triggerRef}
@@ -215,21 +204,14 @@ function UserPastedTextChip({
   const preview = pastedTextPreview(descriptor);
   return (
     <span className="event-window-badge-hovercard">
-      <span
-        ref={triggerRef}
-        className="event-context-chip event-context-chip--pasted-text"
+      <ContextPill
+        kind="pasted-text"
+        pillRef={triggerRef}
+        label="Pasted text"
         data-has-preview={preview ? "true" : undefined}
         tabIndex={preview ? 0 : undefined}
         title={`Pasted text — ${stats}`}
-      >
-        <ClipboardPaste
-          className="event-context-chip__icon"
-          size={13}
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
-        <span className="event-context-chip__label">Pasted text</span>
-      </span>
+      />
       {preview && (
         <ChipPreviewPortal
           triggerRef={triggerRef}
@@ -392,8 +374,6 @@ function AttachmentImage({
       fullImageUrl={safeUrl}
       alt={attachment.name ?? "Attachment"}
       title={`Click to enlarge ${label}`}
-      chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot composer-context-chip composer-context-chip--screenshot"
-      imageClassName="chat-composer-context-thumb composer-context-thumb"
     />
   );
 }
@@ -430,35 +410,13 @@ export const UserMessageRow = memo(
     if (appSelectionLabel) {
       chips.push({
         key: "app-selection",
-        node: (
-          <span className="event-context-chip event-context-chip--app-selection">
-            <Crop
-              className="event-context-chip__icon"
-              size={13}
-              strokeWidth={1.75}
-              aria-hidden="true"
-            />
-            <span className="event-context-chip__label">
-              {appSelectionLabel}
-            </span>
-          </span>
-        ),
+        node: <ContextPill kind="app-selection" label={appSelectionLabel} />,
       });
     }
     if (activityLabel) {
       chips.push({
         key: "activity",
-        node: (
-          <span className="event-context-chip event-context-chip--activity">
-            <ClipboardList
-              className="event-context-chip__icon"
-              size={13}
-              strokeWidth={1.75}
-              aria-hidden="true"
-            />
-            <span className="event-context-chip__label">{activityLabel}</span>
-          </span>
-        ),
+        node: <ContextPill kind="activity" label={activityLabel} />,
       });
     }
     pastedTexts.forEach((descriptor, index) => {
