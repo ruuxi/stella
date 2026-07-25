@@ -1,9 +1,13 @@
 /* Full-window top bar — see `ShellTopBarFull.tsx`.
 
-   Transparent 38px strip spanning the whole window. It sits above the content
-   column (which reserves `--shell-topbar-height` of padding) rather than
-   floating over live content, because with the left sidebar gone there is no
-   other chrome to keep the traffic lights and the nav from colliding with the
+   Transparent 38px strip. It is absolutely positioned inside `.content-area`,
+   so it spans the center column rather than the window: the display panel owns
+   its own top strip, and this bar's right-hand cluster ends at the column
+   boundary instead of colliding with the panel's chrome.
+
+   It sits above the content (which reserves `--shell-topbar-height` of
+   padding) rather than floating over it, because with the left sidebar gone
+   there is no other chrome keeping the traffic lights and the nav clear of the
    chat surface. */
 
 .shell-topbar-full {

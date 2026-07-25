@@ -575,20 +575,26 @@ function RootChrome() {
               the route outlet so the active app paints (and receives pointer
               events) above the outlet's empty render for that route. */}
           <PersistentUserAppsHost />
+
+          {/* Inside `.content-area`, not the window, so the bar spans the
+              center column only. The display panel owns its own top strip, and
+              anchoring here means the account cluster tracks the column
+              boundary through the panel's open/close animation and live
+              resizing without having to mirror the panel's width.
+
+              Rendered last so its `no-drag` carves are applied after the
+              content area's top `-webkit-app-region: drag` strip — draggable
+              regions resolve in DOM order, not z-index, so a control painted
+              above but declared earlier still reads as draggable and swallows
+              its own clicks. */}
+          {isFullWindow ? (
+            <ShellTopBarFull
+              onSignIn={showAuthDialog}
+              onConnect={showConnectDialog}
+            />
+          ) : null}
         </div>
       </StellaContextMenu>
-
-      {/* Rendered after `.content-area` so its `no-drag` carves are applied
-          after the content area's top `-webkit-app-region: drag` strip —
-          draggable regions resolve in DOM order, not z-index, so a control
-          painted above but earlier in the DOM would still read as draggable
-          (and swallow clicks). */}
-      {isFullWindow ? (
-        <ShellTopBarFull
-          onSignIn={showAuthDialog}
-          onConnect={showConnectDialog}
-        />
-      ) : null}
 
       <Suspense fallback={null}>
         <RightSidebar ref={rightSidebarRef} />
