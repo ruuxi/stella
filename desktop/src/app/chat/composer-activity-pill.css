@@ -1,6 +1,6 @@
 /* ============================================================
    Composer activity pill — the search / background-work marker that leads
-   the composer regardless of left-sidebar state. Shares the soft "panel surface"
+   the composer regardless of sidebar state. Shares the soft "panel surface"
    fill + hairline border the composer / sidebar use, but as a single-row
    pill: a leading glyph (search · check · alert · dot) plus one line of
    text. While running there's no glyph — the shimmering task count carries

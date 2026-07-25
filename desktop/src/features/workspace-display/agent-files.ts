@@ -1,5 +1,5 @@
 /**
- * Per-agent file attribution for the left-sidebar Activity tray.
+ * Per-agent file attribution for the Activity/Tasks surface.
  *
  * Each agent's lifecycle events — notably `agent-completed`, which carries the
  * run's `fileChanges` / `producedFiles` — are replayed through the shared

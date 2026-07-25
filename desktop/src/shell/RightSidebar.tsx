@@ -69,23 +69,17 @@ const measureShellWidth = (): number => {
   return shell?.getBoundingClientRect().width ?? window.innerWidth;
 };
 
-const measureDockedLeftSidebarWidth = (): number => {
-  const sidebar = document.querySelector<HTMLElement>(".left-sidebar");
-  return sidebar?.getBoundingClientRect().width ?? 0;
-};
-
 /**
- * Compute the current upper bound for the user-resizable width from the
- * shell width after reserving the docked left sidebar and the main outlet's
- * minimum width. This mirrors Codex's pressure behavior: the right panel
- * shrinks and grows with the app window instead of holding a fixed width
- * until it disappears.
+ * Compute the current upper bound for the user-resizable width from the shell
+ * width after reserving the main outlet's minimum width. This mirrors Codex's
+ * pressure behavior: the right panel shrinks and grows with the app window
+ * instead of holding a fixed width until it disappears.
+ *
+ * The left sidebar used to be subtracted here too; with it gone the center
+ * column and this panel split the full shell width.
  */
 const computeMaxWidth = (): number => {
-  const available =
-    measureShellWidth() -
-    measureDockedLeftSidebarWidth() -
-    DISPLAY_MAIN_CONTENT_MIN_WIDTH;
+  const available = measureShellWidth() - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
 };
 
@@ -255,10 +249,7 @@ export const RightSidebar = forwardRef<
         ? null
         : new ResizeObserver(scheduleWidthVarSync);
     const shell = document.querySelector<HTMLElement>(".full-body");
-    const leftSidebar =
-      document.querySelector<HTMLElement>(".left-sidebar");
     if (shell) resizeObserver?.observe(shell);
-    if (leftSidebar) resizeObserver?.observe(leftSidebar);
     window.addEventListener("resize", scheduleWidthVarSync);
     return () => {
       cancelAnimationFrame(frame);

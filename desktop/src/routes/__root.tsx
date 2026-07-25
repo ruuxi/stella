@@ -11,7 +11,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -64,9 +63,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
 );
 import { PersistentUserAppsHost } from "@/app/apps/PersistentUserAppsHost";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { WindowControls } from "@/shell/WindowControls";
-import { LeftSidebar } from "@/shell/LeftSidebar";
-import { leftSidebarVisibilityStore } from "@/shell/left-sidebar-visibility-store";
+import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -82,9 +79,6 @@ import {
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
-import { getPlatform } from "@/platform/electron/platform";
-import { uiState } from "@/platform/ui-state";
-import { PanelLeft, PanelRight } from "@/ui/icons";
 import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
@@ -106,9 +100,6 @@ import {
   getShellBreakpointState,
   type ShellBreakpointState,
 } from "@/shell/shell-breakpoints";
-
-/** Persisted left-sidebar visibility ("0" = hidden). */
-const LEFT_SIDEBAR_VISIBLE_KEY = "stella.leftSidebar.visible";
 
 /**
  * The root route owns the app chrome — top shell bar, workspace panel,
@@ -172,15 +163,10 @@ function RootChrome() {
   const chat = useChatRuntime();
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
-  const [leftSidebarVisible, setLeftSidebarVisible] = useState<boolean>(
-    () => uiState.getItem(LEFT_SIDEBAR_VISIBLE_KEY) !== "0",
-  );
-
   const [shellBreakpoints, setShellBreakpoints] =
     useState<ShellBreakpointState>(() =>
       getShellBreakpointState(
         typeof window === "undefined" ? 0 : window.innerWidth,
-        leftSidebarVisible,
       ),
     );
   const shellBreakpointsRef = useRef(shellBreakpoints);
@@ -202,22 +188,6 @@ function RootChrome() {
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
   const isFullWindow = !isMiniWindow && !isMobileWebView;
-  const platform = getPlatform();
-  const isMac = platform === "darwin";
-  const isWin = platform === "win32";
-  const dockedLeftSidebarVisible =
-    isFullWindow && leftSidebarVisible && !shellBreakpoints.hideLeftSidebar;
-
-  // Left sidebar visibility — a toggle next to the traffic lights collapses
-  // it; a floating button at the same spot brings it back. Persisted so the
-  // choice survives reloads.
-  const toggleLeftSidebar = useCallback(() => {
-    setLeftSidebarVisible((prev) => {
-      const next = !prev;
-      uiState.setItem(LEFT_SIDEBAR_VISIBLE_KEY, next ? "1" : "0");
-      return next;
-    });
-  }, []);
 
   const triggerDisplayBreakpointTransition = useCallback(() => {
     document.body.dataset.displayBreakpointTransition = "true";
@@ -254,29 +224,6 @@ function RootChrome() {
       delete root.dataset.shellPanelChrome;
     };
   }, [isFullWindow]);
-
-  // Expose the current left-sidebar width so an expanded display panel can
-  // inset past it (keeping the rail visible). 252px mirrors
-  // `--left-sidebar-width` in left-sidebar.css; 0 when collapsed.
-  useLayoutEffect(() => {
-    const root = document.documentElement;
-    if (dockedLeftSidebarVisible) root.dataset.shellLeftSidebarDocked = "true";
-    else delete root.dataset.shellLeftSidebarDocked;
-
-    root.style.setProperty(
-      "--shell-left-sidebar-width",
-      dockedLeftSidebarVisible ? "252px" : "0px",
-    );
-    // Mirror the effective sidebar state into the module store so the
-    // composer activity pill (a separate tree) can stand down while the
-    // sidebar's Activity section is on screen.
-    leftSidebarVisibilityStore.setDocked(dockedLeftSidebarVisible);
-    return () => {
-      delete root.dataset.shellLeftSidebarDocked;
-      root.style.removeProperty("--shell-left-sidebar-width");
-      leftSidebarVisibilityStore.setDocked(false);
-    };
-  }, [dockedLeftSidebarVisible]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -502,28 +449,19 @@ function RootChrome() {
     };
   }, []);
 
-  const applyShellBreakpoints = useCallback(
-    (width: number, sidebarVisible: boolean) => {
-      const next = getShellBreakpointState(Math.round(width), sidebarVisible);
-      const previous = shellBreakpointsRef.current;
-      if (
-        next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-        next.hideDisplayPanel === previous.hideDisplayPanel &&
-        next.hideLeftSidebar === previous.hideLeftSidebar
-      ) {
-        return;
-      }
-      shellBreakpointsRef.current = next;
-      setShellBreakpoints(next);
-    },
-    [],
-  );
+  const applyShellBreakpoints = useCallback((width: number) => {
+    const next = getShellBreakpointState(Math.round(width));
+    const previous = shellBreakpointsRef.current;
+    if (
+      next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
+      next.hideDisplayPanel === previous.hideDisplayPanel
+    ) {
+      return;
+    }
+    shellBreakpointsRef.current = next;
+    setShellBreakpoints(next);
+  }, []);
 
-  // The observer mounts once; `leftSidebarVisible` flows in via a ref so a
-  // sidebar toggle doesn't tear down / recreate the ResizeObserver and force
-  // a synchronous re-measure on the very frame the collapse animation starts.
-  const leftSidebarVisibleRef = useRef(leftSidebarVisible);
-  leftSidebarVisibleRef.current = leftSidebarVisible;
   const shellWidthRef = useRef(0);
 
   useEffect(() => {
@@ -536,10 +474,7 @@ function RootChrome() {
       if (frame !== 0) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        applyShellBreakpoints(
-          shellWidthRef.current,
-          leftSidebarVisibleRef.current,
-        );
+        applyShellBreakpoints(shellWidthRef.current);
       });
     };
 
@@ -566,14 +501,6 @@ function RootChrome() {
       observer.disconnect();
     };
   }, [applyShellBreakpoints]);
-
-  // Breakpoints also depend on the sidebar's visibility (the strip / display
-  // panel auto-hide thresholds shift by its width) — recompute from the
-  // cached shell width instead of re-measuring on toggle.
-  useEffect(() => {
-    if (shellWidthRef.current <= 0) return;
-    applyShellBreakpoints(shellWidthRef.current, leftSidebarVisible);
-  }, [applyShellBreakpoints, leftSidebarVisible]);
 
   useEffect(() => {
     if (isMiniWindow || isMobileWebView) {
@@ -619,14 +546,6 @@ function RootChrome() {
 
       {!isFullWindow ? <ShellTopBar /> : null}
 
-      {isFullWindow ? (
-        <LeftSidebar
-          onSignIn={showAuthDialog}
-          onConnect={showConnectDialog}
-          collapsed={!dockedLeftSidebarVisible}
-        />
-      ) : null}
-
       <StellaContextMenu
         isOpen={isContextMenuPanelOpen}
         onOpen={handleContextMenuOpenPanel}
@@ -659,55 +578,16 @@ function RootChrome() {
         </div>
       </StellaContextMenu>
 
-      {/* Rendered after `.content-area` so their `no-drag` carve is applied
+      {/* Rendered after `.content-area` so its `no-drag` carves are applied
           after the content area's top `-webkit-app-region: drag` strip —
-          draggable regions resolve in DOM order, not z-index, so a button
+          draggable regions resolve in DOM order, not z-index, so a control
           painted above but earlier in the DOM would still read as draggable
-          (and swallow clicks). The left toggle is always mounted at a fixed
-          position so it doesn't shift between the open and collapsed states. */}
+          (and swallow clicks). */}
       {isFullWindow ? (
-        <button
-          type="button"
-          className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--left"
-          data-platform={isMac ? "mac" : "other"}
-          onClick={toggleLeftSidebar}
-          aria-label={
-            dockedLeftSidebarVisible ? "Hide sidebar" : "Show sidebar"
-          }
-          title={dockedLeftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
-        >
-          <PanelLeft size={16} strokeWidth={1.75} />
-        </button>
-      ) : null}
-
-      {isFullWindow && !panelOpen ? (
-        isWin ? (
-          // Windows: the panel toggle and the custom min/max/close controls
-          // share the top-right corner, controls outermost. Mounted only
-          // while the panel is closed — opening the panel hides both.
-          <div className="shell-edge-right-cluster">
-            <button
-              type="button"
-              className="shell-topbar-icon-btn"
-              onClick={() => dispatchOpenWorkspacePanel()}
-              aria-label="Open panel"
-              title="Open panel"
-            >
-              <PanelRight size={16} strokeWidth={1.75} />
-            </button>
-            <WindowControls useWindowsIcons hidden={false} />
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--right"
-            onClick={() => dispatchOpenWorkspacePanel()}
-            aria-label="Open panel"
-            title="Open panel"
-          >
-            <PanelRight size={16} strokeWidth={1.75} />
-          </button>
-        )
+        <ShellTopBarFull
+          onSignIn={showAuthDialog}
+          onConnect={showConnectDialog}
+        />
       ) : null}
 
       <Suspense fallback={null}>

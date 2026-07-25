@@ -207,81 +207,6 @@
   pointer-events: none;
 }
 
-/* Floating sidebar/panel toggles pinned to the window's top corners.
-   Reuse `.shell-topbar-icon-btn` for the look; override positioning so they
-   sit next to the traffic lights (left) and at the top-right (right). */
-.shell-edge-toggle {
-  position: absolute;
-  top: 9px;
-  z-index: 80;
-  -webkit-app-region: no-drag;
-}
-
-.shell-edge-toggle--left {
-  left: 12px;
-}
-
-.shell-edge-toggle--left[data-platform="mac"] {
-  left: 84px;
-}
-
-.shell-edge-toggle--right {
-  right: 12px;
-}
-
-.shell-edge-toggle--left::after {
-  left: 0;
-  transform: translateY(-2px);
-}
-
-.shell-edge-toggle--left:hover::after,
-.shell-edge-toggle--left:focus-visible::after {
-  transform: translateY(0);
-}
-
-.shell-edge-toggle--right::after {
-  left: auto;
-  right: 0;
-  transform: translateY(-2px);
-}
-
-.shell-edge-toggle--right:hover::after,
-.shell-edge-toggle--right:focus-visible::after {
-  transform: translateY(0);
-}
-
-/* Windows full-window: the panel toggle + custom min/max/close controls
-   share the top-right corner (controls outermost). Only mounted while the
-   panel is closed, so opening the panel removes the whole cluster. */
-.shell-edge-right-cluster {
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: var(--shell-topbar-height, 38px);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 8px;
-  z-index: 80;
-  -webkit-app-region: no-drag;
-}
-
-/* Anchor tooltips to the right edge so the rightmost (Close) hint doesn't
-   spill past the window corner — mirrors the `.shell-topbar-right` rules. */
-.shell-edge-right-cluster .shell-topbar-icon-btn::after,
-.shell-edge-right-cluster .shell-topbar-wc-btn::after {
-  left: auto;
-  right: 0;
-  transform: translateY(-2px);
-}
-
-.shell-edge-right-cluster .shell-topbar-icon-btn:hover::after,
-.shell-edge-right-cluster .shell-topbar-icon-btn:focus-visible::after,
-.shell-edge-right-cluster .shell-topbar-wc-btn:hover::after,
-.shell-edge-right-cluster .shell-topbar-wc-btn:focus-visible::after {
-  transform: translateY(0);
-}
-
 .shell-topbar-window-controls {
   box-sizing: border-box;
   /* 3 × 24px buttons + 2 × 2px gaps + 2 × 8px padding. Pinned so the
@@ -574,17 +499,11 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   box-sizing: border-box;
 }
 
-/* Full window: left/right floating panels own the top chrome (traffic
-   lights, viewer controls) so the center column can run edge-to-edge. */
-:root[data-shell-panel-chrome="true"] .content-area {
-  padding-top: 0;
-}
-
-:root[data-shell-panel-chrome="true"] .persistent-chat-surface,
-:root[data-shell-panel-chrome="true"] .persistent-user-app-surface,
-:root[data-shell-panel-chrome="true"] .route-outlet-surface {
-  top: 0;
-}
+/* The full window used to run its content edge-to-edge because the left
+   sidebar's chrome and a pair of floating edge toggles were the only things in
+   the top strip. `ShellTopBarFull` now spans the full width with nav and the
+   account control, so the content column reserves the strip's height instead
+   of sliding under it. */
 
 :root[data-shell-panel-chrome="true"] .content-area::before {
   height: var(--shell-topbar-height, 38px);

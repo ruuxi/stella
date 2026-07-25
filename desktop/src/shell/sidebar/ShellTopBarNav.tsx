@@ -97,11 +97,27 @@ const NavItem = ({
   );
 };
 
-export const ShellTopBarPrimaryNav = () => {
+type ShellTopBarPrimaryNavProps = {
+  /**
+   * Nav entry ids to suppress. The full-window bar omits `apps`, whose
+   * surface moved into the right sidebar; mobile still shows everything.
+   */
+  omitIds?: readonly string[];
+};
+
+export const ShellTopBarPrimaryNav = ({
+  omitIds,
+}: ShellTopBarPrimaryNavProps = {}) => {
   const allApps = useRegisteredApps();
   const navApps = useMemo(
-    () => allApps.filter((a) => !a.hideFromSidebar && a.slot === "top"),
-    [allApps],
+    () =>
+      allApps.filter(
+        (a) =>
+          !a.hideFromSidebar &&
+          a.slot === "top" &&
+          !(omitIds?.includes(a.id) ?? false),
+      ),
+    [allApps, omitIds],
   );
 
   const { totalBadge: socialBadge } = useSocialBadges();

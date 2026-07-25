@@ -132,11 +132,14 @@ type UseContinuousAnimationGateOptions<T extends HTMLElement> = {
 const isElementPresentationVisible = (element: HTMLElement): boolean => {
   let current: HTMLElement | null = element;
   while (current) {
+    // The left sidebar's collapsed state used to need its own class check
+    // here because it animated to zero width while staying visible. The right
+    // sidebar's closed state hides kept content with `display: none`, which
+    // the computed-style check below already catches.
     if (
       current.hidden ||
       current.inert ||
-      current.dataset.collapsed === "true" ||
-      current.classList.contains("left-sidebar--collapsed")
+      current.dataset.collapsed === "true"
     ) {
       return false;
     }

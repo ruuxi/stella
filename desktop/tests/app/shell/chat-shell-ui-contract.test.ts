@@ -107,10 +107,6 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "app/chat/ComposerAddMenu.tsx"),
       "utf8",
     );
-    const sidebar = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/LeftSidebar.tsx"),
-      "utf8",
-    );
     const activityPill = fs.readFileSync(
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
@@ -118,25 +114,9 @@ describe("chat shell UI contracts", () => {
 
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
-    expect(sidebar).not.toContain("left-sidebar__search-row");
     expect(activityPill).toContain(
       'placeholder="Search activity, files, and more"',
     );
-  });
-
-  it("keeps tray search out of the left sidebar activity index", () => {
-    const sidebar = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/LeftSidebar.tsx"),
-      "utf8",
-    );
-
-    // The sidebar must not subscribe to the tray's shared search store, or
-    // typing in the activity-tray popover would leak filtered results into
-    // the sidebar's stable activity index.
-    expect(sidebar).not.toContain("useDisplaySearchQuery");
-    expect(sidebar).not.toContain("display-search-store");
-    // It renders the overview unfiltered (no query prop threaded in).
-    expect(sidebar).toContain('<LeftSidebarSections variant="overview" />');
   });
 
   it("holds the tray search layout through engage and a single-settle clear", () => {

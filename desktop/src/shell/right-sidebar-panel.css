@@ -94,18 +94,13 @@ body[data-display-expanding="true"]
   transform: translateY(2px);
 }
 
-/* When expanded, the panel can reach the window's left edge (left sidebar
-   collapsed). Inset the chrome so its tabs clear the macOS traffic lights
-   and the floating left-sidebar toggle; the inset shrinks to nothing once
-   the rail (and those controls) sits to the panel's left. */
+/* An expanded panel used to reach the window's top-left corner and had to
+   inset its chrome past the macOS traffic lights and the floating sidebar
+   toggle. It now starts below `ShellTopBarFull`, which owns that strip, so the
+   chrome needs no special inset on any platform. */
 .right-sidebar.right-sidebar-panel.right-sidebar--expanded
   .right-sidebar-panel__chrome {
-  padding-left: max(12px, calc(44px - var(--shell-left-sidebar-width, 0px)));
-}
-
-.right-sidebar.right-sidebar-panel.right-sidebar--expanded
-  .right-sidebar-panel__chrome[data-platform="mac"] {
-  padding-left: max(12px, calc(116px - var(--shell-left-sidebar-width, 0px)));
+  padding-left: 12px;
 }
 
 .right-sidebar-panel__chrome-tabs-slot {
@@ -153,13 +148,14 @@ body[data-display-expanding="true"]
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
 
-/* Expanded takes over the content area (right of the left sidebar). The
-   absolute overlay must win the width over the fixed open-width rule above
-   (equal-ish specificity), so this selector carries an extra class. Left
-   inset matches the current sidebar width so the rail stays visible. */
+/* Expanded takes over the content area. The absolute overlay must win the
+   width over the fixed open-width rule above (equal-ish specificity), so this
+   selector carries an extra class. The top inset keeps `ShellTopBarFull`
+   clear — nav, the account control and the traffic lights stay reachable with
+   the panel expanded. */
 .right-sidebar.right-sidebar-panel.right-sidebar--open.right-sidebar--expanded.right-sidebar--shell-visible {
   position: absolute;
-  inset: 0 0 0 var(--shell-left-sidebar-width, 0px);
+  inset: var(--shell-topbar-height, 38px) 0 0 0;
   z-index: 60;
   width: auto;
   flex: none;

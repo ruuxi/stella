@@ -1,0 +1,98 @@
+/* Full-window top bar — see `ShellTopBarFull.tsx`.
+
+   Transparent 38px strip spanning the whole window. It sits above the content
+   column (which reserves `--shell-topbar-height` of padding) rather than
+   floating over live content, because with the left sidebar gone there is no
+   other chrome to keep the traffic lights and the nav from colliding with the
+   chat surface. */
+
+.shell-topbar-full {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--shell-topbar-height, 38px);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-base);
+  background: transparent;
+  border: none;
+  -webkit-app-region: drag;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.shell-topbar-full__left {
+  flex-shrink: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* Clears the macOS traffic lights. 84px matches `.shell-topbar-left` and
+   `.shell-edge-toggle--left` so every left-anchored control in the app lines
+   up on the same inset. */
+.shell-topbar-full[data-platform="mac"] .shell-topbar-full__left {
+  padding-left: 84px;
+}
+
+.shell-topbar-full__spacer {
+  flex: 1;
+  min-width: 8px;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.shell-topbar-full__right {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 10px;
+  -webkit-app-region: no-drag;
+}
+
+/* Windows draws its own min/max/close buttons flush to the corner. */
+.shell-topbar-full[data-platform="win"] .shell-topbar-full__right {
+  padding-right: 0;
+}
+
+.shell-topbar-full__right .shell-topbar-account {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(240px, 32vw);
+}
+
+/* Tooltips on right-cluster controls anchor to their right edge so they never
+   spill past the window corner — mirrors `.shell-topbar-right`. */
+.shell-topbar-full__right .shell-topbar-icon-btn::after,
+.shell-topbar-full__right .shell-topbar-wc-btn::after {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.shell-topbar-full__right .shell-topbar-icon-btn:hover::after,
+.shell-topbar-full__right .shell-topbar-icon-btn:focus-visible::after,
+.shell-topbar-full__right .shell-topbar-wc-btn:hover::after,
+.shell-topbar-full__right .shell-topbar-wc-btn:focus-visible::after {
+  transform: translateY(0);
+}
+
+/* The nav's own tooltips anchor left for the same reason, mirrored. */
+.shell-topbar-full__left .shell-topbar-icon-btn::after {
+  left: 0;
+  transform: translateY(-2px);
+}
+
+.shell-topbar-full__left .shell-topbar-icon-btn:hover::after,
+.shell-topbar-full__left .shell-topbar-icon-btn:focus-visible::after {
+  transform: translateY(0);
+}

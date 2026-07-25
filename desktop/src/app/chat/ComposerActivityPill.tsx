@@ -45,7 +45,8 @@ import {
   displaySearchStore,
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
-import { useLeftSidebarDocked } from "@/shell/left-sidebar-visibility-store";
+import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import "./composer-activity-pill.css";
 
@@ -75,10 +76,17 @@ export const getActivityPillLabel = (
   return STATUS_FALLBACK[state];
 };
 
+/**
+ * The pill stands down from its live "running" label whenever the Tasks
+ * surface is already on screen, so the two never narrate the same progress at
+ * once. That used to mean "the left sidebar is docked"; with the sidebar gone
+ * the equivalent condition is the right sidebar being open on its Tasks
+ * section.
+ */
 export const getDisplayedActivityPillState = (
   state: PillState,
-  sidebarDocked: boolean,
-): PillState => (sidebarDocked && state === "running" ? "idle" : state);
+  tasksSurfaceVisible: boolean,
+): PillState => (tasksSurfaceVisible && state === "running" ? "idle" : state);
 
 /**
  * Whether the tray should hold its fixed "searching" layout (a resolved,
@@ -323,13 +331,17 @@ const ActivityPillBody = memo(function ActivityPillBody({
 });
 
 export const ComposerActivityPill = memo(function ComposerActivityPill() {
-  const sidebarDocked = useLeftSidebarDocked();
+  const panelOpen = useDisplayPanelOpen();
+  const activeSection = useActiveSidebarSection();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
   const tasks = chat.conversation.tasks;
 
   const { state, runningCount } = useActivityPillState(tasks);
-  const displayedState = getDisplayedActivityPillState(state, sidebarDocked);
+  const displayedState = getDisplayedActivityPillState(
+    state,
+    panelOpen && activeSection === "tasks",
+  );
 
   const [open, setOpen] = useState(false);
   const handleOpenChange = (next: boolean) => {
