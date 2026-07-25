@@ -108,7 +108,7 @@ describe("task lifecycle deduping", () => {
     expect(pausedPrompt).toBeNull();
   });
 
-  it("wakes an owning manager when the user pauses its child", () => {
+  it("wakes an owning parent agent when the user pauses its subagent", () => {
     const pausedPrompt = buildAgentEventPrompt(
       {
         type: "agent-canceled",
@@ -118,14 +118,12 @@ describe("task lifecycle deduping", () => {
         agentType: "general",
         error: AGENT_PAUSE_CANCEL_REASON,
       },
-      { recipient: "manager" },
+      { recipient: "parent_agent" },
     );
 
-    expect(pausedPrompt).toContain("[Managed child paused]");
+    expect(pausedPrompt).toContain("[Subagent paused]");
     expect(pausedPrompt).not.toContain("event_id:");
-    expect(pausedPrompt).toContain(
-      "Do not remain parked waiting for that child",
-    );
+    expect(pausedPrompt).toContain("Do not stay blocked on that subagent.");
   });
 
   it("still suppresses the follow-up when Stella shuts down mid-task", () => {

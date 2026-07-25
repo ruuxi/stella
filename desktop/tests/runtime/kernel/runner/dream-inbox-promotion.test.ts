@@ -271,60 +271,59 @@ describe("dream-inbox two-phase stamp promotion", () => {
     ).toBeNull();
   });
 
-  it("manager-owned child completions route to the manager thread and never promote", async () => {
+  it("parent-owned subagent completions route to the parent thread and never promote", async () => {
     const { manager, store } = createHarness();
-    let releaseManager!: () => void;
-    const managerGate = new Promise<void>((resolve) => {
-      releaseManager = resolve;
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
     });
     let releaseChild!: () => void;
     const childGate = new Promise<void>((resolve) => {
       releaseChild = resolve;
     });
-    const managerPrompts: string[] = [];
+    let parentThreadId = "";
+    const parentPrompts: string[] = [];
     runMock.handler = async (args) => {
-      if (args.agentType === AGENT_IDS.MANAGER) {
-        managerPrompts.push(args.userPrompt);
-        if (managerPrompts.length === 1) {
-          await managerGate;
-          return { runId: "manager-1", result: "Waiting on child." };
+      if (args.agentId === parentThreadId) {
+        parentPrompts.push(args.userPrompt);
+        if (parentPrompts.length === 1) {
+          await parentGate;
+          return { runId: "parent-1", result: "Waiting on subagent." };
         }
-        return { runId: "manager-2", result: "Acknowledged child report." };
+        return { runId: "parent-2", result: "Acknowledged subagent report." };
       }
       await childGate;
-      return { runId: "child-1", result: "Managed child finished." };
+      return { runId: "child-1", result: "Subagent finished." };
     };
 
-    const managerTask = await manager.createAgent({
+    const parentTask = await manager.createAgent({
       conversationId: CONVERSATION,
       description: "Coordinate",
       prompt: "Coordinate.",
-      agentType: AGENT_IDS.MANAGER,
+      agentType: AGENT_IDS.GENERAL,
       agentDepth: 1,
+      maxAgentDepth: 2,
       storageMode: "local",
     });
+    parentThreadId = parentTask.threadId;
     const childTask = await manager.createAgent({
       conversationId: CONVERSATION,
-      description: "Managed work",
+      description: "Delegated work",
       prompt: "Work.",
       agentType: AGENT_IDS.GENERAL,
       agentDepth: 2,
       maxAgentDepth: 2,
-      parentAgentId: managerTask.threadId,
+      parentAgentId: parentTask.threadId,
       storageMode: "local",
     });
-    recordRow(store, childTask.threadId, "child-1", "Managed child finished.");
-    releaseManager();
+    recordRow(store, childTask.threadId, "child-1", "Subagent finished.");
+    releaseParent();
     releaseChild();
-    // The child's terminal report wakes the manager (its second turn) —
+    // The subagent's terminal report wakes its parent (its second turn) —
     // the orchestrator-persist branch is never taken for it.
-    await waitUntil(() => managerPrompts.length >= 2);
+    await waitUntil(() => parentPrompts.length >= 2);
 
-    const childRow = rowFor(
-      store,
-      childTask.threadId,
-      "Managed child finished.",
-    );
+    const childRow = rowFor(store, childTask.threadId, "Subagent finished.");
     expect(childRow?.conversationId).toBeNull();
     expect(sweepWindow(store).updated).toBe(0);
   });

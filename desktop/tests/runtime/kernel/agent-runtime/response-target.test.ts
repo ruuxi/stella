@@ -18,16 +18,16 @@ describe("orchestrator response target tracking", () => {
     });
   });
 
-  it("classifies a spawn_manager reply as its durable manager turn", () => {
+  it("classifies a nested spawn_agent result payload as its durable task turn", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 
-    tracker.noteToolEnd("spawn_manager", {
-      result: { thread_id: "manager-1" },
+    tracker.noteToolEnd("spawn_agent", {
+      result: { thread_id: "task-1" },
     });
 
     expect(tracker.resolve()).toEqual({
       type: "agent_turn",
-      agentId: "manager-1",
+      agentId: "task-1",
     });
   });
 
@@ -90,18 +90,6 @@ describe("task lifecycle response targets", () => {
       type: "agent_terminal_notice",
       agentId: "task-1",
       terminalState: "completed",
-    });
-  });
-
-  it("keeps interim manager messages non-terminal", () => {
-    expect(
-      createAgentLifecycleResponseTarget({
-        agentId: "manager-1",
-        eventType: "agent-message",
-      }),
-    ).toEqual({
-      type: "agent_turn",
-      agentId: "manager-1",
     });
   });
 

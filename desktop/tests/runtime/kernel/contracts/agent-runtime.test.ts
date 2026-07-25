@@ -15,9 +15,4 @@ describe("agent runtime contracts", () => {
     expect(getLocalCliWorkingDirectory(AGENT_IDS.GENERAL)).toBe("home");
     expect(isLocalCliAgentId(AGENT_IDS.GENERAL)).toBe(true);
   });
-
-  it("runs the manager as a local conductor rooted at home", () => {
-    expect(getLocalCliWorkingDirectory(AGENT_IDS.MANAGER)).toBe("home");
-    expect(isLocalCliAgentId(AGENT_IDS.MANAGER)).toBe(true);
-  });
 });

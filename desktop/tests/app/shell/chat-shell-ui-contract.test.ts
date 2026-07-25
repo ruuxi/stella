@@ -26,7 +26,7 @@ describe("chat shell UI contracts", () => {
     expect(getActivityPillLabel("running", 2)).toBe("2 tasks in progress");
   });
 
-  it("keeps manager grid cells stationary and their pulse locally scoped", () => {
+  it("keeps compact grid cells stationary and their pulse locally scoped", () => {
     const sidebar = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/LeftSidebarSections.tsx"),
       "utf8",

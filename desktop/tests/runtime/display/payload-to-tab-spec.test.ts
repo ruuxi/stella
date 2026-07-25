@@ -45,9 +45,9 @@ const { getSelectedCanvasHtmlId } = await import(
 describe("payloadToTabSpec", () => {
   it("creates a stable exact-thread read-only chat tab", () => {
     const spec = createAgentThreadTabSpec({
-      threadId: "manager-thread-7",
+      threadId: "subagent-thread-7",
       conversationId: "conversation-4",
-      agentType: "manager",
+      agentType: "general",
       title: "Coordinate verification",
     });
     const element = spec.render() as {
@@ -55,19 +55,19 @@ describe("payloadToTabSpec", () => {
     };
 
     expect(spec).toMatchObject({
-      id: "agent-thread:manager-thread-7",
+      id: "agent-thread:subagent-thread-7",
       kind: "chat",
       title: "Coordinate verification",
       metadata: {
         kind: "agent-thread",
-        threadId: "manager-thread-7",
+        threadId: "subagent-thread-7",
         conversationId: "conversation-4",
       },
     });
     expect(element.props).toMatchObject({
-      threadId: "manager-thread-7",
+      threadId: "subagent-thread-7",
       conversationId: "conversation-4",
-      agentType: "manager",
+      agentType: "general",
     });
   });
 

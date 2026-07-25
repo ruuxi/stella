@@ -450,7 +450,7 @@ describe("agent-authored assistant updates", () => {
     );
   });
 
-  it("invalidates exact General and Manager transcripts for tool-only persisted entries", () => {
+  it("invalidates exact General and Explore transcripts for tool-only persisted entries", () => {
     const onThreadAssistantUpdate = vi.fn();
     const onThreadTranscriptUpdate = vi.fn();
     const { store } = createTestContext(
@@ -462,15 +462,15 @@ describe("agent-authored assistant updates", () => {
       agentType: "general",
       threadId: "tool-only-general",
     });
-    const manager = store.resolveOrCreateActiveThread({
-      conversationId: "conv-tool-only-manager",
-      agentType: "manager",
-      threadId: "tool-only-manager",
+    const explore = store.resolveOrCreateActiveThread({
+      conversationId: "conv-tool-only-explore",
+      agentType: "explore",
+      threadId: "tool-only-explore",
     });
 
     for (const [threadId, conversationId] of [
       [general.threadId, "conv-tool-only-general"],
-      [manager.threadId, "conv-tool-only-manager"],
+      [explore.threadId, "conv-tool-only-explore"],
     ] as const) {
       store.appendThreadMessage({
         threadKey: threadId,

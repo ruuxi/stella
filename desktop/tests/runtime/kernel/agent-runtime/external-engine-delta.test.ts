@@ -21,8 +21,8 @@ import {
 import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 
-const MANAGER_WAKE_STUB =
-  "Review the newly persisted managed-child event in this thread and continue the instructed process.";
+const PARENT_WAKE_STUB =
+  "Review the newly persisted subagent event in this thread and continue the instructed process.";
 
 const withStore = (
   work: (store: SessionStore) => void | Promise<void>,
@@ -63,9 +63,9 @@ const appendChildReport = (
 };
 
 describe("external-engine out-of-band delta injection", () => {
-  it("delivers a persisted child report to a resumed claude-code manager turn exactly once", () =>
+  it("delivers a persisted subagent report to a resumed claude-code parent turn exactly once", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-1";
+      const threadKey = "conversation-1:general:thread-1";
       store.appendThreadMessage({
         threadKey,
         timestamp: 1_000,
@@ -97,7 +97,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message).not.toBeNull();
       expect(delta.message?.uiVisibility).toBe("hidden");
@@ -112,13 +112,13 @@ describe("external-engine out-of-band delta injection", () => {
           customType: "runtime.stella_thread_history",
           text: '<stella_thread_history source="stella">\n<history_message index="1" role="user">\nCoordinate the migration\n</history_message>\n</stella_thread_history>',
         },
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         hasPersistedSession: true,
         deltaPromptMessage: delta.message,
       });
       // The resumed prompt gets the delta but never the quadratic full block.
       expect(prompt).toContain("MIGRATION-RESULT-ALPHA");
-      expect(prompt).toContain(MANAGER_WAKE_STUB);
+      expect(prompt).toContain(PARENT_WAKE_STUB);
       expect(prompt).not.toContain("<stella_thread_history");
       // A lost resume or compaction loop substitutes the fallback prompt for
       // the one the watermark was computed from, so the fallback must carry
@@ -158,7 +158,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("delivers only rows persisted after the watermark on later resumes", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-2";
+      const threadKey = "conversation-1:general:thread-2";
       const firstEntryId = appendChildReport(
         store,
         threadKey,
@@ -186,7 +186,7 @@ describe("external-engine out-of-band delta injection", () => {
           threadKey,
           engine: "claude_code_local",
         }),
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message?.text).toContain("RESULT-TWO");
       expect(delta.message?.text).not.toContain("RESULT-ONE");
@@ -195,7 +195,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("mirrors the injection into the codex prompt", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-3";
+      const threadKey = "conversation-1:general:thread-3";
       appendChildReport(
         store,
         threadKey,
@@ -205,19 +205,19 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message).not.toBeNull();
       const prompt = buildCodexPromptFromMessages({
-        promptMessages: [delta.message!, { text: MANAGER_WAKE_STUB }],
+        promptMessages: [delta.message!, { text: PARENT_WAKE_STUB }],
       });
       expect(prompt).toContain("CODEX-RESULT");
-      expect(prompt).toContain(MANAGER_WAKE_STUB);
+      expect(prompt).toContain(PARENT_WAKE_STUB);
     }));
 
   it("advances the in-turn cursor so a queued rebuild only carries mid-turn rows", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-4";
+      const threadKey = "conversation-1:general:thread-4";
       appendChildReport(
         store,
         threadKey,
@@ -227,7 +227,7 @@ describe("external-engine out-of-band delta injection", () => {
       const mainDelta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(mainDelta.message?.text).toContain("MAIN-TURN-ROW");
 
@@ -242,7 +242,7 @@ describe("external-engine out-of-band delta injection", () => {
         store,
         threadKey,
         afterEntryId: mainDelta.lastEntryId ?? undefined,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(queuedDelta.message?.text).toContain("MID-TURN-ROW");
       expect(queuedDelta.message?.text).not.toContain("MAIN-TURN-ROW");
@@ -268,7 +268,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("ignores engine-authored rows and non-lifecycle custom rows", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-5";
+      const threadKey = "conversation-1:general:thread-5";
       store.appendThreadMessage({
         threadKey,
         timestamp: 6_000,
@@ -293,7 +293,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("session-creating turn: rows covered by the history snapshot ride in it alone, without a duplicate delta", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-6";
+      const threadKey = "conversation-1:general:thread-6";
       appendChildReport(
         store,
         threadKey,
@@ -312,14 +312,14 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         deliveredContextTexts: [historyPromptMessage.text],
       });
       expect(delta.message).toBeNull();
       expect(delta.lastEntryId).toBeTruthy();
       const { prompt } = buildClaudeCodeTurnPrompts({
         historyPromptMessage,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         hasPersistedSession: false,
         deltaPromptMessage: delta.message,
       });
@@ -346,7 +346,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("session-creating turn: a report landing after the history snapshot is still in the sent prompt before it is watermarked", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-9";
+      const threadKey = "conversation-1:general:thread-9";
       appendChildReport(
         store,
         threadKey,
@@ -372,7 +372,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         deliveredContextTexts: [historyPromptMessage.text],
       });
       // Only the late row needs the delta; the early row rides in history.
@@ -382,7 +382,7 @@ describe("external-engine out-of-band delta injection", () => {
 
       const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
         historyPromptMessage,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         hasPersistedSession: false,
         deltaPromptMessage: delta.message,
       });
@@ -396,7 +396,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("still delivers an undelivered report that compaction folded into a checkpoint", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-7";
+      const threadKey = "conversation-1:general:thread-7";
       store.appendThreadMessage({
         threadKey,
         timestamp: 8_000,
@@ -465,7 +465,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("scopes the watermark per engine so a Claude→Codex takeover re-delivers what Codex never saw", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-8";
+      const threadKey = "conversation-1:general:thread-8";
       const reportEntryId = appendChildReport(
         store,
         threadKey,
@@ -499,7 +499,7 @@ describe("external-engine out-of-band delta injection", () => {
         store,
         threadKey,
         ...(codexWatermark ? { afterEntryId: codexWatermark } : {}),
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(codexDelta.message?.text).toContain("CLAUDE-ERA-RESULT");
       // After the Codex turn succeeds, each engine keeps its own scope.
@@ -523,7 +523,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("treats a legacy un-namespaced watermark as unseen for every engine", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-10";
+      const threadKey = "conversation-1:general:thread-10";
       // Written before engine namespacing existed. Attributing it to either
       // engine could skip rows the other never saw; reading it as undefined
       // only re-delivers (at-least-once), which is the safe failure mode.
@@ -542,7 +542,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("round-trips the delivered watermark through the store", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-11";
+      const threadKey = "conversation-1:general:thread-11";
       expect(
         store.getThreadExternalDeliveredEntryId(threadKey),
       ).toBeUndefined();
@@ -570,7 +570,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("queued follow-up + recovery reseed: a row consumed by the in-turn cursor still reaches the reseeded session before the watermark passes it", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-12";
+      const threadKey = "conversation-1:general:thread-12";
       // History snapshot frozen at context construction — WITHOUT row R.
       const historyPromptMessage = {
         messageType: "message" as const,
@@ -589,7 +589,7 @@ describe("external-engine out-of-band delta injection", () => {
       const mainDelta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(mainDelta.message?.text).toContain("ROW-R-RESULT");
       tracker.noteMainlineDelta(mainDelta);
@@ -632,7 +632,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("queued reseed fallback exists even when the history snapshot is empty", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-13";
+      const threadKey = "conversation-1:general:thread-13";
       appendChildReport(
         store,
         threadKey,
@@ -644,7 +644,7 @@ describe("external-engine out-of-band delta injection", () => {
         threadKey,
         promptMessages: [{ text: "Queued follow-up." }],
       });
-      // Brand-new manager thread: no history snapshot, but the queued
+      // Brand-new parent thread: no history snapshot, but the queued
       // fallback must still reseed the row the main prompt consumed.
       const { resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
         historyPromptMessage: null,
@@ -698,7 +698,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("bounds an oversized backlog, always includes the triggering row, and drains in order across turns", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-14";
+      const threadKey = "conversation-1:general:thread-14";
       const bigReport = (marker: string) =>
         `[Agent report] ${marker} ${"x".repeat(20_000)} TAIL-${marker}-END`;
       appendChildReport(store, threadKey, 14_000, bigReport("BACKLOG-A"));
@@ -721,7 +721,7 @@ describe("external-engine out-of-band delta injection", () => {
       const first = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       // Contiguous prefix: A and B, whole (tails intact — the tail carries
       // outcomes/blockers and must never be cut).
@@ -772,7 +772,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("gives a report larger than the block budget its own dedicated batch, tail intact", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-15";
+      const threadKey = "conversation-1:general:thread-15";
       appendChildReport(
         store,
         threadKey,
@@ -788,7 +788,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       // Delivered WHOLE as a one-report batch: no tail cut, no elision.
       expect(delta.message?.text).toContain("HUGE-REPORT");
@@ -804,7 +804,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("elides only the middle, never the tail, for a report beyond engine capacity", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-17";
+      const threadKey = "conversation-1:general:thread-17";
       appendChildReport(
         store,
         threadKey,
@@ -814,7 +814,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message?.text).toContain("HEAD-START");
       expect(delta.message?.text).toContain("GIANT-TAIL-END");
@@ -830,7 +830,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("caps the complete serialized message when a bounded prefix meets an oversized triggering row", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-20";
+      const threadKey = "conversation-1:general:thread-20";
       // Reviewer probe: ~45k of prefix + >300k newest previously composed
       // to ~345k because the latest section was elided independently.
       appendChildReport(
@@ -860,7 +860,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message!.text.length).toBeLessThanOrEqual(
         EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
@@ -877,7 +877,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("caps the complete serialized message when a dedicated oversized report meets an oversized triggering row", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-21";
+      const threadKey = "conversation-1:general:thread-21";
       // Reviewer probe: both independently elided to ~300k previously
       // composed to ~601k. Now they share the cap roughly in half.
       appendChildReport(
@@ -895,7 +895,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message!.text.length).toBeLessThanOrEqual(
         EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
@@ -912,7 +912,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("keeps even a barely-oversized single report within the global cap (wrapper overhead included)", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-22";
+      const threadKey = "conversation-1:general:thread-22";
       // Reviewer probe: a 300,001-char row previously serialized to 300,494.
       appendChildReport(
         store,
@@ -923,7 +923,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       expect(delta.message!.text.length).toBeLessThanOrEqual(
         EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
@@ -934,7 +934,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("never splits a surrogate pair at an elision boundary", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-23";
+      const threadKey = "conversation-1:general:thread-23";
       // A report made of astral-plane pairs: any code-unit boundary inside
       // the body would split a pair unless nudged.
       appendChildReport(
@@ -946,7 +946,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       const text = delta.message!.text;
       expect(text).toContain("elided from the MIDDLE");
@@ -959,7 +959,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("bounds the SERIALIZED block (wrappers and envelope included) under a flood of tiny rows", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-18";
+      const threadKey = "conversation-1:general:thread-18";
       const totalRows = EXTERNAL_DELTA_MAX_ROWS + 150;
       for (let index = 0; index < totalRows; index += 1) {
         appendChildReport(store, threadKey, 18_000 + index, `tick ${index}`);
@@ -967,7 +967,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
       });
       // Reviewer probe shape: per-row wrapper overhead must not balloon the
       // serialized block past the configured budget.
@@ -983,7 +983,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("dedupes the resumed-turn recovery fallback against its history block so old rows cannot starve new ones", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-19";
+      const threadKey = "conversation-1:general:thread-19";
       // An old, still-undelivered report big enough to consume the whole
       // packing budget — and already present in the history snapshot.
       const oldReport = `[Agent report] OLD-DUPLICATED-ROW ${"w".repeat(EXTERNAL_DELTA_MAX_TOTAL_CHARS)}`;
@@ -1005,7 +1005,7 @@ describe("external-engine out-of-band delta injection", () => {
       const fallbackDelta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         deliveredContextTexts: [historyPromptMessage.text],
       });
       expect(fallbackDelta.message?.text).toContain("GENUINELY-NEW-ROW");
@@ -1018,7 +1018,7 @@ describe("external-engine out-of-band delta injection", () => {
       // deduped delta — nothing starved, nothing duplicated.
       const { resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
         historyPromptMessage,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         hasPersistedSession: true,
         deltaPromptMessage: null,
         fallbackDeltaPromptMessage: fallbackDelta.message,
@@ -1029,7 +1029,7 @@ describe("external-engine out-of-band delta injection", () => {
 
   it("legacy takeover with a session-creating turn initializes the watermark from the history block without replaying the backlog", () =>
     withStore((store) => {
-      const threadKey = "conversation-1:manager:thread-16";
+      const threadKey = "conversation-1:general:thread-16";
       const reports = [
         "[Agent report] child-a completed: LEGACY-ROW-1",
         "[Agent report] child-b completed: LEGACY-ROW-2",
@@ -1067,7 +1067,7 @@ describe("external-engine out-of-band delta injection", () => {
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
-        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        promptMessages: [{ text: PARENT_WAKE_STUB }],
         deliveredContextTexts: [historyText],
       });
       expect(delta.message).toBeNull();

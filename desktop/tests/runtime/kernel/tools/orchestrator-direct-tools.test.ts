@@ -26,11 +26,6 @@ type TestHostContext = {
   createdTasks: Array<Record<string, unknown>>;
   contextLookups: Array<Record<string, unknown>>;
   sourceImports: Array<Record<string, unknown>>;
-  managerReports: Array<{
-    threadId: string;
-    message: string;
-    final: boolean;
-  }>;
 };
 
 const activeContexts = new Set<TestHostContext>();
@@ -54,11 +49,6 @@ const createTestHost = async (
   const createdTasks: Array<Record<string, unknown>> = [];
   const contextLookups: Array<Record<string, unknown>> = [];
   const sourceImports: Array<Record<string, unknown>> = [];
-  const managerReports: Array<{
-    threadId: string;
-    message: string;
-    final: boolean;
-  }> = [];
 
   const host = createToolHost({
     stellaAppDir: rootPath,
@@ -78,10 +68,6 @@ const createTestHost = async (
       },
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
-      submitManagerReport: (threadId, message, final) => {
-        managerReports.push({ threadId, message, final });
-        return { accepted: true };
-      },
     },
     validateSpawnModel,
     webSearch: async (query) => ({ text: `results for ${query}` }),
@@ -113,7 +99,6 @@ const createTestHost = async (
     createdTasks,
     contextLookups,
     sourceImports,
-    managerReports,
   };
   activeContexts.add(context);
   return context;
@@ -154,13 +139,10 @@ describe("orchestrator direct tool surface", () => {
     const orchestrator = agents.find((agent) => agent.id === "orchestrator");
 
     expect(orchestrator?.toolsAllowlist).toEqual(
-      expect.arrayContaining([
-        "spawn_agent",
-        "spawn_manager",
-        "send_input",
-        "pause_agent",
-      ]),
+      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
     );
+    expect(orchestrator?.toolsAllowlist).not.toContain("spawn_manager");
+    expect(orchestrator?.maxAgentDepth).toBe(2);
   });
 
   it("overlays shipped capability metadata onto customized home prompt bodies", async () => {
@@ -181,24 +163,12 @@ describe("orchestrator direct tool surface", () => {
         ].join("\n"),
       ),
       writeFile(
-        path.join(agentsDir, "manager.md"),
-        [
-          "---",
-          "name: Customized Manager",
-          "description: overly broad manager metadata",
-          "tools: spawn_agent, spawn_manager, send_input, pause_agent",
-          "maxAgentDepth: 9",
-          "---",
-          "My customized manager prompt.",
-        ].join("\n"),
-      ),
-      writeFile(
         path.join(agentsDir, "general.md"),
         [
           "---",
           "name: Customized General",
           "description: overly broad general metadata",
-          "tools: spawn_agent, spawn_manager, send_input, pause_agent",
+          "tools: spawn_agent, spawn_manager, send_input, pause_agent, report",
           "maxAgentDepth: 9",
           "---",
           "My customized general prompt.",
@@ -223,112 +193,87 @@ describe("orchestrator direct tool surface", () => {
       agents.find((agent) => agent.id === "orchestrator")?.systemPrompt,
     ).toBe("My customized orchestrator prompt.");
     expect(advertisedToolNames("orchestrator")).toEqual(
-      expect.arrayContaining([
-        "spawn_agent",
-        "spawn_manager",
-        "send_input",
-        "pause_agent",
-      ]),
+      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
     );
-    expect(advertisedToolNames("manager")).toEqual([
-      "spawn_agent",
-      "send_input",
-      "pause_agent",
-      "report",
-    ]);
+    // The customized home body is kept, but its stale/overly broad capability
+    // frontmatter is replaced wholesale by the shipped metadata: General keeps
+    // the real delegation tools, loses tools that no longer exist, and its
+    // depth cap comes from the shipped record rather than the home file.
+    const general = agents.find((agent) => agent.id === "general");
+    expect(general?.systemPrompt).toBe("My customized general prompt.");
+    expect(general?.maxAgentDepth).toBe(2);
     const generalToolNames = advertisedToolNames("general");
-    for (const coordinationTool of [
-      "spawn_agent",
-      "spawn_manager",
-      "send_input",
-      "pause_agent",
-      "report",
-    ]) {
-      expect(generalToolNames).not.toContain(coordinationTool);
+    expect(generalToolNames).toEqual(
+      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
+    );
+    for (const removedTool of ["spawn_manager", "report"]) {
+      expect(generalToolNames).not.toContain(removedTool);
     }
   });
 
-  it("loads and executes Manager-only reporting through the production adapter path", async () => {
-    const { host, rootPath, managerReports } = await createTestHost();
+  it("loads and executes General delegation tools through the production adapter path", async () => {
+    const { host, rootPath, createdTasks } = await createTestHost();
     const agentsDir = path.join(rootPath, "agents");
     await mkdir(agentsDir, { recursive: true });
-    await Promise.all(
-      ["manager", "general"].map((agentType) =>
-        writeFile(
-          path.join(agentsDir, `${agentType}.md`),
-          [
-            "---",
-            `name: ${agentType}`,
-            `description: ${agentType} prompt`,
-            "tools: stale_home_metadata",
-            "---",
-            `Customized ${agentType} production prompt.`,
-          ].join("\n"),
-        ),
-      ),
+    await writeFile(
+      path.join(agentsDir, "general.md"),
+      [
+        "---",
+        "name: general",
+        "description: general prompt",
+        "tools: stale_home_metadata",
+        "---",
+        "Customized general production prompt.",
+      ].join("\n"),
     );
 
     const loaded = loadStellaRuntimeAgents(
       rootPath,
       path.join(repoRoot, "runtime/extensions/stella-runtime/agent-metadata"),
     );
-    const manager = loaded.find((agent) => agent.id === AGENT_IDS.MANAGER);
     const general = loaded.find((agent) => agent.id === AGENT_IDS.GENERAL);
-    expect(manager?.toolsAllowlist).toContain("report");
-
-    const managerTools = createPiTools({
-      runId: "manager-run",
-      rootRunId: "root-run",
-      agentId: "manager-thread",
-      conversationId: "conv-1",
-      agentType: AGENT_IDS.MANAGER,
-      deviceId: "device-1",
-      stellaAppDir: rootPath,
-      stellaDataDir: rootPath,
-      toolsAllowlist: manager?.toolsAllowlist,
-      toolCatalog: host.getToolCatalog(AGENT_IDS.MANAGER),
-      store: {} as never,
-      toolExecutor: host.executeTool,
-    });
-    const reportTool = managerTools.find((tool) => tool.name === "report");
-    expect(reportTool).toBeDefined();
-
-    await reportTool!.execute("call-update", { message: "Still checking." });
-    await reportTool!.execute("call-final", {
-      message: "Checks passed.",
-      final: true,
-    });
-    expect(managerReports).toEqual([
-      {
-        threadId: "manager-thread",
-        message: "Still checking.",
-        final: false,
-      },
-      {
-        threadId: "manager-thread",
-        message: "Checks passed.",
-        final: true,
-      },
-    ]);
+    expect(general?.toolsAllowlist).toContain("spawn_agent");
 
     const generalTools = createPiTools({
       runId: "general-run",
+      rootRunId: "root-run",
       agentId: "general-thread",
       conversationId: "conv-1",
       agentType: AGENT_IDS.GENERAL,
       deviceId: "device-1",
+      stellaAppDir: rootPath,
+      stellaDataDir: rootPath,
       toolsAllowlist: general?.toolsAllowlist,
       toolCatalog: host.getToolCatalog(AGENT_IDS.GENERAL),
       store: {} as never,
       toolExecutor: host.executeTool,
     });
-    expect(generalTools.map((tool) => tool.name)).not.toContain("report");
+    const toolNames = generalTools.map((tool) => tool.name);
+    expect(toolNames).toEqual(
+      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
+    );
+    expect(toolNames).not.toContain("report");
+    expect(toolNames).not.toContain("spawn_manager");
     expect(
       host.getToolCatalog(AGENT_IDS.GENERAL).map((tool) => tool.name),
     ).not.toContain("report");
+
+    const spawnTool = generalTools.find((tool) => tool.name === "spawn_agent");
+    expect(spawnTool).toBeDefined();
+    await spawnTool!.execute("call-spawn", {
+      description: "Subagent work",
+      prompt: "Do the delegated piece.",
+    });
+    expect(createdTasks).toEqual([
+      {
+        description: "Subagent work",
+        prompt: "Do the delegated piece.",
+        agentType: "general",
+      },
+    ]);
   });
 
-  it("shows direct coordination tools only to the orchestrator", async () => {
+  it("shows direct coordination tools to the orchestrator and General agents", async () => {
     const { host } = await createTestHost();
 
     const orchestratorTools = new Set(
@@ -338,7 +283,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("Remember")).toBe(true);
     expect(orchestratorTools.has("search_threads")).toBe(false);
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
-    expect(orchestratorTools.has("spawn_manager")).toBe(true);
+    expect(orchestratorTools.has("spawn_manager")).toBe(false);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
     expect(orchestratorTools.has("import_source")).toBe(true);
@@ -360,9 +305,6 @@ describe("orchestrator direct tool surface", () => {
     const sendInputTool = host
       .getToolCatalog("orchestrator")
       .find((tool) => tool.name === "send_input");
-    const spawnManagerTool = host
-      .getToolCatalog("orchestrator")
-      .find((tool) => tool.name === "spawn_manager");
     const spawnAgentProperties = spawnAgentTool?.parameters.properties as
       | Record<string, unknown>
       | undefined;
@@ -372,16 +314,6 @@ describe("orchestrator direct tool surface", () => {
     expect(
       spawnAgentTool?.parameters.required as string[] | undefined,
     ).not.toContain("model");
-    expect(spawnManagerTool?.parameters).toMatchObject({
-      properties: { prompt: { type: "string" } },
-      required: ["prompt"],
-    });
-    expect(
-      Object.keys(
-        (spawnManagerTool?.parameters.properties as Record<string, unknown>) ??
-          {},
-      ),
-    ).toEqual(["prompt"]);
     expect(
       (sendInputTool?.parameters.properties as Record<string, unknown>)
         .description,
@@ -406,8 +338,11 @@ describe("orchestrator direct tool surface", () => {
     const generalTools = new Set(
       host.getToolCatalog("general").map((tool) => tool.name),
     );
-    expect(generalTools.has("spawn_agent")).toBe(false);
+    expect(generalTools.has("spawn_agent")).toBe(true);
+    expect(generalTools.has("send_input")).toBe(true);
+    expect(generalTools.has("pause_agent")).toBe(true);
     expect(generalTools.has("spawn_manager")).toBe(false);
+    expect(generalTools.has("report")).toBe(false);
     expect(generalTools.has("linq_send_message")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
@@ -485,32 +420,22 @@ describe("orchestrator direct tool surface", () => {
     expect(fashionTools.has("image_gen")).toBe(true);
   });
 
-  it("gives managers only agent-management tools and prevents deeper nesting", async () => {
+  it("hides the delegation tools from agents that are not spawners", async () => {
     const { host } = await createTestHost();
-    const managerCoordinationTools = host
-      .getToolCatalog("manager")
-      .filter((tool) =>
-        [
-          "spawn_agent",
-          "spawn_manager",
-          "send_input",
-          "pause_agent",
-          "report",
-        ].includes(tool.name),
-      )
-      .map((tool) => tool.name)
-      .sort();
-    expect(managerCoordinationTools).toEqual([
-      "pause_agent",
-      "report",
-      "send_input",
-      "spawn_agent",
-    ]);
+    for (const agentType of ["explore", "fashion", "schedule"]) {
+      const coordinationTools = host
+        .getToolCatalog(agentType)
+        .filter((tool) =>
+          ["spawn_agent", "send_input", "pause_agent"].includes(tool.name),
+        )
+        .map((tool) => tool.name);
+      expect(coordinationTools).toEqual([]);
+    }
 
     const nestedResult = await host.executeTool(
       "spawn_agent",
       { description: "Nested work", prompt: "Should not run." },
-      makeToolContext("general"),
+      makeToolContext("explore"),
     );
     expect(nestedResult.error).toContain("only available");
   });
@@ -620,7 +545,7 @@ describe("orchestrator direct tool surface", () => {
     expect(missingPromptResult.error).toContain("Recall prompt is required");
   });
 
-  it("executes spawn_agent directly for the orchestrator and rejects other agents", async () => {
+  it("executes spawn_agent for the orchestrator and General agents and rejects the rest", async () => {
     const { host, createdTasks } = await createTestHost();
 
     const orchestratorResult = await host.executeTool(
@@ -649,37 +574,29 @@ describe("orchestrator direct tool surface", () => {
     const generalResult = await host.executeTool(
       "spawn_agent",
       {
-        description: "Should fail",
-        prompt: "This agent should not have direct task creation.",
+        description: "Delegate a slice",
+        prompt: "A General agent may run its own subagents.",
       },
       makeToolContext("general"),
     );
 
-    expect(generalResult.error).toContain("only available to the orchestrator");
-  });
-
-  it("executes spawn_manager with the configured default", async () => {
-    const { host, createdTasks } = await createTestHost();
-    const result = await host.executeTool(
-      "spawn_manager",
-      { prompt: "Coordinate three checks and return one report." },
-      makeToolContext("orchestrator"),
-    );
-    expect(result).toMatchObject({
-      result: { thread_id: "thread-1", created: true },
+    expect(generalResult.error).toBeUndefined();
+    expect(generalResult.result).toMatchObject({
+      thread_id: "thread-2",
+      created: true,
+      running_in_background: true,
     });
-    expect(createdTasks).toEqual([
+
+    const exploreResult = await host.executeTool(
+      "spawn_agent",
       {
-        description: "Coordinate three checks and return one report.",
-        prompt: "Coordinate three checks and return one report.",
-        agentType: "manager",
-        modelConfigSnapshot: {
-          engine: "default",
-          routeModel: "stella/openai/gpt-5.6-sol",
-          reasoningEffort: "high",
-        },
+        description: "Should fail",
+        prompt: "This agent should not have direct task creation.",
       },
-    ]);
+      makeToolContext("explore"),
+    );
+
+    expect(exploreResult.error).toContain("only available to the orchestrator");
   });
 
   it("fails spawn_agent loudly when the model override cannot be routed", async () => {

@@ -349,18 +349,18 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(spawnAgent.statusAfterToolEnd).toBeNull();
     expect(spawnAgent.displayStatus).toBe("On it");
 
-    const spawnManager = await runToolStatusIntegration("spawn_manager");
-    expect(spawnManager.rawStatusText).toBe("Running Spawn Manager");
-    expect(spawnManager.rawToolStartStatusText).toBe("Running Spawn Manager");
-    expect(spawnManager.rawToolEndName).toBe("spawn_manager");
-    expect(spawnManager.persistedToolEvent).toEqual(
-      expect.objectContaining({ type: "tool_start", toolName: "spawn_manager" }),
+    const pauseAgent = await runToolStatusIntegration("pause_agent");
+    expect(pauseAgent.rawStatusText).toBe("Running Pause Agent");
+    expect(pauseAgent.rawToolStartStatusText).toBe("Running Pause Agent");
+    expect(pauseAgent.rawToolEndName).toBe("pause_agent");
+    expect(pauseAgent.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "pause_agent" }),
     );
-    expect(spawnManager.activeBeforeTool).toBe(true);
-    expect(spawnManager.activeDuringTool).toBe(true);
-    expect(spawnManager.activeAfterToolBeforeAnswer).toBe(true);
-    expect(spawnManager.statusAfterToolEnd).toBeNull();
-    expect(spawnManager.displayStatus).toBe("On it");
+    expect(pauseAgent.activeBeforeTool).toBe(true);
+    expect(pauseAgent.activeDuringTool).toBe(true);
+    expect(pauseAgent.activeAfterToolBeforeAnswer).toBe(true);
+    expect(pauseAgent.statusAfterToolEnd).toBeNull();
+    expect(pauseAgent.displayStatus).toBe("Pausing");
 
     const sendInput = await runToolStatusIntegration("send_input");
     expect(sendInput.rawStatusText).toBe("Running Send Input");

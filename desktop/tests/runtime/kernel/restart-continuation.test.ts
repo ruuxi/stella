@@ -69,8 +69,7 @@ afterEach(() => {
 
 const recordFilePath = () =>
   path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE);
-const stateFilePath = () =>
-  path.join(dataDir, RESTART_INTERRUPTION_STATE_FILE);
+const stateFilePath = () => path.join(dataDir, RESTART_INTERRUPTION_STATE_FILE);
 const snapshotFilePath = () =>
   path.join(dataDir, RESTART_INTERRUPTED_SNAPSHOT_FILE);
 
@@ -174,9 +173,9 @@ describe("shutdown record", () => {
     // A record that survived a host relaunch without an intervening boot
     // must not mislabel the newer restart or poison staleness.
     const now = Date.now();
-    expect(recordRestartShutdown(dataDir, { reason: "app-shutdown", now })).toBe(
-      true,
-    );
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now }),
+    ).toBe(true);
     const replaced = peekRestartShutdownRecord(dataDir);
     expect(replaced?.reason).toBe("app-shutdown");
     expect(replaced?.createdAt).toBe(now);
@@ -354,7 +353,9 @@ describe("boot conversion", () => {
     expect(fs.existsSync(recordFilePath())).toBe(false);
     expect(fs.existsSync(snapshotFilePath())).toBe(false);
     const preserved = readRestartInterruptionState(dataDir);
-    expect(preserved?.conversations["conv-1"]?.reminderAttachedAt).toBeDefined();
+    expect(
+      preserved?.conversations["conv-1"]?.reminderAttachedAt,
+    ).toBeDefined();
   });
 
   it("never resurrects an older episode's sidecar under a newer record", () => {
@@ -435,9 +436,7 @@ describe("boot conversion", () => {
     // The retained attempted record does not authorize the capture, and
     // N's retry sidecar is NOT clobbered by the crash row.
     expect(crashCapture).toBeNull();
-    expect(
-      readRestartInterruptionState(dataDir),
-    ).toBeNull();
+    expect(readRestartInterruptionState(dataDir)).toBeNull();
     // Conversion refuses the unauthorized live rows and recovers episode
     // N's REAL interruption from the preserved sidecar.
     const state = convert(
@@ -670,10 +669,10 @@ describe("boot-time continuation turn", () => {
   const rows = new Map<string, RestartThreadRecordLike>([
     ["thread-a", makeRecordRow({ threadId: "thread-a" })],
     [
-      "thread-mgr",
+      "thread-b",
       makeRecordRow({
-        threadId: "thread-mgr",
-        agentType: "manager",
+        threadId: "thread-b",
+        agentType: "general",
         description: "Coordinate the release",
         status: "completed",
         error: undefined,
@@ -701,7 +700,10 @@ describe("boot-time continuation turn", () => {
   const makeDeps = (
     overrides?: Partial<RestartContinuationFireDeps>,
   ): RestartContinuationFireDeps & {
-    appended: Array<{ conversationId: string; payload: Record<string, unknown> }>;
+    appended: Array<{
+      conversationId: string;
+      payload: Record<string, unknown>;
+    }>;
     turns: Array<{ conversationId: string; userPrompt: string }>;
   } => {
     const appended: Array<{
@@ -736,7 +738,7 @@ describe("boot-time continuation turn", () => {
     writeFreshRecord();
     const state = convert([
       { threadId: "thread-a", conversationId: "conv-1" },
-      { threadId: "thread-mgr", conversationId: "conv-1" },
+      { threadId: "thread-b", conversationId: "conv-1" },
     ]);
     expect(state).not.toBeNull();
   };
@@ -760,7 +762,7 @@ describe("boot-time continuation turn", () => {
     expect(prompt).toContain("thread-a");
     expect(prompt).toContain("Refactor the parser");
     expect(prompt).toContain("resumable via send_input");
-    expect(prompt).toContain("thread-mgr");
+    expect(prompt).toContain("thread-b");
     expect(prompt).toContain("completed");
     // User-paused thread is mentioned but excluded from the resume list.
     expect(prompt).toContain("thread-paused");
@@ -889,7 +891,7 @@ describe("boot-time continuation turn", () => {
     const attached = attach("conv-1", "run-1");
     expect(attached?.threads.map((t) => t.threadId)).toEqual([
       "thread-a",
-      "thread-mgr",
+      "thread-b",
     ]);
     expect(attached?.turnCompleted).toBe(false);
   });
@@ -1040,11 +1042,12 @@ describe("LocalAgentManager boot snapshot", () => {
         updatedAt: Date.now(),
       },
       {
-        threadId: "thread-mgr",
+        threadId: "thread-b",
         conversationId: "conv-1",
-        agentType: "manager",
+        agentType: "general",
         description: "Coordinate the release",
-        agentDepth: 1,
+        agentDepth: 2,
+        parentAgentId: "thread-a",
         status: "running",
         attemptGeneration: 0,
         startedAt: Date.now(),
@@ -1074,7 +1077,7 @@ describe("LocalAgentManager boot snapshot", () => {
 
     expect(manager.getBootInterruptedThreads()).toEqual([
       { threadId: "thread-a", conversationId: "conv-1" },
-      { threadId: "thread-mgr", conversationId: "conv-1" },
+      { threadId: "thread-b", conversationId: "conv-1" },
     ]);
     // The durable snapshot is persisted BEFORE any row is flipped — it is
     // the retry evidence that survives the flip.
@@ -1082,13 +1085,14 @@ describe("LocalAgentManager boot snapshot", () => {
     expect(snapshotThreads).toEqual(manager.getBootInterruptedThreads());
     // The capture holds the episode id it was authorized under.
     expect(manager.getBootInterruptionEpisodeId()).toBe("episode-test");
-    // Existing sweep behavior is preserved: general → orphan-canceled,
-    // manager → completed with a synthesized report.
-    const general = saved.find((r) => r.threadId === "thread-a");
-    expect(general?.status).toBe("canceled");
-    expect(general?.error).toBe(AGENT_ORPHANED_RESTART_CANCEL_REASON);
-    const managerRow = saved.find((r) => r.threadId === "thread-mgr");
-    expect(managerRow?.status).toBe("completed");
+    // Existing sweep behavior is preserved: every running row — root or
+    // subagent — is orphan-canceled with the restart reason.
+    const root = saved.find((r) => r.threadId === "thread-a");
+    expect(root?.status).toBe("canceled");
+    expect(root?.error).toBe(AGENT_ORPHANED_RESTART_CANCEL_REASON);
+    const child = saved.find((r) => r.threadId === "thread-b");
+    expect(child?.status).toBe("canceled");
+    expect(child?.error).toBe(AGENT_ORPHANED_RESTART_CANCEL_REASON);
   });
 });
 
@@ -1210,7 +1214,9 @@ describe("restart-continuation reminder hooks", () => {
 
   it("goes brief only when the synthetic turn actually completed", async () => {
     seed("self-mod-apply-process-restart");
-    const rows = new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]);
+    const rows = new Map([
+      ["thread-a", persistedRow({ threadId: "thread-a" })],
+    ]);
     const fired = await fireRestartContinuationTurn({
       stellaDataDir: dataDir,
       env: {},
@@ -1233,7 +1239,9 @@ describe("restart-continuation reminder hooks", () => {
 
   it("stays full guidance when the synthetic turn failed", async () => {
     seed();
-    const rows = new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]);
+    const rows = new Map([
+      ["thread-a", persistedRow({ threadId: "thread-a" })],
+    ]);
     const fired = await fireRestartContinuationTurn({
       stellaDataDir: dataDir,
       env: {},

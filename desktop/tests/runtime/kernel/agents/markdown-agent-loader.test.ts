@@ -36,7 +36,6 @@ describe("loadParsedAgentsFromDir", () => {
         "fashion",
         "general",
         "install_update",
-        "manager",
         "orchestrator",
         "schedule",
         "social_session",
@@ -45,39 +44,20 @@ describe("loadParsedAgentsFromDir", () => {
     expect(agents.every((agent) => agent.systemPrompt.length > 0)).toBe(true);
   });
 
-  it("loads the bundled manager fallback with only agent-management tools", () => {
+  it("loads the bundled General agent with the delegation tools and depth cap", () => {
     const agents = loadParsedAgentsFromDir(
       new URL(
         "../../../../../runtime/extensions/stella-runtime/agent-metadata/",
         import.meta.url,
       ),
     );
-    const manager = agents.find((agent) => agent.id === "manager");
-    expect(manager?.toolsAllowlist).toEqual([
-      "spawn_agent",
-      "send_input",
-      "pause_agent",
-      "report",
-    ]);
-    expect(manager?.maxAgentDepth).toBe(2);
-    expect(
-      manager?.systemPrompt.startsWith("You are Stella's Manager agent"),
-    ).toBe(true);
-    const prompt = manager?.systemPrompt ?? "";
-    expect(prompt).toMatch(/\bdynamic\b[\s\S]*\bprocess supervisor\b/i);
-    expect(prompt).toMatch(/\bopen-ended\b/i);
-    expect(prompt).toMatch(/\bcontinuity\b/i);
-    expect(prompt).toMatch(/\bfresh independent context\b/i);
-    expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
-    expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
-    expect(prompt).toMatch(/`report` is your only upward channel/i);
-    expect(prompt).toMatch(/final: false[\s\S]*sparingly/i);
-    expect(prompt).toMatch(/assistant responses[\s\S]*private/i);
-    expect(prompt).toMatch(
-      /child and descendant lifecycle messages[\s\S]*internal/i,
-    );
-    expect(prompt).toMatch(/fleet is idle[\s\S]*final: true/i);
-    expect(prompt).toMatch(/final: true[\s\S]*exactly once/i);
+    const general = agents.find((agent) => agent.id === "general");
+    expect(general?.toolsAllowlist).toContain("spawn_agent");
+    expect(general?.toolsAllowlist).toContain("send_input");
+    expect(general?.toolsAllowlist).toContain("pause_agent");
+    expect(general?.toolsAllowlist).not.toContain("report");
+    expect(general?.maxAgentDepth).toBe(2);
+    expect((general?.systemPrompt ?? "").length).toBeGreaterThan(0);
   });
 
   it("loads agents when given a directory string path", () => {

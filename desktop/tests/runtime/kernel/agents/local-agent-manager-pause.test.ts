@@ -237,7 +237,11 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     });
 
     await startedFirstPromise;
-    await manager.sendAgentMessage(created.threadId, "follow-up", "orchestrator");
+    await manager.sendAgentMessage(
+      created.threadId,
+      "follow-up",
+      "orchestrator",
+    );
 
     await waitFor(
       () => prompts.length === 2,
@@ -249,7 +253,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     expect(prompts[1]).toContain("Task update from orchestrator:");
     expect(prompts[1]).toContain("follow-up");
     expect(prompts[1]).toContain(
-      "if it asks a question, requests status, or asks for a report, answer that request and then stop",
+      "If it asks a question, requests status, or asks for a report, answer that request and then stop",
     );
     expect(prompts[1]).toContain(
       "If it gives new or changed work instructions, apply them and continue the task",

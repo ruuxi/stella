@@ -86,22 +86,22 @@ describe("left-sidebar Activity shimmer", () => {
     expect(container.querySelectorAll(".text-shimmer__sweep")).toHaveLength(2);
   });
 
-  it("animates an authoritative Manager with an old start and newer progress", async () => {
-    const oldButActiveManager = task({
-      id: "manager-thread",
-      agentType: "manager",
+  it("animates an authoritative parent agent with an old start and newer progress", async () => {
+    const oldButActiveParent = task({
+      id: "parent-thread",
+      agentType: "general",
       attemptGeneration: 19,
       startedAtMs: Date.now() - 10 * 60_000,
       lastUpdatedAtMs: Date.now(),
       statusText: "Continue reconciling the active batch",
     });
-    expect(isTopLevelActivityShimmerEligible(oldButActiveManager, true)).toBe(
+    expect(isTopLevelActivityShimmerEligible(oldButActiveParent, true)).toBe(
       true,
     );
 
     await render(
       <ActivityTaskShimmer
-        task={oldButActiveManager}
+        task={oldButActiveParent}
         text="Coordinate active work"
         isTopLevel
       />,
@@ -161,7 +161,7 @@ describe("left-sidebar Activity shimmer", () => {
             key={index}
             task={task({
               id: `agent-${index}`,
-              agentType: index % 3 === 0 ? "manager" : "general",
+              agentType: "general",
             })}
             text={`Concurrent work ${index}`}
             isTopLevel

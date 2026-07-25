@@ -249,8 +249,8 @@ describe("OrchestratorSession", () => {
       "Keep this customized prompt body.",
     );
     expect(afterReload?.systemPrompt).toBe("Keep this customized prompt body.");
-    expect(beforeReload?.toolsAllowlist).not.toContain("spawn_manager");
-    expect(afterReload?.toolsAllowlist).toContain("spawn_manager");
+    expect(beforeReload?.toolsAllowlist).not.toContain("tool_search");
+    expect(afterReload?.toolsAllowlist).toContain("tool_search");
 
     const toolMetadata = (name: string) => ({
       name,
@@ -293,7 +293,7 @@ describe("OrchestratorSession", () => {
 
     expect(advertisedTools[0]).toEqual(originalTools);
     expect(advertisedTools[1]).toEqual(updatedTools);
-    expect(advertisedTools[1]).toContain("spawn_manager");
+    expect(advertisedTools[1]).toContain("tool_search");
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -343,9 +343,9 @@ describe("SubagentSession", () => {
 
   it("reloads a history event persisted while the first Agent is being created", async () => {
     const session = new SubagentSession(
-      "manager-thread",
+      "parent-thread",
       "conversation-1",
-      "manager",
+      "general",
     );
     let releaseAgentStart!: () => void;
     const agentStartGate = new Promise<void>((resolve) => {
@@ -358,7 +358,7 @@ describe("SubagentSession", () => {
     const persistedHistory = [
       {
         role: "user",
-        content: "Stale snapshot before managed-child completion",
+        content: "Stale snapshot before subagent completion",
         timestamp: 1,
       },
     ];
@@ -384,14 +384,14 @@ describe("SubagentSession", () => {
     });
 
     const turn = session.runTurn({
-      runId: "manager-run-1",
+      runId: "parent-run-1",
       conversationId: "conversation-1",
-      userMessageId: "manager-user-1",
-      agentId: "manager-thread",
-      agentType: "manager",
+      userMessageId: "parent-user-1",
+      agentId: "parent-thread",
+      agentType: "general",
       userPrompt: "Review the new child event.",
       agentContext: {
-        systemPrompt: "Manager prompt",
+        systemPrompt: "Parent agent prompt",
         dynamicContext: "",
         maxAgentDepth: 2,
         threadHistory: [...persistedHistory],
@@ -415,16 +415,16 @@ describe("SubagentSession", () => {
     await agentStartEnteredGate;
     persistedHistory.push({
       role: "runtimeInternal",
-      content: "Child completed during manager session creation",
+      content: "Child completed during parent session creation",
       timestamp: 2,
     });
     session.notifyHistoryChanged();
     releaseAgentStart();
     await turn;
 
-    expect(store.loadThreadMessages).toHaveBeenCalledWith("manager-thread");
+    expect(store.loadThreadMessages).toHaveBeenCalledWith("parent-thread");
     expect(executionHistory).toContain(
-      "Child completed during manager session creation",
+      "Child completed during parent session creation",
     );
   });
 });

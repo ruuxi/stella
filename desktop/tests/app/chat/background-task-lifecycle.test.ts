@@ -76,88 +76,74 @@ const resolveCard = (starts: EventRecord[], allEvents: EventRecord[]) => {
 };
 
 describe("spawn-anchored background task lifecycle", () => {
-  it.each(["general", "manager"])(
-    "replaces an active %s predecessor when a follow-up starts",
-    (agentType) => {
-      const original = started({
-        id: `${agentType}-original`,
-        at: 100,
-        agentId: `${agentType}-thread`,
-        rootRunId: `${agentType}-run`,
-        description: "Original work",
-        agentType,
-        attemptGeneration: 1,
-      });
-      const followUp = started({
-        id: `${agentType}-follow-up`,
-        at: 200,
-        agentId: `${agentType}-thread`,
-        rootRunId: `${agentType}-run`,
-        description: "Original work",
-        statusText: "Apply the new direction",
-        isFollowUp: true,
-        agentType,
-        attemptGeneration: 2,
-      });
-      const index = buildBackgroundTaskLifecycleIndex([original, followUp]);
+  it("replaces an active general predecessor when a follow-up starts", () => {
+    const original = started({
+      id: "general-original",
+      at: 100,
+      agentId: "general-thread",
+      rootRunId: "general-run",
+      description: "Original work",
+      agentType: "general",
+      attemptGeneration: 1,
+    });
+    const followUp = started({
+      id: "general-follow-up",
+      at: 200,
+      agentId: "general-thread",
+      rootRunId: "general-run",
+      description: "Original work",
+      statusText: "Apply the new direction",
+      isFollowUp: true,
+      agentType: "general",
+      attemptGeneration: 2,
+    });
+    const index = buildBackgroundTaskLifecycleIndex([original, followUp]);
 
-      expect(
-        followUpReplacesActivePredecessor(
-          original._id,
-          followUp._id,
-          index,
-        ),
-      ).toBe(true);
-    },
-  );
+    expect(
+      followUpReplacesActivePredecessor(original._id, followUp._id, index),
+    ).toBe(true);
+  });
 
-  it.each(["general", "manager"])(
-    "keeps a settled %s predecessor beside a later follow-up",
-    (agentType) => {
-      const original = started({
-        id: `${agentType}-original`,
-        at: 100,
-        agentId: `${agentType}-thread`,
-        rootRunId: `${agentType}-run-1`,
-        description: "Original work",
-        agentType,
-        attemptGeneration: 1,
-      });
-      const originalDone = completed({
-        id: `${agentType}-done`,
-        at: 150,
-        agentId: `${agentType}-thread`,
-        rootRunId: `${agentType}-run-1`,
-        attemptGeneration: 1,
-      });
-      const followUp = started({
-        id: `${agentType}-follow-up`,
-        at: 200,
-        agentId: `${agentType}-thread`,
-        rootRunId: `${agentType}-run-2`,
-        description: "Original work",
-        statusText: "Apply the new direction",
-        isFollowUp: true,
-        agentType,
-        attemptGeneration: 2,
-      });
-      const index = buildBackgroundTaskLifecycleIndex([
-        original,
-        originalDone,
-        followUp,
-      ]);
+  it("keeps a settled general predecessor beside a later follow-up", () => {
+    const original = started({
+      id: "general-original",
+      at: 100,
+      agentId: "general-thread",
+      rootRunId: "general-run-1",
+      description: "Original work",
+      agentType: "general",
+      attemptGeneration: 1,
+    });
+    const originalDone = completed({
+      id: "general-done",
+      at: 150,
+      agentId: "general-thread",
+      rootRunId: "general-run-1",
+      attemptGeneration: 1,
+    });
+    const followUp = started({
+      id: "general-follow-up",
+      at: 200,
+      agentId: "general-thread",
+      rootRunId: "general-run-2",
+      description: "Original work",
+      statusText: "Apply the new direction",
+      isFollowUp: true,
+      agentType: "general",
+      attemptGeneration: 2,
+    });
+    const index = buildBackgroundTaskLifecycleIndex([
+      original,
+      originalDone,
+      followUp,
+    ]);
 
-      expect(
-        followUpReplacesActivePredecessor(
-          original._id,
-          followUp._id,
-          index,
-        ),
-      ).toBe(false);
-      expect(index.byStartEventId.get(original._id)?.status).toBe("completed");
-      expect(index.byStartEventId.get(followUp._id)?.status).toBe("running");
-    },
-  );
+    expect(
+      followUpReplacesActivePredecessor(original._id, followUp._id, index),
+    ).toBe(false);
+    expect(index.byStartEventId.get(original._id)?.status).toBe("completed");
+    expect(index.byStartEventId.get(followUp._id)?.status).toBe("running");
+  });
 
   it("replaces a predecessor whose stale terminal arrives after the follow-up", () => {
     const original = started({
@@ -192,46 +178,42 @@ describe("spawn-anchored background task lifecycle", () => {
     ]);
 
     expect(
-      followUpReplacesActivePredecessor(
-        original._id,
-        followUp._id,
-        index,
-      ),
+      followUpReplacesActivePredecessor(original._id, followUp._id, index),
     ).toBe(true);
   });
 
-  it("settles a spawn_manager card through the shared completion lifecycle", () => {
+  it("settles a spawned parent-agent card through the shared completion lifecycle", () => {
     const start = started({
-      id: "manager-start",
+      id: "parent-start",
       at: 100,
-      agentId: "manager-thread",
-      rootRunId: "manager-run",
+      agentId: "parent-thread",
+      rootRunId: "parent-run",
       description: "Coordinate the launch",
-      agentType: "manager",
+      agentType: "general",
     });
-    const progress = event("manager-progress", 150, "agent-progress", {
-      agentId: "manager-thread",
-      rootRunId: "manager-run",
+    const progress = event("parent-progress", 150, "agent-progress", {
+      agentId: "parent-thread",
+      rootRunId: "parent-run",
       statusText: "Coordinating verification",
     });
     const done = completed({
-      id: "manager-done",
+      id: "parent-done",
       at: 200,
-      agentId: "manager-thread",
-      rootRunId: "manager-run",
+      agentId: "parent-thread",
+      rootRunId: "parent-run",
     });
 
     const { resolved } = resolveCard([start], [start, progress, done]);
-    expect(resolved.completedThreadIds).toEqual(["manager-thread"]);
+    expect(resolved.completedThreadIds).toEqual(["parent-thread"]);
     expect(resolved.progressTexts).toEqual({
-      "manager-thread": "Coordinating verification",
+      "parent-thread": "Coordinating verification",
     });
     expect(resolved.completionSections).toMatchObject([
       {
-        agentId: "manager-thread",
+        agentId: "parent-thread",
         title: "Coordinate the launch",
-        startEventId: "manager-start",
-        completionEventId: "manager-done",
+        startEventId: "parent-start",
+        completionEventId: "parent-done",
       },
     ]);
   });
@@ -575,21 +557,21 @@ describe("spawn-anchored background task lifecycle", () => {
     });
   });
 
-  it("settles a visible Manager card from a later internal attempt generation", () => {
+  it("settles a visible card from a later internal attempt generation", () => {
     const visibleStart = started({
-      id: "manager-visible-start",
+      id: "visible-start",
       at: 900,
-      agentId: "manager-same-ms",
-      rootRunId: "manager-root",
+      agentId: "agent-same-ms",
+      rootRunId: "agent-root",
       description: "Coordinate the fleet",
-      agentType: "manager",
+      agentType: "general",
       attemptGeneration: 3,
     });
     const consolidated = completed({
-      id: "manager-final",
+      id: "agent-final",
       at: 900,
-      agentId: "manager-same-ms",
-      rootRunId: "manager-root",
+      agentId: "agent-same-ms",
+      rootRunId: "agent-root",
       attemptGeneration: 7,
     });
 
@@ -598,12 +580,12 @@ describe("spawn-anchored background task lifecycle", () => {
       [consolidated, visibleStart],
     );
 
-    expect(resolved.completedThreadIds).toEqual(["manager-same-ms"]);
-    expect(resolved.terminalEventIdsByThread["manager-same-ms"]).toBe(
-      "manager-final",
+    expect(resolved.completedThreadIds).toEqual(["agent-same-ms"]);
+    expect(resolved.terminalEventIdsByThread["agent-same-ms"]).toBe(
+      "agent-final",
     );
-    expect(index.startEventIdByLifecycleEventId.get("manager-final")).toBe(
-      "manager-visible-start",
+    expect(index.startEventIdByLifecycleEventId.get("agent-final")).toBe(
+      "visible-start",
     );
   });
 

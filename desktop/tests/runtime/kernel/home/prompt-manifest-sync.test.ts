@@ -14,7 +14,10 @@ import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { STELLA_PROMPT_IDS } from "../../../../../runtime/contracts/stella-prompts.js";
+import {
+  STELLA_PROMPT_IDS,
+  STELLA_PROMPT_RETIRED_IDS,
+} from "../../../../../runtime/contracts/stella-prompts.js";
 import { stellaPromptEndpointFromSiteUrl } from "../../../../../runtime/contracts/stella-api.js";
 import { buildDreamSystemPrompt } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
@@ -24,7 +27,6 @@ import {
   compactAppliedStateRecords,
   parseRemotePromptManifest,
   recordAppliedPromptManifest,
-  reconcileBundledManagerPromptFallback,
   resetPromptAppliedStateMemoryForTests,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
@@ -33,10 +35,6 @@ import {
 
 const roots = new Set<string>();
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
-const managerMetadataDir = path.join(
-  repoRoot,
-  "runtime/extensions/stella-runtime/agent-metadata",
-);
 const promptSyncBundles = new Map<string, Promise<string>>();
 const tempDir = async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "stella-prompts-"));
@@ -255,12 +253,14 @@ const manifest = (
 ): RemotePromptManifest =>
   manifestForIds(STELLA_PROMPT_IDS, publishedAt, overrides);
 
-const legacyManifest = (
+// A manifest as published by a server that has not yet dropped the retired
+// `agents/manager.md` entry.
+const retiredManifest = (
   publishedAt: number,
   overrides: Record<string, string> = {},
 ): RemotePromptManifest =>
   manifestForIds(
-    STELLA_PROMPT_IDS.filter((id) => id !== "agents/manager.md"),
+    [...STELLA_PROMPT_IDS, ...STELLA_PROMPT_RETIRED_IDS],
     publishedAt,
     overrides,
   );
@@ -388,80 +388,45 @@ describe("remote prompt startup sync", () => {
     });
   });
 
-  it("uses fresh then cached legacy manifests and fills only their missing manager from the bundled fallback", async () => {
+  it("accepts a server still publishing the retired manager prompt and never writes it into home", async () => {
     const home = await tempDir();
     const bundled = await createBundledAgents();
-    const legacy = legacyManifest(1, {
-      "agents/general.md": "legacy general\n",
+    const published = retiredManifest(1, {
+      "agents/general.md": "remote general\n",
     });
-    expect(
-      STELLA_PROMPT_IDS.filter(
-        (id) => !legacy.prompts.some((prompt) => prompt.id === id),
-      ),
-    ).toEqual(["agents/manager.md"]);
+    expect(published.prompts.some((p) => p.id === "agents/manager.md")).toBe(
+      true,
+    );
 
     const fresh = await resolvePromptManifest({
       stellaDataDir: home,
       siteUrl: "https://legacy.example.test",
-      fetchImpl: async () => new Response(JSON.stringify(legacy)),
+      fetchImpl: async () => new Response(JSON.stringify(published)),
     });
-    expect(fresh).toEqual({
-      source: "fresh-remote",
-      manifest: legacy,
-      endpoint: "https://legacy.example.test/api/stella/prompts",
-    });
-    await reconcileRemotePromptManifest(legacy, home, bundled);
-    await reconcileBundledManagerPromptFallback(home, managerMetadataDir);
+    expect(fresh.source).toBe("fresh-remote");
+    // The manifest is kept exactly as published, retired entry included, so
+    // `revision` keeps describing the list it was computed over and the cached
+    // copy still re-parses on the next boot. Retirement is applied at
+    // reconciliation instead, which is the only step that needs bundled
+    // agent metadata.
+    expect(fresh.manifest?.revision).toBe(published.revision);
+    expect(fresh.manifest?.prompts.map((prompt) => prompt.id).sort()).toEqual(
+      [...STELLA_PROMPT_IDS, "agents/manager.md"].sort(),
+    );
+    expect(parseRemotePromptManifest(fresh.manifest)).toEqual(fresh.manifest);
 
-    const fallbackManager = loadParsedAgentsFromDir(
-      path.join(home, "agents"),
-    ).find((agent) => agent.id === "manager");
-    const fallbackPrompt = fallbackManager?.systemPrompt ?? "";
-    expect(fallbackManager?.toolsAllowlist).toEqual([
-      "spawn_agent",
-      "send_input",
-      "pause_agent",
-      "report",
-    ]);
-    expect(fallbackPrompt).toMatch(/\bopen-ended\b/i);
-    expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
-    expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
-    expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
-    expect(fallbackPrompt).toMatch(/`report` is your only upward channel/i);
-    expect(fallbackPrompt).toMatch(/final: false[\s\S]*sparingly/i);
-    expect(fallbackPrompt).toMatch(/final: true[\s\S]*exactly once/i);
-    expect(fallbackPrompt).toMatch(/assistant responses[\s\S]*private/i);
-    expect(fallbackPrompt).toMatch(/child and descendant[\s\S]*internal/i);
-    expect(fallbackPrompt).toMatch(/internal coordination by default/i);
+    await reconcileRemotePromptManifest(fresh.manifest!, home, bundled);
+    expect(
+      loadParsedAgentsFromDir(path.join(home, "agents")).map(
+        (agent) => agent.id,
+      ),
+    ).not.toContain("manager");
+    await expect(
+      readFile(path.join(home, "agents/manager.md"), "utf-8"),
+    ).rejects.toThrow();
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
-    ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);
-
-    const cached = await resolvePromptManifest({
-      stellaDataDir: home,
-      fetchImpl: async () => {
-        throw new Error("offline");
-      },
-    });
-    expect(cached).toEqual({
-      source: "cached-remote",
-      manifest: legacy,
-      endpoint: "https://legacy.example.test/api/stella/prompts",
-    });
-
-    const current = manifest(2, { "agents/manager.md": "remote manager\n" });
-    await reconcileRemotePromptManifest(current, home, managerMetadataDir);
-    await reconcileBundledManagerPromptFallback(home, managerMetadataDir);
-    const remoteManager = loadParsedAgentsFromDir(
-      path.join(home, "agents"),
-    ).find((agent) => agent.id === "manager");
-    expect(remoteManager?.systemPrompt).toBe("remote manager");
-    expect(remoteManager?.toolsAllowlist).toEqual([
-      "spawn_agent",
-      "send_input",
-      "pause_agent",
-      "report",
-    ]);
+    ).resolves.toBe(`${agentFrontmatter("general")}remote general\n`);
   });
 
   it("applies a validated fresh manifest even when cache persistence fails", async () => {
@@ -939,11 +904,16 @@ describe("remote prompt startup sync", () => {
     });
   });
 
-  it("accepts the legacy manifest without manager but rejects any other missing entry", () => {
+  it("accepts a retired entry idempotently but rejects any missing canonical entry", () => {
     const valid = manifest(1);
     expect(parseRemotePromptManifest(valid)).toEqual(valid);
-    const legacy = legacyManifest(1);
-    expect(parseRemotePromptManifest(legacy)).toEqual(legacy);
+    const withRetired = retiredManifest(1);
+    // Accepted as published — NOT rewritten. Parsing must be idempotent, or
+    // the value written to the on-disk cache fails its own revision check on
+    // the next boot and the cache is discarded forever.
+    const parsed = parseRemotePromptManifest(withRetired);
+    expect(parsed).toEqual(withRetired);
+    expect(parseRemotePromptManifest(parsed)).toEqual(withRetired);
     expect(
       parseRemotePromptManifest({ ...valid, prompts: valid.prompts.slice(1) }),
     ).toBeNull();

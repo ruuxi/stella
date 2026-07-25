@@ -5,6 +5,7 @@ import {
   getBackgroundWorks,
 } from "@/features/chat/hooks/use-event-rows";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
+import { ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 
 /**
  * `agent-started` lifecycle event as persisted into a turn's `toolEvents`.
@@ -117,33 +118,25 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
     expect(work).toBeUndefined();
   });
 
-  it("classifies a spawn_manager lifecycle start as inline background work", () => {
-    const work = getBackgroundWork([
-      started("manager-thread", "Coordinate the launch", {
-        agentType: "manager",
-        statusText: "Coordinate the launch",
-      }),
-    ]);
-    expect(work).toMatchObject({
-      threadIds: ["manager-thread"],
-      descriptions: { "manager-thread": "Coordinate the launch" },
-      followUpThreadIds: [],
-    });
-  });
+  it("denies EVERY reserved builtin agent type, with no exemptions", () => {
+    // The denylist is plain: any reserved builtin id is skipped. Nothing on
+    // the list gets a carve-out back into the inline card.
+    for (const agentType of ORCHESTRATOR_RESERVED_BUILTIN_AGENT_IDS) {
+      const work = getBackgroundWork([
+        started(`${agentType}-thread`, "Do internal work", {
+          agentType,
+          statusText: "Do internal work",
+        }),
+      ]);
+      expect(work, `${agentType} must not produce a card`).toBeUndefined();
+    }
 
-  it("classifies send_input to a manager as a follow-up card", () => {
-    const work = getBackgroundWork([
-      started("manager-thread", "Coordinate the launch", {
-        agentType: "manager",
-        statusText: "Add a final verification pass",
-        isFollowUp: true,
-      }),
-    ]);
-    expect(work).toMatchObject({
-      threadIds: ["manager-thread"],
-      followUpThreadIds: ["manager-thread"],
-      statusTexts: { "manager-thread": "Add a final verification pass" },
-    });
+    // `general` is the one builtin that is NOT reserved, so it still cards.
+    expect(
+      getBackgroundWork([
+        started("general-thread", "Do user work", { agentType: "general" }),
+      ])?.threadIds,
+    ).toEqual(["general-thread"]);
   });
 
   it("captures the durable attempt and root run of the exact start occurrence", () => {

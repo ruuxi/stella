@@ -86,7 +86,7 @@ describe("spawn_agent Stella reasoning clamping", () => {
   });
 });
 
-describe("spawn_manager model inheritance snapshots", () => {
+describe("spawn_agent model inheritance snapshots", () => {
   const stellaRoute = (id: string): ResolvedLlmRoute =>
     ({
       model: { id, provider: "stella" },
@@ -97,7 +97,7 @@ describe("spawn_manager model inheritance snapshots", () => {
   it("pins an explicit Stella Orchestrator turn to its resolved model and effort", () => {
     expect(
       captureEffectiveModelConfig({
-        stellaDataDir: "/tmp/stella-manager-inheritance",
+        stellaDataDir: "/tmp/stella-spawn-inheritance",
         engine: "default",
         configuredModel: "stella/max",
         resolvedLlm: stellaRoute("openai/gpt-5.6-sol"),
@@ -125,7 +125,7 @@ describe("spawn_manager model inheritance snapshots", () => {
     };
     expect(
       captureEffectiveModelConfig({
-        stellaDataDir: "/tmp/stella-manager-inheritance",
+        stellaDataDir: "/tmp/stella-spawn-inheritance",
         engine: "default",
         resolvedLlm: resolvedDefault,
         reasoningEffort: "low",
@@ -140,7 +140,7 @@ describe("spawn_manager model inheritance snapshots", () => {
   it("pins an explicit Codex Orchestrator engine model and effort", () => {
     expect(
       captureEffectiveModelConfig({
-        stellaDataDir: "/tmp/stella-manager-inheritance",
+        stellaDataDir: "/tmp/stella-spawn-inheritance",
         engine: "codex_cli",
         configuredModel: "stella/standard",
         engineModelOverride: "gpt-5.6-codex",

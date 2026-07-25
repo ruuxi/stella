@@ -55,7 +55,7 @@ describe("AgentThreadChatTab", () => {
         type: "agent-completed",
         payload: {
           agentId: "child",
-          result: "Managed child settled.",
+          result: "Subagent settled.",
           attemptGeneration: 1,
         },
       },
@@ -140,7 +140,7 @@ describe("AgentThreadChatTab", () => {
       limit: 200,
     });
     expect(container.textContent).toContain("I found the durable owner.");
-    expect(container.textContent).toContain("Managed child settled.");
+    expect(container.textContent).toContain("Subagent settled.");
     expect(container.querySelector(".agent-completion-card")).not.toBeNull();
     expect(container.textContent).not.toMatch(
       /\[Tool call\]|\[Tool result\]|spawn_agent|3 checks passed/,
@@ -376,8 +376,8 @@ describe("AgentThreadChatTab", () => {
     ).toBe(900);
   });
 
-  it("coalesces exact-thread entry bursts for General and Manager transcripts", async () => {
-    await renderThread("manager-exact", "conversation-manager", "manager");
+  it("coalesces exact-thread entry bursts for a subagent transcript", async () => {
+    await renderThread("subagent-exact", "conversation-subagent", "general");
     listAgentThreadMessages.mockResolvedValueOnce([...initialMessages]);
 
     await act(async () => {
@@ -387,8 +387,8 @@ describe("AgentThreadChatTab", () => {
         ["tool-result-duplicate-observation", 9],
       ] as const) {
         listener?.({
-          conversationId: "conversation-manager",
-          transcriptUpdate: { threadId: "manager-exact", entryId, atMs },
+          conversationId: "conversation-subagent",
+          transcriptUpdate: { threadId: "subagent-exact", entryId, atMs },
         });
       }
       await Promise.resolve();
@@ -402,7 +402,7 @@ describe("AgentThreadChatTab", () => {
     );
     expect(container.getAttribute("aria-label")).toBeNull();
     expect(
-      container.querySelector('section[aria-label="manager read-only chat"]'),
+      container.querySelector('section[aria-label="general read-only chat"]'),
     ).not.toBeNull();
   });
 

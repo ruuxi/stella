@@ -6,10 +6,7 @@ import {
 } from "@/global/mobile/MobileActivityNotificationsBridge";
 import type { TaskItem } from "@/features/chat/lib/event-transforms";
 
-const task = (
-  id: string,
-  overrides: Partial<TaskItem> = {},
-): TaskItem => ({
+const task = (id: string, overrides: Partial<TaskItem> = {}): TaskItem => ({
   id,
   description: `Task ${id}`,
   agentType: "general",
@@ -23,61 +20,59 @@ const selectedIds = (tasks: readonly TaskItem[]): string[] =>
   selectActivityNotificationTasks(tasks).map((entry) => entry.id);
 
 describe("mobile Activity notification ownership", () => {
-  it("keeps Manager and standalone General notifications", () => {
+  it("notifies only for root-spawned General agents", () => {
     const tasks = [
-      task("manager", { agentType: "manager" }),
-      task("standalone-no-parent"),
-      task("standalone-orchestrator-parent", {
+      task("root-general"),
+      task("subagent-general", { parentAgentId: "root-general" }),
+      task("reserved-builtin", { agentType: "explore" }),
+    ];
+
+    expect(selectedIds(tasks)).toEqual(["root-general"]);
+  });
+
+  it("never notifies for a General subagent, whoever its parent is", () => {
+    // Hard product invariant: a subagent's completion is delivered into its
+    // parent's thread and must not reach the user as a notification. The
+    // Activity feed omits the Orchestrator, so any parent id at all — resolved
+    // in the feed or not — means this row is somebody else's business.
+    const tasks = [
+      task("root-general"),
+      task("child", { parentAgentId: "root-general" }),
+      task("grandchild", { parentAgentId: "child" }),
+      task("orchestrator-spawned", {
         parentAgentId: "orchestrator-thread-not-in-activity",
       }),
     ];
 
-    expect(selectedIds(tasks)).toEqual([
-      "manager",
-      "standalone-no-parent",
-      "standalone-orchestrator-parent",
-    ]);
+    expect(selectedIds(tasks)).toEqual(["root-general"]);
   });
 
-  it("suppresses every General descendant of a Manager", () => {
-    const tasks = [
-      task("manager", { agentType: "manager" }),
-      task("managed-child", { parentAgentId: "manager" }),
-      task("managed-descendant", { parentAgentId: "managed-child" }),
-      task("standalone", { parentAgentId: "orchestrator-thread" }),
-    ];
-
-    expect(selectedIds(tasks)).toEqual(["manager", "standalone"]);
-  });
-
-  it("applies durable adoption and resume ancestry regardless of status", () => {
-    const manager = task("manager", { agentType: "manager" });
-    const standalone = task("worker", {
-      parentAgentId: "orchestrator-thread",
-    });
-    expect(selectedIds([manager, standalone])).toEqual(["manager", "worker"]);
+  it("applies the subagent suppression regardless of status or attempt", () => {
+    const root = task("root-general");
+    const standalone = task("worker");
+    expect(selectedIds([root, standalone])).toEqual(["root-general", "worker"]);
 
     const adopted = task("worker", {
-      parentAgentId: "manager",
+      parentAgentId: "root-general",
       status: "completed",
       completedAtMs: 2_000,
       lastUpdatedAtMs: 2_000,
     });
     const resumed = task("worker", {
-      parentAgentId: "manager",
+      parentAgentId: "root-general",
       status: "running",
       attemptGeneration: 2,
       lastUpdatedAtMs: 3_000,
     });
 
-    expect(selectedIds([manager, adopted])).toEqual(["manager"]);
-    expect(selectedIds([manager, resumed])).toEqual(["manager"]);
+    expect(selectedIds([root, adopted])).toEqual(["root-general"]);
+    expect(selectedIds([root, resumed])).toEqual(["root-general"]);
   });
 
-  it("fails closed for malformed, duplicate, cyclic, and broken ancestry", () => {
+  it("fails closed for malformed ids, duplicates, and any parented row", () => {
     const tasks = [
-      task("parented-manager", {
-        agentType: "manager",
+      task("parented-builtin", {
+        agentType: "explore",
         parentAgentId: "unexpected-parent",
       }),
       task("self-parent", { parentAgentId: "self-parent" }),
@@ -86,15 +81,16 @@ describe("mobile Activity notification ownership", () => {
       task("cycle-b", { parentAgentId: "cycle-a" }),
       task("broken-child", { parentAgentId: "broken-parent" }),
       task("broken-parent", { parentAgentId: "missing-after-resolved-edge" }),
+      task(" untrimmed-id "),
+      task(""),
       task("duplicate"),
       task("duplicate", { status: "completed" }),
       task("duplicate-child", { parentAgentId: "duplicate" }),
+      task("clean-root"),
     ];
 
-    // The unresolved first edge is the expected omitted-Orchestrator boundary.
-    // Its child has already resolved an Activity parent, so that same missing
-    // edge is unsafe ancestry for the child and must suppress it.
-    expect(selectedIds(tasks)).toEqual(["broken-parent"]);
+    // Only the well-formed, unduplicated, unparented General row survives.
+    expect(selectedIds(tasks)).toEqual(["clean-root"]);
   });
 
   it("notifies each newer attempt once without weakening remount grace", () => {
@@ -122,11 +118,7 @@ describe("mobile Activity notification ownership", () => {
     });
 
     expect(
-      collectActivityNotificationKinds(
-        [generationOne],
-        records,
-        mountedAtMs,
-      ),
+      collectActivityNotificationKinds([generationOne], records, mountedAtMs),
     ).toEqual(["completed"]);
     expect(
       collectActivityNotificationKinds(
@@ -157,11 +149,7 @@ describe("mobile Activity notification ownership", () => {
       ),
     ).toEqual([]);
     expect(
-      collectActivityNotificationKinds(
-        [generationOne],
-        records,
-        mountedAtMs,
-      ),
+      collectActivityNotificationKinds([generationOne], records, mountedAtMs),
     ).toEqual([]);
 
     const remountedRecords = new Map<string, TaskNotificationRecord>();

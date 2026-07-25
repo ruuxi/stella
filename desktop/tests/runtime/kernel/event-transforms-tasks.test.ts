@@ -40,11 +40,11 @@ const event = (
 });
 
 describe("internal helper agent exclusion", () => {
-  it("keeps delegated agents and managers in the activity feed", () => {
+  it("keeps only delegated General agents in the activity feed", () => {
     expect(isActivityFeedTask({ agentType: "general" })).toBe(true);
-    expect(isActivityFeedTask({ agentType: "manager" })).toBe(true);
     expect(isActivityFeedTask({ agentType: "schedule" })).toBe(false);
     expect(isActivityFeedTask({ agentType: "dream" })).toBe(false);
+    expect(isActivityFeedTask({ agentType: "explore" })).toBe(false);
     expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
   });
 });
@@ -85,7 +85,7 @@ describe("fallbackTaskDescription", () => {
   });
 });
 
-describe("manager ownership hierarchy", () => {
+describe("parent agent ownership hierarchy", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
     description: "Task",
     agentType: "general",
@@ -95,11 +95,11 @@ describe("manager ownership hierarchy", () => {
     ...overrides,
   });
 
-  it("nests multiple owned agents under their manager without root duplicates", () => {
+  it("nests multiple subagents under their parent without root duplicates", () => {
     const rows = groupActivityTasks([
-      task({ id: "manager", agentType: "manager", description: "Coordinate" }),
-      task({ id: "research", parentAgentId: "manager" }),
-      task({ id: "draft", parentAgentId: "manager", status: "completed" }),
+      task({ id: "parent", description: "Coordinate" }),
+      task({ id: "research", parentAgentId: "parent" }),
+      task({ id: "draft", parentAgentId: "parent", status: "completed" }),
       task({ id: "unrelated", description: "Independent" }),
     ]);
 
@@ -108,7 +108,7 @@ describe("manager ownership hierarchy", () => {
       rows[0]!.kind === "hierarchy" ? rows[0].hierarchy : undefined;
     expect(hierarchy?.status).toBe("running");
     expect(getActivityRowStatus(rows[0]!)).toBe("running");
-    expect(hierarchy?.owner.id).toBe("manager");
+    expect(hierarchy?.owner.id).toBe("parent");
     expect(
       hierarchy?.children.map((row) =>
         row.kind === "task" ? [row.task.id, row.task.status] : [row.kind],
@@ -123,18 +123,18 @@ describe("manager ownership hierarchy", () => {
     ).toBe(false);
   });
 
-  it("moves an adopted agent beneath the manager from persisted ownership", () => {
-    const manager = task({ id: "manager", agentType: "manager" });
-    const nextManager = task({ id: "next-manager", agentType: "manager" });
+  it("moves a reparented subagent beneath its parent from persisted ownership", () => {
+    const parent = task({ id: "parent" });
+    const nextParent = task({ id: "next-parent" });
     const child = task({ id: "adopted" });
     expect(
-      groupActivityTasks([manager, nextManager, child]).map((row) => row.kind),
+      groupActivityTasks([parent, nextParent, child]).map((row) => row.kind),
     ).toEqual(["task", "task", "task"]);
 
     const adopted = groupActivityTasks([
-      manager,
-      nextManager,
-      { ...child, parentAgentId: manager.id, lastUpdatedAtMs: 200 },
+      parent,
+      nextParent,
+      { ...child, parentAgentId: parent.id, lastUpdatedAtMs: 200 },
     ]);
     expect(adopted).toHaveLength(2);
     expect(adopted[0]?.kind).toBe("hierarchy");
@@ -146,14 +146,14 @@ describe("manager ownership hierarchy", () => {
     }
 
     const reparented = groupActivityTasks([
-      manager,
-      nextManager,
-      { ...child, parentAgentId: nextManager.id, lastUpdatedAtMs: 300 },
+      parent,
+      nextParent,
+      { ...child, parentAgentId: nextParent.id, lastUpdatedAtMs: 300 },
     ]);
     expect(reparented.map((row) => row.kind)).toEqual(["task", "hierarchy"]);
     if (reparented[1]?.kind === "hierarchy") {
       expect(reparented[1].hierarchy).toMatchObject({
-        owner: { id: "next-manager" },
+        owner: { id: "next-parent" },
         children: [{ kind: "task", task: { id: "adopted" } }],
       });
     }
@@ -162,17 +162,16 @@ describe("manager ownership hierarchy", () => {
   it("preserves running, paused, completed, and recursive descendant state", () => {
     const rows = groupActivityTasks([
       task({
-        id: "manager",
-        agentType: "manager",
+        id: "parent",
         status: "completed",
         completedAtMs: 500,
         outputPreview: "Coordination complete",
       }),
-      task({ id: "running", parentAgentId: "manager" }),
-      task({ id: "paused", parentAgentId: "manager", status: "canceled" }),
+      task({ id: "running", parentAgentId: "parent" }),
+      task({ id: "paused", parentAgentId: "parent", status: "canceled" }),
       task({
         id: "complete",
-        parentAgentId: "manager",
+        parentAgentId: "parent",
         status: "completed",
       }),
       task({ id: "descendant", parentAgentId: "running", status: "error" }),
@@ -209,12 +208,12 @@ describe("manager ownership hierarchy", () => {
     }
   });
 
-  it("flattens every descendant into the compact manager cell model", () => {
+  it("flattens every descendant into the compact hierarchy cell model", () => {
     const rows = groupActivityTasks([
-      task({ id: "manager", agentType: "manager" }),
-      task({ id: "child", parentAgentId: "manager" }),
+      task({ id: "parent" }),
+      task({ id: "child", parentAgentId: "parent" }),
       task({ id: "grandchild", parentAgentId: "child" }),
-      task({ id: "done", parentAgentId: "manager", status: "completed" }),
+      task({ id: "done", parentAgentId: "parent", status: "completed" }),
     ]);
     const hierarchy = rows[0];
     expect(hierarchy?.kind).toBe("hierarchy");
@@ -235,135 +234,130 @@ describe("top-level Activity work-unit counts", () => {
     ...overrides,
   });
 
-  it("counts a direct General plus a Manager with an active child as two", () => {
+  it("counts a direct General plus a parent agent with an active subagent as two", () => {
     const tasks = [
       task({ id: "direct" }),
-      task({ id: "manager", agentType: "manager" }),
-      task({ id: "managed-child", parentAgentId: "manager" }),
+      task({ id: "parent" }),
+      task({ id: "subagent", parentAgentId: "parent" }),
     ];
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(2);
     expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
       { id: "task:direct", status: "running" },
-      { id: "hierarchy:manager", status: "running" },
+      { id: "hierarchy:parent", status: "running" },
     ]);
   });
 
-  it("counts one Manager with eight descendants as one", () => {
+  it("counts one parent agent with eight descendants as one", () => {
     const tasks = [
-      task({ id: "manager", agentType: "manager" }),
+      task({ id: "parent" }),
       ...Array.from({ length: 8 }, (_, index) =>
-        task({ id: `child-${index}`, parentAgentId: "manager" }),
+        task({ id: `child-${index}`, parentAgentId: "parent" }),
       ),
     ];
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
   });
 
-  it("counts two direct agents plus one Manager as three", () => {
+  it("counts two direct agents plus one parent agent as three", () => {
     expect(
       countActiveTopLevelActivityWorkUnits([
         task({ id: "direct-a" }),
         task({ id: "direct-b" }),
-        task({ id: "manager", agentType: "manager" }),
+        task({ id: "parent" }),
       ]),
     ).toBe(3);
   });
 
-  it("does not promote an active child beneath a paused Manager", () => {
+  it("does not promote an active subagent beneath a paused parent", () => {
     const tasks = [
-      task({ id: "manager", agentType: "manager", status: "canceled" }),
-      task({ id: "child", parentAgentId: "manager" }),
+      task({ id: "parent", status: "canceled" }),
+      task({ id: "child", parentAgentId: "parent" }),
     ];
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(0);
     expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
-      { id: "hierarchy:manager", status: "canceled" },
+      { id: "hierarchy:parent", status: "canceled" },
     ]);
   });
 
-  it("keeps an active Manager running when one owned child completes", () => {
+  it("keeps an active parent running when one owned subagent completes", () => {
     const tasks = [
-      task({ id: "manager", agentType: "manager" }),
+      task({ id: "parent" }),
       task({
         id: "finished-child",
-        parentAgentId: "manager",
+        parentAgentId: "parent",
         status: "completed",
       }),
     ];
     expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
-      { id: "hierarchy:manager", status: "running" },
+      { id: "hierarchy:parent", status: "running" },
     ]);
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
   });
 
-  it("keeps a terminal-looking Manager active while owned work is running", () => {
+  it("keeps a terminal-looking parent active while owned work is running", () => {
     const tasks = [
       task({
-        id: "manager",
-        agentType: "manager",
+        id: "parent",
         status: "completed",
       }),
-      task({ id: "active-child", parentAgentId: "manager" }),
+      task({ id: "active-child", parentAgentId: "parent" }),
     ];
     expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
-      { id: "hierarchy:manager", status: "running" },
+      { id: "hierarchy:parent", status: "running" },
     ]);
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
   });
 
-  it("settles a Manager row only after the owner and descendants settle", () => {
+  it("settles a parent row only after the owner and descendants settle", () => {
     const tasks = [
       task({
-        id: "manager",
-        agentType: "manager",
+        id: "parent",
         status: "completed",
       }),
       task({
         id: "finished-child",
-        parentAgentId: "manager",
+        parentAgentId: "parent",
         status: "completed",
       }),
     ];
     expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
-      { id: "hierarchy:manager", status: "completed" },
+      { id: "hierarchy:parent", status: "completed" },
     ]);
     expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(0);
   });
 
-  it("counts a nested Manager tree as one top-level unit", () => {
+  it("counts a nested subagent tree as one top-level unit", () => {
     expect(
       countActiveTopLevelActivityWorkUnits([
-        task({ id: "root-manager", agentType: "manager" }),
+        task({ id: "root-parent" }),
         task({
-          id: "nested-manager",
-          agentType: "manager",
-          parentAgentId: "root-manager",
+          id: "nested-parent",
+          parentAgentId: "root-parent",
         }),
-        task({ id: "leaf", parentAgentId: "nested-manager" }),
+        task({ id: "leaf", parentAgentId: "nested-parent" }),
       ]),
     ).toBe(1);
   });
 
-  it("updates across completion, resume, adoption, and detachment", () => {
-    const manager = task({ id: "manager", agentType: "manager" });
+  it("updates across completion, resume, reparenting, and detachment", () => {
+    const parent = task({ id: "parent" });
     const direct = task({ id: "agent" });
-    expect(countActiveTopLevelActivityWorkUnits([manager, direct])).toBe(2);
+    expect(countActiveTopLevelActivityWorkUnits([parent, direct])).toBe(2);
 
     const completed = { ...direct, status: "completed" as const };
-    expect(countActiveTopLevelActivityWorkUnits([manager, completed])).toBe(1);
+    expect(countActiveTopLevelActivityWorkUnits([parent, completed])).toBe(1);
 
     const resumed = { ...completed, status: "running" as const };
-    expect(countActiveTopLevelActivityWorkUnits([manager, resumed])).toBe(2);
+    expect(countActiveTopLevelActivityWorkUnits([parent, resumed])).toBe(2);
 
-    const adopted = { ...resumed, parentAgentId: manager.id };
-    expect(countActiveTopLevelActivityWorkUnits([manager, adopted])).toBe(1);
+    const owned = { ...resumed, parentAgentId: parent.id };
+    expect(countActiveTopLevelActivityWorkUnits([parent, owned])).toBe(1);
 
-    const pausedManager = { ...manager, status: "canceled" as const };
-    expect(countActiveTopLevelActivityWorkUnits([pausedManager, adopted])).toBe(
-      0,
-    );
+    const pausedParent = { ...parent, status: "canceled" as const };
+    expect(countActiveTopLevelActivityWorkUnits([pausedParent, owned])).toBe(0);
     expect(
       countActiveTopLevelActivityWorkUnits([
-        pausedManager,
-        { ...adopted, parentAgentId: undefined },
+        pausedParent,
+        { ...owned, parentAgentId: undefined },
       ]),
     ).toBe(1);
   });
@@ -681,7 +675,7 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
 });
 
 describe("getTaskAgentUpdates", () => {
-  it("uses verbatim assistant messages for active and completed non-manager agents", () => {
+  it("uses verbatim assistant messages for active and completed agents", () => {
     const assistantMessages = [
       "I checked the exact route.\nNo rewrite was needed.",
       "The focused tests now pass.",
@@ -693,13 +687,14 @@ describe("getTaskAgentUpdates", () => {
         assistantMessages,
       }),
     ).toEqual(assistantMessages);
+    // Blank-only entries are the one thing dropped.
     expect(
       getTaskAgentUpdates({
         status: "running",
-        agentType: "manager",
-        assistantMessages,
+        agentType: "general",
+        assistantMessages: ["   ", ...assistantMessages],
       }),
-    ).toEqual([]);
+    ).toEqual(assistantMessages);
     for (const status of ["completed", "error", "canceled"] as const) {
       expect(
         getTaskAgentUpdates({
@@ -833,14 +828,13 @@ describe("buildActivityTasks", () => {
     expect(done?.reasoningText).toBeUndefined();
   });
 
-  it.each(["general", "manager"] as const)(
-    "lets a newer live follow-up supersede a stale completed %s row",
-    (agentType) => {
+  it.each(["running", "completed"] as const)(
+    "lets a newer live follow-up supersede a stale %s row",
+    (priorStatus) => {
       const [task] = buildActivityTasks(
         [
           record({
-            agentType,
-            status: "completed",
+            status: priorStatus,
             attemptGeneration: 4,
             rootRunId: "prior-root",
             completedAt: 2_000,
@@ -975,26 +969,28 @@ describe("buildActivityTasks", () => {
     expect(tasks.map((task) => task.id)).toEqual(["research-flights"]);
   });
 
-  it("includes managers and preserves persisted ownership fields", () => {
+  it("preserves persisted ownership fields on parent and subagent rows", () => {
     const tasks = buildActivityTasks([
       record({
-        threadId: "manager",
-        agentType: "manager",
+        threadId: "parent",
         description: "Coordinate work",
       }),
       record({
         threadId: "child",
-        parentAgentId: "manager",
+        parentAgentId: "parent",
       }),
     ]);
 
-    expect(tasks.find((task) => task.id === "manager")).toMatchObject({
-      id: "manager",
-      agentType: "manager",
+    expect(tasks.find((task) => task.id === "parent")).toMatchObject({
+      id: "parent",
+      agentType: "general",
     });
+    expect(
+      tasks.find((task) => task.id === "parent")?.parentAgentId,
+    ).toBeUndefined();
     expect(tasks.find((task) => task.id === "child")).toMatchObject({
       id: "child",
-      parentAgentId: "manager",
+      parentAgentId: "parent",
     });
   });
 
@@ -1026,59 +1022,52 @@ describe("buildActivityTasks", () => {
     ]);
   });
 
-  it.each(["general", "manager"] as const)(
-    "keeps a terminal owner tree visible when a resumed %s descendant is running",
-    (agentType) => {
-      const makeTask = (
-        overrides: Partial<TaskItem> & { id: string },
-      ): TaskItem => ({
-        description: "Task",
-        agentType: "general",
-        status: "running",
-        startedAtMs: 100,
-        lastUpdatedAtMs: 100,
-        ...overrides,
-      });
-      const manager = makeTask({
-        id: "terminal-manager",
-        agentType: "manager",
-        status: "completed",
-        completedAtMs: 400,
-      });
-      const resumed = makeTask({
-        id: `resumed-${agentType}`,
-        agentType,
-        parentAgentId: manager.id,
-        status: "running",
-        startedAtMs: 500,
-        lastUpdatedAtMs: 500,
-      });
+  it("keeps a completed owner tree visible when a resumed subagent is running", () => {
+    const makeTask = (
+      overrides: Partial<TaskItem> & { id: string },
+    ): TaskItem => ({
+      description: "Task",
+      agentType: "general",
+      status: "running",
+      startedAtMs: 100,
+      lastUpdatedAtMs: 100,
+      ...overrides,
+    });
+    const parent = makeTask({
+      id: "terminal-parent",
+      status: "completed",
+      completedAtMs: 400,
+    });
+    const resumed = makeTask({
+      id: "resumed-subagent",
+      parentAgentId: parent.id,
+      status: "running",
+      startedAtMs: 500,
+      lastUpdatedAtMs: 500,
+    });
 
-      expect(selectFreshActivityTasks([manager, resumed], 600)).toContain(
-        resumed,
-      );
-      const [row] = groupActivityTasks([manager, resumed]);
-      expect(row?.kind).toBe("hierarchy");
-      expect(row && getActivityRowStatus(row)).toBe("running");
-      if (row?.kind === "hierarchy") {
-        expect(row.hierarchy.owner.id).toBe(manager.id);
-        expect(row.hierarchy.children).toMatchObject([
-          { kind: "task", task: { id: resumed.id, status: "running" } },
-        ]);
-      }
-
-      const settledRows = groupActivityTasks([
-        manager,
-        {
-          ...resumed,
-          status: "completed",
-          completedAtMs: 700,
-          lastUpdatedAtMs: 700,
-        },
+    expect(selectFreshActivityTasks([parent, resumed], 600)).toContain(resumed);
+    const [row] = groupActivityTasks([parent, resumed]);
+    expect(row?.kind).toBe("hierarchy");
+    expect(row && getActivityRowStatus(row)).toBe("running");
+    if (row?.kind === "hierarchy") {
+      expect(row.hierarchy.owner.id).toBe(parent.id);
+      expect(row.hierarchy.children).toMatchObject([
+        { kind: "task", task: { id: resumed.id, status: "running" } },
       ]);
-      expect(getActivityRowStatus(settledRows[0]!)).toBe("completed");
-    },
-  );
+    }
+
+    const settledRows = groupActivityTasks([
+      parent,
+      {
+        ...resumed,
+        status: "completed",
+        completedAtMs: 700,
+        lastUpdatedAtMs: 700,
+      },
+    ]);
+    expect(getActivityRowStatus(settledRows[0]!)).toBe("completed");
+  });
 });
 
 describe("selectFreshActivityTasks", () => {

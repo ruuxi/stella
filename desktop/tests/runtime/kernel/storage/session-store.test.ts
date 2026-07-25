@@ -239,7 +239,7 @@ describe("session-store", () => {
     expect(columns.map((column) => column.name)).toContain("model_config_json");
   });
 
-  it("round-trips a Manager's inherited model configuration", () => {
+  it("round-trips a subagent's inherited model configuration", () => {
     const { store } = createTestContext();
     const modelConfigSnapshot = {
       engine: "codex_cli" as const,
@@ -248,9 +248,9 @@ describe("session-store", () => {
       reasoningEffort: "high" as const,
     };
     store.saveAgentRecord({
-      threadId: "manager-model-route",
+      threadId: "subagent-model-route",
       conversationId: "conversation-model-route",
-      agentType: "manager",
+      agentType: "general",
       description: "Coordinate work",
       agentDepth: 1,
       status: "completed",
@@ -262,7 +262,7 @@ describe("session-store", () => {
     });
 
     expect(
-      store.getAgentRecord("manager-model-route")?.modelConfigSnapshot,
+      store.getAgentRecord("subagent-model-route")?.modelConfigSnapshot,
     ).toEqual(modelConfigSnapshot);
     expect(
       store.listAgentRecordsByStatus("completed")[0]?.modelConfigSnapshot,
@@ -1317,28 +1317,23 @@ describe("session-store", () => {
     expect(threadRows.count).toBe(2);
   });
 
-  it("keeps many frozen-time Manager entries linear and complete across a full reload", () => {
+  it("keeps many frozen-time agent thread entries linear and complete across a full reload", () => {
     const context = createTestContext();
     const { rootPath, db, store } = context;
     const frozenAt = 7_000;
     vi.spyOn(Date, "now").mockReturnValue(frozenAt);
     const { threadId } = store.resolveOrCreateActiveThread({
-      conversationId: "conv-frozen-manager",
-      agentType: "manager",
+      conversationId: "conv-frozen-agent",
+      agentType: "general",
     });
     store.saveAgentRecord({
       threadId,
-      conversationId: "conv-frozen-manager",
-      agentType: "manager",
+      conversationId: "conv-frozen-agent",
+      agentType: "general",
       description: "Coordinate frozen-time work",
       agentDepth: 1,
       status: "running",
       attemptGeneration: 9,
-      managerReportState: {
-        reportSequence: 2,
-        finalMessage: "Durable final report.",
-        finalAttemptGeneration: 9,
-      },
       startedAt: frozenAt,
       completedAt: null,
       updatedAt: frozenAt,
@@ -1435,11 +1430,8 @@ describe("session-store", () => {
     );
     expect(reopened.store.getAgentRecord(threadId)).toMatchObject({
       attemptGeneration: 9,
-      managerReportState: {
-        reportSequence: 2,
-        finalMessage: "Durable final report.",
-        finalAttemptGeneration: 9,
-      },
+      status: "running",
+      description: "Coordinate frozen-time work",
     });
   });
 

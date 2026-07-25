@@ -22,16 +22,16 @@ vi.mock("../../../../../runtime/kernel/runner/model-selection.js", () => ({
   resolveRunnerLlmRouteWithMetadata: routeMocks.withMetadata,
 }));
 
-describe("Manager inherited model routing", () => {
-  it("resolves a Manager snapshot through the Orchestrator model identity", async () => {
+describe("subagent inherited model routing", () => {
+  it("resolves a subagent snapshot through the Orchestrator model identity", async () => {
     const context = {
-      stellaDataDir: "/tmp/stella-manager-model-route",
+      stellaDataDir: "/tmp/stella-subagent-model-route",
       state: { loadedAgents: [] },
     } as any;
 
     const resolved = await resolveAgentModelRoute(
       context,
-      AGENT_IDS.MANAGER,
+      AGENT_IDS.GENERAL,
       "stella/openai/gpt-5.6-sol",
       AGENT_IDS.ORCHESTRATOR,
     );

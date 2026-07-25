@@ -222,13 +222,13 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
   });
 
-  it("keeps Rahul's long-running resumed Manager card active past the old timeout", async () => {
+  it("keeps a long-running resumed parent-agent card active past the old timeout", async () => {
     records = [
       {
         ...records[0]!,
-        threadId: "v2-parity-manager",
-        agentType: "manager",
-        description: "Resume v2 parity reconciliation after empty Manager turn",
+        threadId: "v2-parity-parent",
+        agentType: "general",
+        description: "Resume v2 parity reconciliation after an empty turn",
         status: "running",
         attemptGeneration: 19,
         rootRunId: "v2-parity-run",
@@ -246,7 +246,7 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
         status: "completed",
         attemptGeneration: 3,
         rootRunId: "v2-parity-run",
-        parentAgentId: "v2-parity-manager",
+        parentAgentId: "v2-parity-parent",
         startedAt: Date.now() - 120_000,
         completedAt: Date.now() - 30_000,
         updatedAt: Date.now() - 30_000,
@@ -259,7 +259,7 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
         status: "running",
         attemptGeneration: 15,
         rootRunId: "v2-parity-run",
-        parentAgentId: "v2-parity-manager",
+        parentAgentId: "v2-parity-parent",
         startedAt: Date.now() - 45_000,
         updatedAt: Date.now(),
       },
@@ -267,23 +267,23 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     await act(async () => {
       root.render(
         <BackgroundWorkCard
-          threadIds={["v2-parity-manager"]}
+          threadIds={["v2-parity-parent"]}
           spawnedAtMs={{
-            "v2-parity-manager": Date.now() - 10 * 60_000,
+            "v2-parity-parent": Date.now() - 10 * 60_000,
           }}
           descriptions={{
-            "v2-parity-manager":
-              "Resume v2 parity reconciliation after empty Manager turn",
+            "v2-parity-parent":
+              "Resume v2 parity reconciliation after an empty turn",
           }}
-          followUpThreadIds={["v2-parity-manager"]}
+          followUpThreadIds={["v2-parity-parent"]}
           statusTexts={{
-            "v2-parity-manager":
-              "Resume v2 parity reconciliation after empty Manager turn",
+            "v2-parity-parent":
+              "Resume v2 parity reconciliation after an empty turn",
           }}
           cardId="v2-parity-follow-up"
-          startEventIdsByThread={{ "v2-parity-manager": "manager-start-3" }}
-          attemptGenerationsByThread={{ "v2-parity-manager": 3 }}
-          rootRunIdsByThread={{ "v2-parity-manager": "v2-parity-run" }}
+          startEventIdsByThread={{ "v2-parity-parent": "parent-start-3" }}
+          attemptGenerationsByThread={{ "v2-parity-parent": 3 }}
+          rootRunIdsByThread={{ "v2-parity-parent": "v2-parity-run" }}
           conversationId="conversation-1"
         />,
       );
@@ -298,15 +298,15 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
   });
 
-  it("does not complete a Manager while an owned descendant remains active", async () => {
+  it("does not complete a parent agent while an owned subagent remains active", async () => {
     records = [
       {
         ...records[0]!,
-        threadId: "manager-thread",
-        agentType: "manager",
+        threadId: "parent-thread",
+        agentType: "general",
         status: "completed",
         attemptGeneration: 4,
-        rootRunId: "manager-run",
+        rootRunId: "parent-run",
         completedAt: 4_000,
         updatedAt: 4_000,
         assistantMessages: undefined,
@@ -315,25 +315,25 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
       },
       {
         ...records[0]!,
-        threadId: "manager-child",
-        parentAgentId: "manager-thread",
+        threadId: "parent-child",
+        parentAgentId: "parent-thread",
         status: "running",
         attemptGeneration: 2,
-        rootRunId: "manager-run",
+        rootRunId: "parent-run",
         updatedAt: 4_100,
       },
     ];
     await act(async () => {
       root.render(
         <BackgroundWorkCard
-          threadIds={["manager-thread"]}
-          completedThreadIds={["manager-thread"]}
-          spawnedAtMs={{ "manager-thread": 1_000 }}
-          descriptions={{ "manager-thread": "Coordinate the migration" }}
-          cardId="manager-active-descendant"
-          startEventIdsByThread={{ "manager-thread": "manager-start" }}
-          attemptGenerationsByThread={{ "manager-thread": 4 }}
-          rootRunIdsByThread={{ "manager-thread": "manager-run" }}
+          threadIds={["parent-thread"]}
+          completedThreadIds={["parent-thread"]}
+          spawnedAtMs={{ "parent-thread": 1_000 }}
+          descriptions={{ "parent-thread": "Coordinate the migration" }}
+          cardId="parent-active-descendant"
+          startEventIdsByThread={{ "parent-thread": "parent-start" }}
+          attemptGenerationsByThread={{ "parent-thread": 4 }}
+          rootRunIdsByThread={{ "parent-thread": "parent-run" }}
           conversationId="conversation-1"
         />,
       );
@@ -393,12 +393,12 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(container.textContent).toContain("Working…");
   });
 
-  it("shows Completed once the resumed Manager and its descendants settle", async () => {
+  it("shows Completed once the resumed parent agent and its subagents settle", async () => {
     records = [
       {
         ...records[0]!,
-        threadId: "settled-manager",
-        agentType: "manager",
+        threadId: "settled-parent",
+        agentType: "general",
         status: "completed",
         attemptGeneration: 6,
         rootRunId: "settled-run",
@@ -411,7 +411,7 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
       {
         ...records[0]!,
         threadId: "settled-child",
-        parentAgentId: "settled-manager",
+        parentAgentId: "settled-parent",
         status: "completed",
         attemptGeneration: 2,
         rootRunId: "settled-run",
@@ -422,14 +422,14 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     await act(async () => {
       root.render(
         <BackgroundWorkCard
-          threadIds={["settled-manager"]}
-          completedThreadIds={["settled-manager"]}
-          spawnedAtMs={{ "settled-manager": 6_000 }}
-          descriptions={{ "settled-manager": "Finish reconciliation" }}
-          cardId="settled-manager-card"
-          startEventIdsByThread={{ "settled-manager": "manager-start-6" }}
-          attemptGenerationsByThread={{ "settled-manager": 6 }}
-          rootRunIdsByThread={{ "settled-manager": "settled-run" }}
+          threadIds={["settled-parent"]}
+          completedThreadIds={["settled-parent"]}
+          spawnedAtMs={{ "settled-parent": 6_000 }}
+          descriptions={{ "settled-parent": "Finish reconciliation" }}
+          cardId="settled-parent-card"
+          startEventIdsByThread={{ "settled-parent": "parent-start-6" }}
+          attemptGenerationsByThread={{ "settled-parent": 6 }}
+          rootRunIdsByThread={{ "settled-parent": "settled-run" }}
           conversationId="conversation-1"
         />,
       );

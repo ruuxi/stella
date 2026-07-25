@@ -10,7 +10,6 @@ import {
   createStateContext,
   handleSendInput,
   handleSpawnAgent,
-  handleSpawnManager,
   parseSpawnAgentModel,
 } from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
@@ -516,35 +515,51 @@ describe("state tools", () => {
     expect(created).toHaveLength(0);
   });
 
-  it("allows managers to create General agents and rejects deeper General nesting", async () => {
+  it("lets a General parent spawn a subagent and blocks the next level down", async () => {
     const { ctx, created } = createSpawnContext();
+    const parentContext = {
+      conversationId: "conversation-1",
+      deviceId: "device-1",
+      requestId: "request-parent",
+      agentType: AGENT_IDS.GENERAL,
+      agentId: "parent-1",
+      agentDepth: 1,
+      maxAgentDepth: 2,
+    } as const;
 
     await expect(
       handleSpawnAgent(
         ctx,
         { description: "Fresh review", prompt: "Review the current work." },
-        {
-          conversationId: "conversation-1",
-          deviceId: "device-1",
-          requestId: "request-manager",
-          agentType: AGENT_IDS.MANAGER,
-          agentId: "manager-1",
-          agentDepth: 1,
-          maxAgentDepth: 2,
-        },
+        parentContext,
       ),
     ).resolves.toMatchObject({ result: { thread_id: "thread-1" } });
     expect(created[0]).toMatchObject({
       agentType: AGENT_IDS.GENERAL,
-      parentAgentId: "manager-1",
+      parentAgentId: "parent-1",
       agentDepth: 2,
       maxAgentDepth: 2,
     });
 
-    const generalCtx = createStateContext("/tmp");
+    // Depth 2 is the effective cap, so the subagent itself cannot spawn.
+    await expect(
+      handleSpawnAgent(
+        ctx,
+        { description: "Too deep", prompt: "Should not run." },
+        { ...parentContext, agentId: "thread-1", agentDepth: 2 },
+      ),
+    ).resolves.toEqual({
+      error:
+        "Task depth limit reached (2). Complete work in the current task instead of creating another subtask.",
+    });
+    expect(created).toHaveLength(1);
+  });
+
+  it("rejects task creation from agents that are neither orchestrator nor General", async () => {
+    const { ctx, created } = createSpawnContext();
 
     const result = await handleSpawnAgent(
-      generalCtx,
+      ctx,
       {
         description: "Do work",
         prompt: "Run it",
@@ -553,23 +568,25 @@ describe("state tools", () => {
         conversationId: "conversation-1",
         deviceId: "device-1",
         requestId: "request-1",
-        agentType: AGENT_IDS.GENERAL,
+        agentType: AGENT_IDS.EXPLORE,
+        agentId: "explore-1",
       },
     );
 
     expect(result).toEqual({
-      error: "Only the orchestrator or a manager can create tasks.",
+      error: "Only the orchestrator or a General agent can create tasks.",
     });
+    expect(created).toHaveLength(0);
   });
 
-  it("allows manager-owned General agents on every external engine", async () => {
+  it("allows parent-owned General subagents on every external engine", async () => {
     const { ctx, created } = createSpawnContext();
-    const managerContext = {
+    const parentContext = {
       conversationId: "conversation-1",
       deviceId: "device-1",
-      requestId: "request-manager",
-      agentType: AGENT_IDS.MANAGER,
-      agentId: "manager-1",
+      requestId: "request-parent",
+      agentType: AGENT_IDS.GENERAL,
+      agentId: "parent-1",
       agentDepth: 1,
       maxAgentDepth: 2,
     } as const;
@@ -577,7 +594,7 @@ describe("state tools", () => {
     await handleSpawnAgent(
       ctx,
       { description: "Codex task", prompt: "Do it.", model: "codex" },
-      managerContext,
+      parentContext,
     );
     await handleSpawnAgent(
       ctx,
@@ -586,49 +603,21 @@ describe("state tools", () => {
         prompt: "Do it.",
         model: "claude-code/opus",
       },
-      managerContext,
+      parentContext,
     );
 
     expect(created).toMatchObject([
       {
         agentType: AGENT_IDS.GENERAL,
-        parentAgentId: "manager-1",
+        parentAgentId: "parent-1",
         spawnEngine: { engine: "codex_cli" },
       },
       {
         agentType: AGENT_IDS.GENERAL,
-        parentAgentId: "manager-1",
+        parentAgentId: "parent-1",
         spawnEngine: { engine: "claude_code_local", model: "opus" },
       },
     ]);
-  });
-
-  it("creates a manager thread on the configured default with prompt as its only input", async () => {
-    const { ctx, created } = createSpawnContext();
-    const result = await handleSpawnManager(
-      ctx,
-      { prompt: "Run a build and fresh-review loop until clean." },
-      orchestratorToolContext,
-    );
-
-    expect(result).toMatchObject({
-      result: {
-        thread_id: "thread-1",
-        created: true,
-        running_in_background: true,
-      },
-    });
-    expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({
-      prompt: "Run a build and fresh-review loop until clean.",
-      agentType: AGENT_IDS.MANAGER,
-      agentDepth: 1,
-    });
-    expect(created[0]?.model).toBeUndefined();
-    expect(created[0]?.spawnEngine).toBeUndefined();
-    expect(created[0]?.modelConfigSnapshot).toEqual(
-      orchestratorToolContext.modelConfigSnapshot,
-    );
   });
 
   it("rejects the removed spawn_agent group argument", async () => {
@@ -645,7 +634,7 @@ describe("state tools", () => {
       ),
     ).resolves.toEqual({
       error:
-        "group has been removed from spawn_agent. Use spawn_manager to coordinate related multi-agent work.",
+        "group has been removed from spawn_agent. Spawn a General agent and let it run its own subagents to coordinate related multi-agent work.",
     });
     expect(created).toHaveLength(0);
   });
@@ -729,7 +718,7 @@ describe("state tools", () => {
         | {
             description?: string;
             rootRunId?: string;
-            deliveryKind?: "manager-event" | "external-input";
+            deliveryKind?: "child-report" | "external-input";
           }
         | undefined;
     }> = [];
@@ -780,18 +769,14 @@ describe("state tools", () => {
     ]);
   });
 
-  it("adopts an existing thread when a manager uses send_input", async () => {
-    const calls: string[] = [];
+  it("never leaks the orchestrator model snapshot on a subagent's send_input", async () => {
+    const sendCalls: Array<Record<string, unknown> | undefined> = [];
     const ctx = createStateContext("/tmp", {
       createAgent: async () => ({ threadId: "unused" }),
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
-      adoptAgent: async (threadId, parentAgentId) => {
-        calls.push(`adopt:${threadId}:${parentAgentId}`);
-        return { adopted: true };
-      },
-      sendAgentMessage: async (threadId, _message, _from, options) => {
-        calls.push(`send:${threadId}:${options?.parentAgentId}`);
+      sendAgentMessage: async (_threadId, _message, _from, options) => {
+        sendCalls.push(options as Record<string, unknown> | undefined);
         return { delivered: true };
       },
     });
@@ -802,20 +787,27 @@ describe("state tools", () => {
         {
           thread_id: "existing-thread",
           description: "Continue existing build",
-          message: "Take ownership and continue the build.",
+          message: "Continue the build.",
         },
         {
           conversationId: "conversation-1",
           deviceId: "device-1",
           requestId: "request-1",
-          agentType: AGENT_IDS.MANAGER,
-          agentId: "manager-thread",
+          agentType: AGENT_IDS.GENERAL,
+          agentId: "parent-thread",
+          modelConfigSnapshot: {
+            engine: "default" as const,
+            routeModel: "stella/openai/gpt-5.6-sol",
+            reasoningEffort: "high" as const,
+          },
         },
       ),
     ).resolves.toMatchObject({ result: { delivered: true } });
-    expect(calls).toEqual([
-      "adopt:existing-thread:manager-thread",
-      "send:existing-thread:manager-thread",
+    expect(sendCalls).toEqual([
+      {
+        deliveryKind: "external-input",
+        description: "Continue existing build",
+      },
     ]);
   });
 

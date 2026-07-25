@@ -57,6 +57,9 @@ describe("formatDeltaEntry", () => {
     expect(formatDeltaEntry(taskReport(3, "task done"))).toBe(
       "[Task report]\ntask done",
     );
+    // `runtime.task_update` rows are no longer produced (the manager `report`
+    // tool was their only writer) but historical threads still contain them,
+    // so the reader must keep recognizing them.
     expect(
       formatDeltaEntry({
         timestamp: 4,
@@ -111,9 +114,12 @@ describe("formatDeltaEntry", () => {
   });
 
   it("never lets a compaction checkpoint read as fresh assistant signal", () => {
-    const checkpoint = ["[[THREAD_CHECKPOINT]]", "", "## Topic", "Old work."].join(
-      "\n",
-    );
+    const checkpoint = [
+      "[[THREAD_CHECKPOINT]]",
+      "",
+      "## Topic",
+      "Old work.",
+    ].join("\n");
     expect(formatDeltaEntry(assistantMsg(6, checkpoint))).toBeNull();
   });
 
@@ -174,7 +180,11 @@ describe("buildDreamDeltaTranscript", () => {
     // Second and third messages share one millisecond; the budget admits
     // only two entries, cutting between the ties.
     const first = buildDreamDeltaTranscript(
-      [userMsg(10, big), userMsg(20, `${big}-included-tie`), userMsg(20, `${big}-excluded-tie`)],
+      [
+        userMsg(10, big),
+        userMsg(20, `${big}-included-tie`),
+        userMsg(20, `${big}-excluded-tie`),
+      ],
       0,
       { maxChars: 220 },
     );
@@ -185,7 +195,11 @@ describe("buildDreamDeltaTranscript", () => {
     expect(first.coveredThroughTs).toBeLessThan(20);
 
     const second = buildDreamDeltaTranscript(
-      [userMsg(10, big), userMsg(20, `${big}-included-tie`), userMsg(20, `${big}-excluded-tie`)],
+      [
+        userMsg(10, big),
+        userMsg(20, `${big}-included-tie`),
+        userMsg(20, `${big}-excluded-tie`),
+      ],
       first.coveredThroughTs,
     );
     expect(second.transcript).toContain("excluded-tie");
@@ -250,7 +264,10 @@ describe("shadow log", () => {
     });
 
   it("entries carry the comparison header for diffing against the live pass", () => {
-    const text = entry("2026-07-19T01:00:00.000Z", "## Proposed MEMORY.md blocks\n- None.");
+    const text = entry(
+      "2026-07-19T01:00:00.000Z",
+      "## Proposed MEMORY.md blocks\n- None.",
+    );
     expect(text).toContain(SHADOW_LOG_ENTRY_MARKER);
     expect(text).toContain("MEMORY.md changed");
     expect(text).toContain("memory_map.md unchanged");
@@ -260,7 +277,9 @@ describe("shadow log", () => {
   it("appends with a header and drops oldest entries past the budget", () => {
     let log: string | null = null;
     log = appendToShadowLog(log, entry("2026-07-19T01:00:00.000Z", "first"));
-    expect(log).toContain("memory_shadow.md — Dream delta-derivation shadow log");
+    expect(log).toContain(
+      "memory_shadow.md — Dream delta-derivation shadow log",
+    );
     log = appendToShadowLog(
       log,
       entry("2026-07-19T02:00:00.000Z", "z".repeat(SHADOW_LOG_MAX_CHARS)),
