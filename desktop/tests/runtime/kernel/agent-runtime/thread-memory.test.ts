@@ -40,6 +40,45 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Prefer `apply_patch`");
     expect(prompt).toContain("standard POSIX shell commands");
   });
+
+  it("warns every shell-capable agent that background waits die with the turn", () => {
+    const prompt = buildSystemPrompt({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [],
+      toolsAllowlist: ["exec_command", "apply_patch"],
+    });
+
+    expect(prompt).toContain("Ending your turn does not pause you");
+    expect(prompt).toContain("Nothing will resume you");
+    // No WakeWhen in the allowlist, so don't advertise it.
+    expect(prompt).not.toContain("`WakeWhen` is that runtime-owned wait");
+  });
+
+  it("points at WakeWhen only when the agent actually has it", () => {
+    const prompt = buildSystemPrompt({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [],
+      toolsAllowlist: ["exec_command", "WakeWhen"],
+    });
+
+    expect(prompt).toContain("`WakeWhen` is that runtime-owned wait");
+  });
+
+  it("stays quiet for agents that cannot start anything long-running", () => {
+    const prompt = buildSystemPrompt({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [],
+      toolsAllowlist: ["Read", "Grep"],
+    });
+
+    expect(prompt).not.toContain("Ending your turn does not pause you");
+  });
 });
 
 describe("buildStartupPromptMessages", () => {

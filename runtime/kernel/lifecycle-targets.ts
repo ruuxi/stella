@@ -31,6 +31,17 @@ export type StellaHostRunnerTarget = {
       payload: RuntimeAutomationTurnRequest,
     ) => Promise<RuntimeAutomationTurnResult>;
     getActiveOrchestratorRun: () => Awaitable<RuntimeActiveRun | null>;
+    /**
+     * Resume an existing agent thread with its own history. The scheduler
+     * uses this for wakes armed by a subagent: `runAutomationTurn` would
+     * start a fresh turn that has no idea what the agent was waiting for.
+     */
+    sendAgentInput: (payload: {
+      conversationId: string;
+      threadId: string;
+      message: string;
+      metadata?: Record<string, unknown>;
+    }) => Promise<{ delivered: boolean }>;
   } | null;
 };
 

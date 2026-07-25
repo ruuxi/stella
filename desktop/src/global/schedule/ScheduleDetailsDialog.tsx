@@ -55,7 +55,12 @@ const cronToRow = (record: LocalCronJobRecord): DialogRow => ({
   name: record.name?.trim() || "Scheduled task",
   enabled: record.enabled,
   nextRunAtMs: record.nextRunAtMs,
-  recurrence: summarizeSchedule(record.schedule),
+  // A conditional job's interval is a poll rate, not a recurrence — it
+  // fires once, when its check passes. "Every 30 seconds" would read as a
+  // repeating task the user should worry about.
+  recurrence: record.condition
+    ? "Waiting for a one-off check"
+    : summarizeSchedule(record.schedule),
   conversationId: record.conversationId,
 });
 

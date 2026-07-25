@@ -27,6 +27,14 @@ export const SCRIPT_RUN_TIMEOUT_MS = 30_000
  */
 export const SCRIPT_CAPTURE_BYTES = 16 * 1024
 
+/**
+ * Wall-clock cap for a cron `condition` check. Much tighter than a script
+ * fire: a condition is a poll that may run every few seconds, and the
+ * scheduler tick serializes work, so a slow check would stall every other
+ * job. Anything that legitimately needs 30s of work belongs in the payload.
+ */
+export const CONDITION_RUN_TIMEOUT_MS = 10_000
+
 export type ScriptRunResult = {
   exitCode: number
   stdout: string
@@ -44,24 +52,21 @@ const truncateOutput = (value: string): string => {
   return `${head}\n…[${dropped} bytes truncated]`
 }
 
-/**
- * Run a schedule script via `bun run` with the contract documented in
- * `LocalCronPayload['script']`. Centralizes timeout, capture limits, and
- * cwd so the dry-run from `ScriptDraft` and the scheduled fire produce
- * identical execution semantics.
- */
-export const runScheduleScript = (
-  scriptPath: string,
-  options?: { signal?: AbortSignal },
+const runCaptured = (
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+    timeoutMs: number
+    signal?: AbortSignal
+  },
 ): Promise<ScriptRunResult> =>
   new Promise((resolve) => {
     const startedAt = Date.now()
-    const child = spawn('bun', ['run', scriptPath], {
-      cwd: path.dirname(scriptPath),
-      env: {
-        ...process.env,
-        STELLA_SCHEDULE_SCRIPT_PATH: scriptPath,
-      },
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -110,24 +115,66 @@ export const runScheduleScript = (
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGKILL')
-    }, SCRIPT_RUN_TIMEOUT_MS)
+    }, options.timeoutMs)
     timer.unref?.()
 
     const onAbort = () => {
       child.kill('SIGKILL')
     }
-    options?.signal?.addEventListener('abort', onAbort, { once: true })
+    options.signal?.addEventListener('abort', onAbort, { once: true })
 
     child.on('error', (error) => {
       clearTimeout(timer)
-      options?.signal?.removeEventListener('abort', onAbort)
+      options.signal?.removeEventListener('abort', onAbort)
       finish(-1, { kind: 'error', message: error.message })
     })
 
     child.on('close', (code, signal) => {
       clearTimeout(timer)
-      options?.signal?.removeEventListener('abort', onAbort)
+      options.signal?.removeEventListener('abort', onAbort)
       const exitCode = typeof code === 'number' ? code : signal ? -1 : 0
       finish(exitCode, { kind: signal ? 'kill' : 'exit' })
     })
   })
+
+/**
+ * Run a schedule script via `bun run` with the contract documented in
+ * `LocalCronPayload['script']`. Centralizes timeout, capture limits, and
+ * cwd so the dry-run from `ScriptDraft` and the scheduled fire produce
+ * identical execution semantics.
+ */
+export const runScheduleScript = (
+  scriptPath: string,
+  options?: { signal?: AbortSignal },
+): Promise<ScriptRunResult> =>
+  runCaptured('bun', ['run', scriptPath], {
+    cwd: path.dirname(scriptPath),
+    env: {
+      ...process.env,
+      STELLA_SCHEDULE_SCRIPT_PATH: scriptPath,
+    },
+    timeoutMs: SCRIPT_RUN_TIMEOUT_MS,
+    ...(options?.signal ? { signal: options.signal } : {}),
+  })
+
+/**
+ * Evaluate a cron `condition` command. Exit 0 means the gate opened; any
+ * other exit (including a timeout kill) means "not yet" and the caller
+ * reschedules. Runs through the platform shell so conditions can use the
+ * ordinary `test -f …` / `grep -q …` / `curl -sf …` idioms.
+ */
+export const runScheduleCondition = (
+  command: string,
+  options: { cwd: string; signal?: AbortSignal },
+): Promise<ScriptRunResult> => {
+  const [shell, shellArgs] =
+    process.platform === 'win32'
+      ? ['cmd.exe', ['/d', '/s', '/c', command]]
+      : [process.env.SHELL?.trim() || '/bin/sh', ['-lc', command]]
+  return runCaptured(shell, shellArgs, {
+    cwd: options.cwd,
+    env: process.env,
+    timeoutMs: CONDITION_RUN_TIMEOUT_MS,
+    ...(options.signal ? { signal: options.signal } : {}),
+  })
+}

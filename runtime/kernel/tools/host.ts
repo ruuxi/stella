@@ -478,6 +478,22 @@ export const createToolHost = ({
     getToolCatalog,
     getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
+    /**
+     * Session ids still running, optionally scoped to the sessions a run
+     * touched. Shells outlive the run that started them by design (see the
+     * shutdown comment above), so a non-empty answer at run teardown means
+     * the agent left something running that nothing will report back from.
+     */
+    listRunningShellSessionIds: (sessionIds?: string[]) => {
+      const scope = sessionIds ? new Set(sessionIds) : null;
+      const running: string[] = [];
+      for (const shell of shellState.shells.values()) {
+        if (!shell.running) continue;
+        if (scope && !scope.has(shell.id)) continue;
+        running.push(shell.id);
+      }
+      return running;
+    },
     // Pull deliverables from background/long-running shell sessions that
     // finished after their last poll (so their produced files were never
     // drained inline) into the agent-completed rollup. Optionally scoped to

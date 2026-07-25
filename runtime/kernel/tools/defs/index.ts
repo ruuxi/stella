@@ -48,6 +48,7 @@ import { createAgentTools } from "./task.js";
 import { createConnectorStatusTool } from "./connector-status.js";
 import { toolSearchTool } from "./tool-search.js";
 import { viewImageTool } from "./view-image.js";
+import { createWakeTools } from "./wake.js";
 import { createWebTool } from "./web.js";
 import { writeTool } from "./write.js";
 import { createWriteStdinTool } from "./write-stdin.js";
@@ -139,6 +140,9 @@ export const buildBuiltinTools = (
   );
   tools.push(createWebTool({ webSearch: options.webSearch }));
   tools.push(toolSearchTool);
+  // Paired with exec_command: anything that can start a long-running job
+  // needs a way to wait for it that outlives the turn.
+  tools.push(...createWakeTools({ scheduleApi: options.scheduleApi }));
 
   // Orchestrator coordination surface
   tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir }));

@@ -364,6 +364,37 @@ const hasShellToolGuidance = (context: LocalAgentContext): boolean => {
   return hasToolGuidance(context, ["Bash", "exec_command"]);
 };
 
+/**
+ * Runtime fact, not persona: an agent's turn is the only place its own code
+ * runs. Background children it leaves behind keep running, but nothing they
+ * print can start a new turn, so "I'll report back when X lands" is a
+ * promise the runtime cannot keep — the thread just stops. This has cost
+ * real money (a GPU pod idle-billing while its thread waited on a watcher
+ * whose output went nowhere), so it's stated wherever an agent has a shell
+ * rather than left to each agent's prompt body.
+ */
+const buildBackgroundWaitPrompt = (
+  context: LocalAgentContext,
+): string | null => {
+  if (!hasShellToolGuidance(context)) {
+    return null;
+  }
+  const lines = [
+    "Waiting on long external events:",
+    "- Ending your turn does not pause you; it ends you. Background watchers, `nohup`'d monitors, and `sleep && echo done` chains keep running after the turn, but their output reaches nobody and cannot start a new turn. Nothing will resume you.",
+    '- So never end a turn with "I\'ll report back when X finishes". Either complete the wait inside this turn — foreground-poll with `exec_command` (check, sleep, check) and report what you actually saw — or arm a wait the runtime owns before you stop.',
+  ];
+  if (hasToolGuidance(context, ["WakeWhen"])) {
+    lines.push(
+      "- `WakeWhen` is that runtime-owned wait: it polls your condition from outside your session and resumes this thread, with your history, when it passes or when it times out. Use it when the wait is long enough that holding the turn open would be wasteful.",
+    );
+  }
+  lines.push(
+    "- If you can do neither, say plainly that the wait is unattended and hand over the exact command to check it. An honest handoff beats a promise nobody can keep.",
+  );
+  return lines.join("\n");
+};
+
 const buildFileEditingPrompt = (context: LocalAgentContext): string | null => {
   const explicitlyHasWriteEdit =
     Array.isArray(context.toolsAllowlist) &&
@@ -407,6 +438,11 @@ export const buildSystemPrompt = (context: LocalAgentContext): string => {
   const platformShellPrompt = getPlatformShellPrompt();
   if (platformShellPrompt && hasShellToolGuidance(context)) {
     sections.push(platformShellPrompt);
+  }
+
+  const backgroundWaitPrompt = buildBackgroundWaitPrompt(context);
+  if (backgroundWaitPrompt) {
+    sections.push(backgroundWaitPrompt);
   }
 
   return sections.filter(Boolean).join("\n\n");

@@ -44,6 +44,36 @@ import {
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
 
+/**
+ * Diagnostic for the "agent promised to report back and never did" failure.
+ *
+ * Shells outlive the run that started them on purpose, so a background
+ * watcher an agent leaves behind keeps running — but nothing it prints can
+ * start a new turn, and the thread it was supposed to wake just stops. The
+ * agent has no way to notice, so the runtime says it out loud. `WakeWhen`
+ * is the supported way to wait across a turn boundary.
+ */
+const warnOnAbandonedBackgroundShells = (args: {
+  agentType: string;
+  agentId?: string;
+  conversationId: string;
+  sessionIds: string[];
+  listRunningShellSessionIds: (sessionIds?: string[]) => string[];
+}): void => {
+  if (args.sessionIds.length === 0) return;
+  try {
+    const running = args.listRunningShellSessionIds(args.sessionIds);
+    if (running.length === 0) return;
+    console.warn(
+      `[background-wait] ${args.agentType} run ended with ${running.length} shell session(s) still running ` +
+        `(conversation ${args.conversationId}${args.agentId ? `, thread ${args.agentId}` : ""}): ${running.join(", ")}. ` +
+        "Nothing they print can resume this thread — a wait that must survive the turn belongs in WakeWhen.",
+    );
+  } catch {
+    // Diagnostics must never break run teardown.
+  }
+};
+
 const collectFileChanges = (
   target: FileChangeRecord[],
   seen: Set<string>,
@@ -1213,6 +1243,14 @@ export const createAgentOrchestration = (
           await killGuardedShellSessions();
         }
         await releaseGuardedShellSessions();
+        warnOnAbandonedBackgroundShells({
+          agentType,
+          agentId,
+          conversationId,
+          sessionIds: [...touchedShellSessions],
+          listRunningShellSessionIds:
+            context.toolHost.listRunningShellSessionIds,
+        });
         if (shouldAttachSelfModLifecycle) {
           // The finalize/cancel hooks below own the entire apply pipeline
           // (contention tracker drain, Vite overlay swap, runtime restart,

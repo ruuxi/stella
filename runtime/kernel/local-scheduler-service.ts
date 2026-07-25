@@ -7,11 +7,13 @@ import {
   writePrivateFileSync,
 } from './shared/private-fs.js'
 import {
+  runScheduleCondition,
   runScheduleScript,
   scheduleScriptsDir,
 } from './shared/schedule-scripts.js'
 import type { StellaHostRunnerTarget } from './lifecycle-targets.js'
 import type {
+  LocalCronCondition,
   LocalCronJobCreateInput,
   LocalCronJobRecord,
   LocalCronJobUpdatePatch,
@@ -76,6 +78,7 @@ const cloneCronJob = (job: LocalCronJobRecord): LocalCronJobRecord => ({
   ...job,
   schedule: { ...job.schedule },
   payload: { ...job.payload },
+  ...(job.condition ? { condition: { ...job.condition } } : {}),
 })
 
 const cloneHeartbeat = (
@@ -92,8 +95,53 @@ const cloneGeneratedEvent = (
   payload: { ...event.payload },
 })
 
+/** What a `condition` evaluation decided, for the fire that follows it. */
+type CronConditionOutcome = {
+  status: 'met' | 'expired'
+  /** Evaluations so far, including this one. */
+  checks: number
+  stdout: string
+  stderr: string
+  waitedMs: number
+}
+
 const truncatePreview = (value: string, maxChars = MAX_PREVIEW_CHARS) =>
   value.length > maxChars ? `${value.slice(0, maxChars)}...` : value
+
+const formatDuration = (ms: number) => {
+  const seconds = Math.max(0, Math.round(ms / 1000))
+  if (seconds < 90) return `${seconds}s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 90) return `${minutes}m`
+  return `${(minutes / 60).toFixed(1)}h`
+}
+
+/**
+ * Context prepended to a conditional fire's prompt. The agent that armed the
+ * wake wrote the prompt turns (or hours) ago and has no other way to learn
+ * whether it is being resumed because the thing happened or because the wait
+ * ran out — so both cases say so explicitly, and the check's own stdout rides
+ * along because that's usually the payload the agent was waiting to read.
+ */
+const buildWakePreamble = (
+  job: LocalCronJobRecord,
+  outcome: CronConditionOutcome,
+): string => {
+  const command = job.condition?.command ?? ''
+  const waited = formatDuration(outcome.waitedMs)
+  const header =
+    outcome.status === 'met'
+      ? `[wake: "${job.name}" fired after ${waited} — the condition you armed is now true.]`
+      : `[wake: "${job.name}" timed out after ${waited}. The condition never became true; the wait was abandoned, not satisfied. Check the state yourself before acting on it.]`
+  const lines = [header, `Condition: ${command}`]
+  if (outcome.stdout) {
+    lines.push(`Condition stdout:\n${truncatePreview(outcome.stdout)}`)
+  }
+  if (outcome.status === 'expired' && outcome.stderr) {
+    lines.push(`Condition stderr:\n${truncatePreview(outcome.stderr)}`)
+  }
+  return lines.join('\n')
+}
 
 const asTrimmedString = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
@@ -210,13 +258,42 @@ const assertValidPayload = (
       throw new Error('payload.kind="agent" requires prompt.')
     }
     const agentType = asTrimmedString(record.agentType) || undefined
+    const threadId = asTrimmedString(record.threadId) || undefined
     return {
       kind: 'agent',
       prompt,
       ...(agentType ? { agentType } : {}),
+      ...(threadId ? { threadId } : {}),
     }
   }
   throw new Error('payload.kind must be "notify", "script", or "agent".')
+}
+
+const assertValidCondition = (condition: unknown): LocalCronCondition => {
+  if (!condition || typeof condition !== 'object') {
+    throw new Error('condition must be an object.')
+  }
+  const record = condition as Record<string, unknown>
+  if (asTrimmedString(record.kind) !== 'command') {
+    throw new Error('condition.kind must be "command".')
+  }
+  const command = asTrimmedString(record.command)
+  if (!command) {
+    throw new Error('condition.kind="command" requires command.')
+  }
+  const cwd = asTrimmedString(record.cwd)
+  if (cwd && !path.isAbsolute(cwd)) {
+    throw new Error('condition.cwd must be absolute.')
+  }
+  return { kind: 'command', command, ...(cwd ? { cwd } : {}) }
+}
+
+const assertValidExpiresAtMs = (value: unknown): number => {
+  const expiresAtMs = Number(value)
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= 0) {
+    throw new Error('expiresAtMs must be a positive epoch-ms timestamp.')
+  }
+  return Math.floor(expiresAtMs)
 }
 
 const computeNextRunAtMs = (schedule: LocalCronSchedule, nowMs: number) => {
@@ -467,6 +544,12 @@ const buildCronJobRecordValidator = (scriptsDir: string) =>
       const record = value as Record<string, unknown>
       assertValidSchedule(record.schedule)
       assertValidPayload(record.payload, scriptsDir)
+      if (record.condition !== undefined) {
+        assertValidCondition(record.condition)
+      }
+      if (record.expiresAtMs !== undefined) {
+        assertValidExpiresAtMs(record.expiresAtMs)
+      }
       ensureConversationId(record.conversationId)
       ensureName(record.name)
       return (
@@ -627,6 +710,14 @@ export class LocalSchedulerService {
     const name = ensureName(input.name)
     const schedule = assertValidSchedule(input.schedule)
     const payload = assertValidPayload(input.payload, this.scriptsDir)
+    const condition =
+      input.condition !== undefined
+        ? assertValidCondition(input.condition)
+        : undefined
+    const expiresAtMs =
+      input.expiresAtMs !== undefined
+        ? assertValidExpiresAtMs(input.expiresAtMs)
+        : undefined
     const enabled = input.enabled !== false
     const nextRunAtMs = computeNextRunAtMs(schedule, now)
 
@@ -640,6 +731,8 @@ export class LocalSchedulerService {
       enabled,
       schedule,
       payload,
+      ...(condition ? { condition } : {}),
+      ...(expiresAtMs !== undefined ? { expiresAtMs } : {}),
       ...(typeof input.deliver === 'boolean' ? { deliver: input.deliver } : {}),
       ...(typeof input.deleteAfterRun === 'boolean'
         ? { deleteAfterRun: input.deleteAfterRun }
@@ -690,6 +783,20 @@ export class LocalSchedulerService {
     }
     if (patch.deleteAfterRun !== undefined) {
       job.deleteAfterRun = patch.deleteAfterRun
+    }
+    if (patch.condition !== undefined) {
+      job.condition =
+        patch.condition === null
+          ? undefined
+          : assertValidCondition(patch.condition)
+      job.conditionChecks = undefined
+      job.lastConditionAtMs = undefined
+    }
+    if (patch.expiresAtMs !== undefined) {
+      job.expiresAtMs =
+        patch.expiresAtMs === null
+          ? undefined
+          : assertValidExpiresAtMs(patch.expiresAtMs)
     }
     job.runningAtMs = undefined
     job.nextRunAtMs = computeNextRunAtMs(nextSchedule, now)
@@ -1046,10 +1153,22 @@ export class LocalSchedulerService {
       : { kind: 'heartbeat', record: heartbeatCandidate }
   }
 
+  /**
+   * Whether a due item must not be attempted without a live worker, i.e.
+   * whether a missing runner should stall the whole drain.
+   *
+   * Conditional jobs answer `false` even with an `agent` payload: almost
+   * every tick of a wake watcher is a cheap shell check that skips, and
+   * stalling the drain on those would let one waiting agent starve every
+   * `notify` and `script` cron behind it whenever the worker is down. If
+   * the gate does open without a runner, `executeCronJob` reports `'busy'`
+   * and the same 5s back-off applies — one tick later.
+   */
   private requiresRunner(
     item: NonNullable<ReturnType<LocalSchedulerService['getNextDueItem']>>,
   ): boolean {
     if (item.kind === 'heartbeat') return true
+    if (item.record.condition) return false
     return item.record.payload.kind === 'agent'
   }
 
@@ -1067,9 +1186,10 @@ export class LocalSchedulerService {
           break
         }
 
-        const needsRunner = this.requiresRunner(dueItem)
-        const runner = needsRunner ? this.options.runnerTarget.getRunner() : null
-        if (needsRunner && !runner) {
+        // Always resolve the runner: a conditional job doesn't *require*
+        // one, but still needs it in hand for the tick its gate opens.
+        const runner = this.options.runnerTarget.getRunner()
+        if (this.requiresRunner(dueItem) && !runner) {
           // Worker isn't ready yet; back off and retry. notify/script
           // fires don't need the runner so they continue to drain.
           nextDelayOverride = 5_000
@@ -1130,6 +1250,12 @@ export class LocalSchedulerService {
    * book-keeping. Centralizes the at-vs-recurring policy that ran inline
    * inside the old monolithic executor.
    *
+   * `deleteAfterRun` and expiry are honored for every schedule kind, not
+   * just `at`. A conditional watcher is an interval job whose interval is
+   * only a poll rate — once its gate opens (or its deadline passes) there
+   * is nothing left to watch, and leaving it enabled would re-wake the
+   * thread on every subsequent tick.
+   *
    * Returns whether the job survived (`true`) or was deleted (`false`).
    */
   private advanceCronAfterRun(
@@ -1137,7 +1263,11 @@ export class LocalSchedulerService {
     finishedAt: number,
     failed: boolean,
   ): boolean {
-    if (active.schedule.kind === 'at') {
+    const retire =
+      active.schedule.kind === 'at' ||
+      Boolean(active.condition) ||
+      (active.expiresAtMs !== undefined && finishedAt >= active.expiresAtMs)
+    if (retire) {
       if (failed) {
         active.enabled = false
         return true
@@ -1163,6 +1293,58 @@ export class LocalSchedulerService {
     return true
   }
 
+  /**
+   * Evaluate a job's `condition` gate.
+   *
+   *  - `'met'`     — the command exited 0; fire the payload now.
+   *  - `'expired'` — the deadline passed without the command ever exiting 0;
+   *    fire the payload anyway so the waiting thread gets closure.
+   *  - `'skip'`    — not yet; reschedule and deliver nothing.
+   *
+   * The `'skip'` path is deliberately cheap and silent: a watcher polling
+   * every 30s for an hour must not cost 120 assistant messages, 120 OS
+   * banners, or a single worker turn.
+   */
+  private async evaluateCronCondition(
+    active: LocalCronJobRecord,
+    condition: LocalCronCondition,
+    startedAt: number,
+  ): Promise<CronConditionOutcome | 'skip'> {
+    const result = await runScheduleCondition(condition.command, {
+      cwd: condition.cwd || this.options.stellaDataDir,
+    })
+    const checkedAt = Date.now()
+    const checks = (active.conditionChecks ?? 0) + 1
+    active.conditionChecks = checks
+    active.lastConditionAtMs = checkedAt
+
+    const met = result.exitCode === 0
+    const expired =
+      !met &&
+      active.expiresAtMs !== undefined &&
+      checkedAt >= active.expiresAtMs
+    if (met || expired) {
+      return {
+        status: met ? 'met' : 'expired',
+        checks,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+        waitedMs: checkedAt - active.createdAt,
+      }
+    }
+
+    active.runningAtMs = undefined
+    active.lastStatus = 'waiting'
+    active.lastError = undefined
+    active.lastDurationMs = checkedAt - startedAt
+    active.nextRunAtMs = computeNextRunAtMs(active.schedule, checkedAt)
+    active.updatedAt = checkedAt
+    // Persisted so the poll cadence and check count survive a restart, but
+    // deliberately not emitted: a wait that is still waiting is not news.
+    this.persistState()
+    return 'skip'
+  }
+
   private async executeCronJob(
     job: LocalCronJobRecord,
     runner: LocalSchedulerRunner,
@@ -1176,6 +1358,23 @@ export class LocalSchedulerService {
     active.runningAtMs = startedAt
     active.lastError = undefined
     active.updatedAt = startedAt
+
+    let outcome: CronConditionOutcome | undefined
+    if (active.condition) {
+      // No pre-check announcement: a wake watcher reaches this line every
+      // poll, and marking it "running" for the ~ms the check takes would
+      // write the state file and wake the schedule UI twice a minute for
+      // an hour to say nothing.
+      const gate = await this.evaluateCronCondition(
+        active,
+        active.condition,
+        startedAt,
+      )
+      if (gate === 'skip') {
+        return 'done'
+      }
+      outcome = gate
+    }
     this.persistState()
     this.emitChange()
 
@@ -1194,7 +1393,7 @@ export class LocalSchedulerService {
           this.emitChange()
           return 'busy'
         }
-        return this.executeCronAgent(active, runner, startedAt)
+        return this.executeCronAgent(active, runner, startedAt, outcome)
     }
   }
 
@@ -1311,12 +1510,47 @@ export class LocalSchedulerService {
     active: LocalCronJobRecord,
     runner: NonNullable<LocalSchedulerRunner>,
     startedAt: number,
+    outcome?: CronConditionOutcome,
   ): Promise<'done' | 'busy'> {
     if (active.payload.kind !== 'agent') return 'done'
 
+    const userPrompt = outcome
+      ? `${buildWakePreamble(active, outcome)}\n\n${active.payload.prompt}`
+      : active.payload.prompt
+
+    // A wake armed by a subagent names its own thread: resuming that thread
+    // hands the agent back its own history, where a fresh automation turn
+    // would only know the prompt it was handed. Falls through to the normal
+    // turn when the thread is gone, so the wake still lands somewhere.
+    const threadId = active.payload.threadId
+    if (threadId) {
+      const delivered = await runner
+        .sendAgentInput({
+          conversationId: active.conversationId,
+          threadId,
+          message: userPrompt,
+          metadata: { source: 'cron-wake', cronJobId: active.id },
+        })
+        .catch(() => ({ delivered: false }))
+      if (delivered.delivered) {
+        const finishedAt = Date.now()
+        active.runningAtMs = undefined
+        active.lastRunAtMs = finishedAt
+        active.lastDurationMs = finishedAt - startedAt
+        active.lastStatus = 'ok'
+        active.lastError = undefined
+        active.lastOutputPreview = truncatePreview(userPrompt)
+        active.updatedAt = finishedAt
+        this.advanceCronAfterRun(active, finishedAt, false)
+        this.persistState()
+        this.emitChange()
+        return 'done'
+      }
+    }
+
     const runResult = await runner.runAutomationTurn({
       conversationId: active.conversationId,
-      userPrompt: active.payload.prompt,
+      userPrompt,
       agentType: active.payload.agentType ?? 'general',
     })
 

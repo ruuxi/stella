@@ -459,6 +459,8 @@ export type RunnerContext = {
     ) => Promise<
       import("../../contracts/file-changes.js").ProducedFileRecord[]
     >;
+    /** Shell sessions still running, optionally scoped to a run's sessions. */
+    listRunningShellSessionIds: (sessionIds?: string[]) => string[];
     killAllShells: () => void;
     killShell: (sessionId: string) => Promise<void> | void;
     killShellsByPort: (port: number) => void;
