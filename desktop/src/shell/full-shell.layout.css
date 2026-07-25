@@ -749,9 +749,13 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
      here turns the mechanism off entirely. */
   overflow-anchor: none;
   /* Top fade always — older history tapers under the title-bar region.
-   * Bottom fade is also always present so chat content fades out
-   * cleanly beneath the working indicator/chips that overlay the
-   * viewport bottom. */
+   * Bottom fade is also always present so chat content tapers out toward the
+   * composer rather than ending on a hard edge.
+   *
+   * The bottom 56px is therefore not readable area: auto-follow has to frame
+   * the live tail above it, or the tail lands inside the fade and reads as
+   * clipped. `CHAT_VIEWPORT_BOTTOM_FADE_PX` in `shell/chat-follow-target.ts`
+   * mirrors this length — keep the two in sync. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,

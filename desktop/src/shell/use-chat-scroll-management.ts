@@ -35,6 +35,11 @@ import {
   subscribeAssistantScrollFollow,
   subscribeChatContentGrowth,
 } from '@/shell/chat-scroll-follow'
+import {
+  POST_SEND_USER_MESSAGE_BREATHING_PX,
+  resolveIdleTailTarget,
+  resolveStreamFollowTarget,
+} from '@/shell/chat-follow-target'
 import { registerChatAtRestProbe } from '@/features/chat/hooks/use-conversation-messages'
 import {
   captureChatPrependAnchor,
@@ -109,37 +114,16 @@ const FOLLOW_GENTLE_LERP_FACTOR = 0.12
  * fractions).
  */
 const FOLLOW_MIN_STEP_PX = 0.5
-/**
- * Breathing margin between the streaming row's bottom edge and the
- * viewport bottom while auto-following. Larger values keep the latest
- * text further from the absolute edge (reads as more comfortable but
- * shows less new text); smaller values pin tight to the bottom.
- *
- * The effective visible margin is `FOLLOW_BREATHING_PX − lerp_lag`.
- * 72px combined with the adaptive lerp keeps a positive margin (i.e.
- * text stays inside the viewport) for any per-frame growth up to
- * ~100px, which covers everything short of the rare hundreds-of-px
- * post-tool burst that `FOLLOW_HARD_SNAP_PX` already catches.
- */
-const FOLLOW_BREATHING_PX = 72
 
-/**
- * Gap left above the streaming assistant row's top edge when auto-follow
- * pins to the top. Once a reply grows taller than the viewport, follow
- * stops here instead of chasing the bottom forever — the user gets a
- * stable reading area with a small peek of the prior message above so
- * the conversation reads as continuous rather than chopped.
- */
-const FOLLOW_TOP_PEEK_PX = 56
+// Where the follow lands — breathing margin, bottom-fade inset, top peek —
+// lives in `chat-follow-target` as pure geometry. This module owns the motion
+// that gets there.
 
 /** Matches `.event-list-trailing-region` min-heights in full-shell.chat.css */
 const TRAILING_REGION_MIN_PX = {
   full: 160,
   compact: 120,
 } as const
-
-/** Breathing room between the user bubble's bottom edge and the footer. */
-const POST_SEND_USER_MESSAGE_BREATHING_PX = 48
 
 /** Extra slack beyond the trailing-region min-height for follow re-arm (less than post-send breathing). */
 const FOLLOW_REARM_EXTRA_PX = 24
@@ -996,10 +980,17 @@ export function useChatScrollManagement({
         cancel: stopLoop,
       }
 
-      const followActiveAssistantRow = () => {
-        if (!attached || !followRef.current) return
+      /**
+       * Returns whether it owned the motion. `false` means there is no live
+       * streaming row to anchor to, and the caller should fall back to the
+       * idle tail settle — the turn can still be alive (a tool running under a
+       * settled assistant slot, with the working indicator below it), and that
+       * growth has to be followed by something.
+       */
+      const followActiveAssistantRow = (): boolean => {
+        if (!attached || !followRef.current) return false
         const followKey = getAssistantScrollFollowKey()
-        if (!followKey) return
+        if (!followKey) return false
         // A different turn started streaming — arm the gentle turn-start
         // reframe. Same-turn key changes (next slot after a tool call)
         // keep the spring so post-tool content dumps still hard-snap into
@@ -1012,7 +1003,7 @@ export function useChatScrollManagement({
         const streamingRow = attached.querySelector<HTMLElement>(
           `[data-scroll-follow-key="${CSS.escape(followKey)}"]`,
         )
-        if (!streamingRow || streamingRow.offsetHeight <= 0) return
+        if (!streamingRow || streamingRow.offsetHeight <= 0) return false
         // The follow key is intentionally kept active after a run's final
         // assistant message settles (so a *new* turn's first chunk can hand
         // off cleanly). But once that row has locked, `.event-row--streaming`
@@ -1020,16 +1011,23 @@ export function useChatScrollManagement({
         // settled row — the reveal mask clearing, an inline image/card
         // mounting once artifacts render, a code block, or a timestamp settling —
         // still fires `notifyAssistantScrollFollowLayoutChange`, and following
-        // the full (now static) row bottom re-applies `FOLLOW_BREATHING_PX`,
+        // the full (now static) row bottom re-applies the breathing inset,
         // pulling the viewport forward into the empty trailing region a beat
         // after the reply was already fully visible. The anticipatory follow
         // is only meaningful while content is actively streaming, so bail once
-        // the row has settled and leave the view put.
-        if (!streamingRow.classList.contains('event-row--streaming')) return
+        // the row has settled and leave the view put. That path
+        // (`scheduleFollowActiveAssistantRow`) ignores the return value, so a
+        // settled row stays put; only real growth, which arrives through
+        // `followIdleContentGrowth`, is picked up by the fallback.
+        if (!streamingRow.classList.contains('event-row--streaming')) {
+          return false
+        }
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
         const rowTop = rowRect.top - containerRect.top + attached.scrollTop
-        let rowBottom = rowRect.bottom - containerRect.top + attached.scrollTop
+        const rowLayoutBottom =
+          rowRect.bottom - containerRect.top + attached.scrollTop
+        let rowBottom = rowLayoutBottom
         // The wrapper's DOM can extend below the soft mask frontier. Follow
         // what is actually revealed so the viewport never scrolls ahead of
         // the text the user can see.
@@ -1055,10 +1053,20 @@ export function useChatScrollManagement({
             }
           }
         }
-        const desiredScrollTop = Math.max(
-          0,
-          rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
-        )
+        // Everything below the row that is still part of this turn: the
+        // working indicator is its own timeline item, and a card row can be
+        // appended mid-turn. Measuring the first element *after* the live tail
+        // — the queued stack, else the trailing footer — picks up whatever
+        // that tail currently ends with without enumerating (and forcing a
+        // rect read on) every rendered row each follow frame.
+        const tailBoundary =
+          attached.querySelector<HTMLElement>('.composer-queued-stack') ??
+          attached.querySelector<HTMLElement>('.event-list-trailing-region')
+        const tailBottom = tailBoundary
+          ? tailBoundary.getBoundingClientRect().top -
+            containerRect.top +
+            attached.scrollTop
+          : null
         const queuedMessages = attached.querySelectorAll<HTMLElement>(
           '.composer-queued-message:not(.composer-queued-message--leaving)',
         )
@@ -1071,24 +1079,19 @@ export function useChatScrollManagement({
             containerRect.top +
             attached.scrollTop
           : null
-        const queuedScrollTop =
-          queuedMessageBottom === null
-            ? 0
-            : Math.max(
-                0,
-                queuedMessageBottom -
-                  attached.clientHeight +
-                  POST_SEND_USER_MESSAGE_BREATHING_PX,
-              )
-        const bottomFollow = Math.max(desiredScrollTop, queuedScrollTop)
-        // Cap at "streaming row pinned near the viewport top" so a reply
-        // taller than the viewport stops following once its start reaches
-        // the top, instead of chasing the bottom forever. `min` lets short
-        // replies and the queued-follow-up stack keep bottom-following
-        // (their `pinnedTop` sits below `bottomFollow`, so it never bites).
-        const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
-        const target = Math.min(bottomFollow, pinnedTop)
+        const target = resolveStreamFollowTarget({
+          clientHeight: attached.clientHeight,
+          rowTop,
+          rowBottom,
+          tailBottom,
+          // The tail below the row is laid out past the row's unrevealed text,
+          // so it carries that displacement; hand it over so the frontier
+          // clamp survives being extended to the tail.
+          unrevealedPx: rowLayoutBottom - rowBottom,
+          queuedBottom: queuedMessageBottom,
+        })
         setTarget(target, turnStartGlide ? { gentle: true } : undefined)
+        return true
       }
       let followAssistantRowRaf = 0
       const scheduleFollowActiveAssistantRow = () => {
@@ -1100,22 +1103,22 @@ export function useChatScrollManagement({
       }
 
       /**
-       * Follow content growth outside a streaming run — an agent completion
-       * card mounting (or the spawn card settling into its taller completed
-       * form) after the run ended, while the user is parked at the bottom.
-       * There is no follow key and no `.event-row--streaming` row in this
-       * state, so the keyed assistant follow can't handle it; instead settle
-       * toward the new end of content (the trailing footer's top), the same
-       * reading position a stream-follow would have landed on.
+       * Follow content growth that no streaming row anchors — an agent
+       * completion card mounting (or the spawn card settling into its taller
+       * completed form) after the run ended, and the working indicator coming
+       * up under an assistant slot that has already locked while a tool runs.
+       * Both cases have no `.event-row--streaming` to key off, so settle toward
+       * the new end of content (the trailing footer's top), the same reading
+       * position a stream-follow would have landed on.
        */
       const followIdleContentGrowth = () => {
         if (!attached || !followRef.current) return
-        // A run may have started between the notify and this frame — the
-        // keyed follow owns the motion then.
-        if (getAssistantScrollFollowKey()) {
-          followActiveAssistantRow()
-          return
-        }
+        // A run may have started between the notify and this frame — the keyed
+        // follow owns the motion then, but only while its row is actually
+        // streaming. The key outlives the row it points at (it is held across
+        // the gap between slots so the next turn hands off cleanly), so a
+        // truthy key alone is not proof anything is anchoring the tail.
+        if (followActiveAssistantRow()) return
         const trailing = attached.querySelector<HTMLElement>(
           '.event-list-trailing-region',
         )
@@ -1125,10 +1128,10 @@ export function useChatScrollManagement({
             containerRect.top +
             attached.scrollTop
           : attached.scrollHeight
-        const target = Math.max(
-          0,
-          contentBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
-        )
+        const target = resolveIdleTailTarget({
+          contentBottom,
+          clientHeight: attached.clientHeight,
+        })
         const distFromTarget = target - attached.scrollTop
         if (distFromTarget <= 0) return
         // The follow latch alone isn't enough of a gate here: it also stays
@@ -1286,15 +1289,14 @@ export function useChatScrollManagement({
         scheduleFollowActiveAssistantRow()
       })
 
-      // Agent card mounts route through their own channel (not the keyed
-      // follow notify) because they must fire even when no follow key is
-      // active — see `notifyChatContentGrowth`.
+      // Agent card mounts and the working indicator route through their own
+      // channel (not the keyed follow notify) because they must fire even when
+      // no follow key is active — see `notifyChatContentGrowth`. Always go
+      // through the idle path: it prefers the keyed follow when a row is
+      // genuinely streaming and settles toward the tail when one isn't, which
+      // a truthy-key check here can't distinguish (the key outlives its row).
       const unsubscribeGrowth = subscribeChatContentGrowth(() => {
         if (!followRef.current) return
-        if (getAssistantScrollFollowKey()) {
-          scheduleFollowActiveAssistantRow()
-          return
-        }
         scheduleFollowIdleContentGrowth()
       })
 

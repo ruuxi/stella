@@ -27,7 +27,8 @@
  *    timeline wrapper's `:has(--vacated)` rule then collapses the slot so an
  *    idle chat carries no ghost gutter.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
 import {
   getInlineWorkingIndicatorExitDelayMs,
   INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS,
@@ -145,6 +146,16 @@ export function InlineWorkingIndicator({
   // turn replaces the wrapper entirely (different React key in
   // `ChatTimeline`), at which point the new wrapper occupies the slot.
   const showInner = renderShell;
+
+  // The indicator is its own timeline item below the assistant row, so it
+  // extends the live tail without touching any subtree the keyed scroll-follow
+  // watches — nothing would re-run targeting for it, and the row-only follow
+  // would leave it parked under the viewport edge. Announce the growth the way
+  // the inline cards do; the scroll surfaces decide whether to act on it.
+  useLayoutEffect(() => {
+    if (!showInner) return;
+    notifyChatContentGrowth();
+  }, [showInner]);
 
   return (
     <div
