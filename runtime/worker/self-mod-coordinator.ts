@@ -50,7 +50,14 @@ import type { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
 
 export type PendingSelfModApply = {
-  commitHash: string;
+  /**
+   * Stable identity for this pending change: the self-mod run id. The entry is
+   * created from the run's tracked writes, which exist whether or not the
+   * commit landed, so the card never has to wait on git.
+   */
+  applyId: string;
+  /** Filled in when the run's commit lands; gates the Undo affordance only. */
+  commitHash?: string;
   applyResult: ApplyResult;
   conversationId: string;
   files: string[];
@@ -146,13 +153,21 @@ export type SelfModCoordinatorDeps = {
   getStoreModService: () => StoreModService | null;
   getRuntimeStore: () => RuntimeStore | null;
   getRepoRoot: () => string | null;
+  /** Keyed by `applyId` (the self-mod run id), in finalize order. */
   getPendingSelfModApplies: () => Map<string, PendingSelfModApply>;
   patchSelfModApplyStatus: (args: {
     conversationId: string;
     eventId?: string;
-    commitHash: string;
+    applyId?: string;
+    commitHash?: string;
     status: "pending" | "applied";
   }) => void;
+  /**
+   * A pending card was just staged. Lets the server attach it to the
+   * conversation's latest assistant reply when the run finalized after that
+   * turn already ended (the background-agent case), which `onEnd` cannot see.
+   */
+  onPendingApplyStaged?: (conversationId: string) => void;
 };
 
 // Combine several deferred apply batches into a single transition so a
@@ -177,6 +192,14 @@ const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
     (result) => result.hasFullReloadRelevantPaths,
   ),
 });
+
+/**
+ * Repo-relative paths the run actually wrote, straight from the contention
+ * tracker. Used for the card's file list when no commit landed to supply one.
+ */
+const collectDecisionPaths = (decision: ApplyResult): string[] => [
+  ...new Set(decision.appliedRuns.flatMap((run) => run.paths)),
+];
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -217,6 +240,7 @@ export const createSelfModCoordinator = (
     getRepoRoot,
     getPendingSelfModApplies,
     patchSelfModApplyStatus,
+    onPendingApplyStaged,
   } = deps;
 
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
@@ -332,8 +356,11 @@ export const createSelfModCoordinator = (
         ),
       ),
     ];
-    const { requiresFullReload, requiresRuntimeRestart, requiresProcessRestart } =
-      deriveApplyTransitionRequirements(applyResult);
+    const {
+      requiresFullReload,
+      requiresRuntimeRestart,
+      requiresProcessRestart,
+    } = deriveApplyTransitionRequirements(applyResult);
     pendingApplyBatches.set(transitionId, {
       applyResult,
       requiresFullReload,
@@ -491,21 +518,37 @@ export const createSelfModCoordinator = (
         return;
       }
       // Author runs defer the apply: the user applies by clicking
-      // "Update" on the pending card. The card is matched back to this
-      // stash in `onEnd` by commit hash (reliable; no run-id correlation
-      // needed). A change that never gets clicked stays committed on
-      // disk and goes live on the next restart. Every other mode
-      // (install/update/uninstall/desktop-update) has no chat surface
-      // to host a card — their conversations are background threads —
-      // so they auto-apply under the morph cover instead.
+      // "Update" on the pending card. The card describes the run's tracked
+      // writes, so it is staged here whether or not the commit produced a
+      // hash — applying is an HMR swap of content already on disk, and the
+      // in-memory snapshots the swap replays were captured at write time.
+      // A change that never gets clicked stays on disk and goes live on the
+      // next restart. Every other mode (install/update/uninstall/
+      // desktop-update) has no chat surface to host a card — their
+      // conversations are background threads — so they auto-apply under the
+      // morph cover instead.
       const applyMode = selfModRunApplyModes.get(runId);
-      if (finalized?.commitHash && applyMode === "author") {
-        getPendingSelfModApplies().set(finalized.commitHash, {
-          commitHash: finalized.commitHash,
+      if (applyMode === "author") {
+        if (!finalized?.commitHash) {
+          // Undo resolves through the commit's Stella trailers, so without a
+          // commit the card can still apply but will never offer Undo.
+          console.warn(
+            `[self-mod] Run ${runId} produced no commit; its update card will not offer Undo.`,
+          );
+        }
+        getPendingSelfModApplies().set(runId, {
+          applyId: runId,
+          ...(finalized?.commitHash
+            ? { commitHash: finalized.commitHash }
+            : {}),
           applyResult: decision,
           conversationId: conversationId ?? "",
-          files: finalized.files,
+          files: finalized?.files ?? collectDecisionPaths(decision),
         });
+        // A background agent commonly finalizes after the user turn already
+        // ended, so `onEnd` has no card to attach. Nudge the server to attach
+        // any now-stageable card to the conversation's latest reply.
+        onPendingApplyStaged?.(conversationId ?? "");
         return;
       }
       await dispatchApplyBatch(decision);
@@ -553,9 +596,7 @@ export const createSelfModCoordinator = (
       try {
         await controller.beginRun(runId);
         const absolutePaths = paths.map((filePath) =>
-          path.isAbsolute(filePath)
-            ? filePath
-            : path.join(repoRoot, filePath),
+          path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath),
         );
         if (absolutePaths.length > 0) {
           externalSelfModPathsByRun.set(runId, absolutePaths);
@@ -760,14 +801,10 @@ export const createSelfModCoordinator = (
       return result;
     } catch (err) {
       if (runRegisteredWithHmr) {
-        await controller
-          .releaseRuns([syntheticRunId])
-          .catch(() => undefined);
+        await controller.releaseRuns([syntheticRunId]).catch(() => undefined);
       }
       if (runtimeReloadPaused) {
-        await releaseRuntimeReloadFor([syntheticRunId]).catch(
-          () => undefined,
-        );
+        await releaseRuntimeReloadFor([syntheticRunId]).catch(() => undefined);
       }
       selfModRunRootIds.delete(syntheticRunId);
       throw err;
@@ -779,55 +816,58 @@ export const createSelfModCoordinator = (
   }: {
     commitHash?: string;
   }): Promise<RuntimeSelfModApplyResult> => {
+    // Applying drains every staged change rather than just the clicked one, so
+    // the incoming hash only matters for the lost-stash fallback below and for
+    // the reported result. A card staged before its commit landed has no hash
+    // to send, which is fine — it is still in the stash.
     const resolvedCommitHash = commitHash?.trim();
-    if (!resolvedCommitHash) {
-      throw new Error("Self-mod commit hash is required.");
-    }
     const repoRoot = getRepoRoot();
     if (!repoRoot) {
       throw new Error("Worker has not been initialized.");
     }
     const controller = getController();
-    // Clicking "Update" brings Stella fully up to date: git is linear and the
-    // disk already holds the combined state, so drain every pending change in
-    // commit order, merge them into a single transition (one morph cover, one
-    // worker restart, all reload pauses released together), and flip every
-    // pending card to "applied". `Map` preserves insertion order, which
-    // matches commit order here.
+    // Clicking "Update" brings Stella fully up to date: the disk already holds
+    // the combined state, so drain every pending change in finalize order,
+    // merge them into a single transition (one morph cover, one worker restart,
+    // all reload pauses released together), and flip every pending card to
+    // "applied". `Map` preserves insertion order, which is finalize order.
     const pendingSelfModApplies = getPendingSelfModApplies();
     const entries = [...pendingSelfModApplies.values()];
 
     if (entries.length === 0) {
-      // Stash lost (e.g. the worker restarted since staging). The committed
-      // change is already on disk; adopt it with a clean reload and a
-      // best-effort status patch.
+      // Stash lost (e.g. the worker restarted since staging). The change is
+      // already on disk; adopt it with a clean reload and a best-effort status
+      // patch. Without a commit there is nothing to look the conversation up
+      // by, so the card just stays as it is.
       await controller?.forceResumeAll().catch((error) => {
         console.warn(
           "[self-mod-hmr] Failed to resume deferred self-mod state after apply miss:",
           (error as Error).message,
         );
       });
-      const [summary] = await listGitCommitsBySelector(
-        repoRoot,
-        { commitHashes: [resolvedCommitHash] },
-        4_000,
-      ).catch(() => []);
-      if (summary?.conversationId) {
-        patchSelfModApplyStatus({
-          conversationId: summary.conversationId,
-          commitHash: resolvedCommitHash,
-          status: "applied",
-        });
+      if (resolvedCommitHash) {
+        const [summary] = await listGitCommitsBySelector(
+          repoRoot,
+          { commitHashes: [resolvedCommitHash] },
+          4_000,
+        ).catch(() => []);
+        if (summary?.conversationId) {
+          patchSelfModApplyStatus({
+            conversationId: summary.conversationId,
+            commitHash: resolvedCommitHash,
+            status: "applied",
+          });
+        }
       }
       return {
-        commitHash: resolvedCommitHash,
+        ...(resolvedCommitHash ? { commitHash: resolvedCommitHash } : {}),
         applied: false,
         message: "Pending self-mod apply was not found.",
       };
     }
 
     for (const entry of entries) {
-      pendingSelfModApplies.delete(entry.commitHash);
+      pendingSelfModApplies.delete(entry.applyId);
     }
     await dispatchApplyBatch(
       mergePendingApplyResults(entries.map((entry) => entry.applyResult)),
@@ -836,12 +876,18 @@ export const createSelfModCoordinator = (
       patchSelfModApplyStatus({
         conversationId: entry.conversationId,
         eventId: entry.assistantMessageEventId,
-        commitHash: entry.commitHash,
+        applyId: entry.applyId,
+        ...(entry.commitHash ? { commitHash: entry.commitHash } : {}),
         status: "applied",
       });
     }
+    // Report the clicked change's commit when the caller named one, else the
+    // newest committed change in the batch we just applied.
+    const reportedCommitHash =
+      resolvedCommitHash ??
+      [...entries].reverse().find((entry) => entry.commitHash)?.commitHash;
     return {
-      commitHash: resolvedCommitHash,
+      ...(reportedCommitHash ? { commitHash: reportedCommitHash } : {}),
       applied: true,
     };
   };

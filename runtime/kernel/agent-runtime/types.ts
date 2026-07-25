@@ -27,14 +27,14 @@ import type {
   FileChangeRecord,
   ProducedFileRecord,
 } from "../../contracts/file-changes.js";
-import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
+import type { SelfModCommitAppliedPayload } from "../../contracts/local-chat.js";
 
 export type SelfModMonitor = {
   getBaselineHead: (repoRoot: string) => Promise<string | null>;
   detectAppliedSince: (args: {
     repoRoot: string;
     sinceHead: string | null;
-  }) => Promise<SelfModAppliedPayload | null>;
+  }) => Promise<SelfModCommitAppliedPayload | null>;
 };
 
 export type RuntimeStreamEvent = {
@@ -139,7 +139,7 @@ export type RuntimeEndEvent = {
   userMessageId: string;
   finalText: string;
   persisted: boolean;
-  selfModApplied?: SelfModAppliedPayload;
+  selfModApplied?: SelfModCommitAppliedPayload;
   fileChanges?: FileChangeRecord[];
   producedFiles?: ProducedFileRecord[];
   uiVisibility?: "visible" | "hidden";

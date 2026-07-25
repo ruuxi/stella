@@ -192,10 +192,32 @@ export type ChannelEnvelope = {
  * row (survives renderer reload, no separate in-memory map).
  */
 export type SelfModAppliedPayload = {
-  commitHash: string;
+  /**
+   * Stable card identity — the self-mod run id. The card is built from the
+   * run's tracked writes when the run finishes, so it exists before (and
+   * independently of) the commit. Absent on rows written before the card was
+   * decoupled from commit timing; those identify by `commitHash` alone.
+   */
+  applyId?: string;
+  /**
+   * Set once the run's commit lands. Only Undo needs it, so that affordance
+   * stays hidden until it arrives — a run whose commit failed keeps a working
+   * Update button and simply never offers Undo.
+   */
+  commitHash?: string;
   files: string[];
   batchIndex: number;
   status?: "pending" | "applied";
+};
+
+/**
+ * A self-mod commit detected in git (a run's baseline..HEAD window). Always
+ * carries its hash because it is read straight off a commit — unlike the
+ * persisted card above, which is staged from tracked writes and so can exist
+ * before any commit does.
+ */
+export type SelfModCommitAppliedPayload = SelfModAppliedPayload & {
+  commitHash: string;
 };
 
 export type MessagePayload = {

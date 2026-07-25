@@ -15,7 +15,7 @@ import type {
   SubagentRunOptions,
   SubagentRunResult,
 } from "./types.js";
-import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
+import type { SelfModCommitAppliedPayload } from "../../contracts/local-chat.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.completion");
@@ -144,7 +144,7 @@ const emitAgentEndHook = async (
     messagesSnapshot: AgentMessage[];
     orchestratorTokenEstimate?: number;
   },
-): Promise<SelfModAppliedPayload | null> => {
+): Promise<SelfModCommitAppliedPayload | null> => {
   if (!opts.hookEmitter) {
     return null;
   }

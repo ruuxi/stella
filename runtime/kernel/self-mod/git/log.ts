@@ -1,5 +1,5 @@
 import type { SelfModCommitSummary } from "../../../contracts/index.js";
-import type { SelfModAppliedPayload } from "../../../contracts/local-chat.js";
+import type { SelfModCommitAppliedPayload } from "../../../contracts/local-chat.js";
 import {
   assertGitRepository,
   normalizeGitPath,
@@ -594,14 +594,14 @@ export const orderCommitHashesChronologically = async (args: {
 
 /**
  * Detect whether new self-mod commits landed on `repoRoot` since
- * `sinceHead`. Returns a `SelfModAppliedPayload` describing the most
+ * `sinceHead`. Returns a `SelfModCommitAppliedPayload` describing the most
  * recent commit so the runtime can surface an undo affordance against
  * it. Returns null when no new commits exist.
  */
 export const detectSelfModAppliedSince = async (args: {
   repoRoot: string;
   sinceHead: string | null;
-}): Promise<SelfModAppliedPayload | null> => {
+}): Promise<SelfModCommitAppliedPayload | null> => {
   const { repoRoot, sinceHead } = args;
   await assertGitRepository(repoRoot);
 

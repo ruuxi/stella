@@ -26,6 +26,12 @@ export function SelfModUndoButton({
     (selfModApplied.status ?? "applied") === "pending" ? "pending" : "idle",
   );
 
+  // Undo reverts the run's commit, so it can only be offered once that commit
+  // exists. The card itself is staged from the run's tracked writes and can
+  // arrive first; when the commit lands the row is patched with its hash and
+  // the button appears. A run whose commit failed never gets one.
+  const canUndo = Boolean(selfModApplied.commitHash);
+
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearConfirmTimer = useCallback(() => {
     if (confirmTimerRef.current) {
@@ -65,6 +71,7 @@ export function SelfModUndoButton({
   }, [selfModApplied.commitHash, state]);
 
   const handleUndo = useCallback(async () => {
+    if (!selfModApplied.commitHash) return;
     // First click arms the confirmation; auto-disarms after a few seconds.
     if (state === "idle") {
       setState("confirming");
@@ -80,7 +87,10 @@ export function SelfModUndoButton({
     clearConfirmTimer();
     setState("reverting");
     try {
-      await window.electronAPI?.agent.selfModRevert(selfModApplied.commitHash, 1);
+      await window.electronAPI?.agent.selfModRevert(
+        selfModApplied.commitHash,
+        1,
+      );
       setState("reverted");
     } catch (err) {
       console.error("Self-mod revert failed:", err);
@@ -116,7 +126,7 @@ export function SelfModUndoButton({
         >
           Update
         </button>
-      ) : state === "idle" || state === "confirming" ? (
+      ) : (state === "idle" || state === "confirming") && canUndo ? (
         <button
           type="button"
           className={`selfmod-card__action${

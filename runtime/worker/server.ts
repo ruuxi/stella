@@ -154,6 +154,10 @@ import {
   recordSelfModRevertNotice,
   type PendingSelfModApply,
 } from "./self-mod-coordinator.js";
+import {
+  buildSelfModCardPayload,
+  selectUnattachedPendingCards,
+} from "./self-mod-cards.js";
 import type { StellaSourcePack } from "../kernel/self-mod/stella-source-control.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
@@ -352,7 +356,14 @@ type WorkerState = {
   runnerReadyPromise: Promise<RuntimeRunner> | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
+  /** Keyed by `applyId` (the self-mod run id), in finalize order. */
   pendingSelfModApplies: Map<string, PendingSelfModApply>;
+  /**
+   * Latest persisted assistant reply per conversation. A self-mod run that
+   * finalizes after its turn already ended (background agents) has no live
+   * `onEnd` closure to read, so the card attaches against this instead.
+   */
+  lastAssistantEventIdByConversation: Map<string, string>;
   /**
    * Persistent ring buffer for streaming run events. Every event we emit
    * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
@@ -372,6 +383,7 @@ type WorkerState = {
 };
 
 type StoredSelfModApplied = {
+  applyId?: string;
   commitHash?: string;
   files?: string[];
   batchIndex?: number;
@@ -622,6 +634,7 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionStore = null;
   state.selfModHmrController = null;
   state.pendingSelfModApplies.clear();
+  state.lastAssistantEventIdByConversation.clear();
   state.runEventLog?.stop();
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
@@ -666,6 +679,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     deviceId: null,
     selfModHmrController: null,
     pendingSelfModApplies: new Map(),
+    lastAssistantEventIdByConversation: new Map(),
     runEventLog: null,
     cliBridgeServer: null,
   };
@@ -676,16 +690,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   // Importing them on first use (and building the runner in the post-ready
   // background slot) keeps that parse off the worker-ready path. The dynamic
   // import()s are also what let esbuild split them into their own chunk.
-  let oneShotCompletionModule:
-    | Promise<typeof import("../kernel/agent-runtime/one-shot-completion.js")>
-    | null = null;
+  let oneShotCompletionModule: Promise<
+    typeof import("../kernel/agent-runtime/one-shot-completion.js")
+  > | null = null;
   const loadOneShotCompletion = () =>
     (oneShotCompletionModule ??= import(
       "../kernel/agent-runtime/one-shot-completion.js"
     ));
-  let chatPromptContextModule:
-    | Promise<typeof import("../kernel/chat-prompt-context.js")>
-    | null = null;
+  let chatPromptContextModule: Promise<
+    typeof import("../kernel/chat-prompt-context.js")
+  > | null = null;
   const loadChatPromptContext = () =>
     (chatPromptContextModule ??= import("../kernel/chat-prompt-context.js"));
 
@@ -776,17 +790,17 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
     const runtimeMetadata =
       args.responseTarget || Number.isFinite(args.streamStartedAtMs)
-      ? {
-          runtime: {
-            ...(args.responseTarget
-              ? { responseTarget: args.responseTarget }
-              : {}),
-            ...(Number.isFinite(args.streamStartedAtMs)
-              ? { streamStartedAtMs: args.streamStartedAtMs }
-              : {}),
-          },
-        }
-      : undefined;
+        ? {
+            runtime: {
+              ...(args.responseTarget
+                ? { responseTarget: args.responseTarget }
+                : {}),
+              ...(Number.isFinite(args.streamStartedAtMs)
+                ? { streamStartedAtMs: args.streamStartedAtMs }
+                : {}),
+            },
+          }
+        : undefined;
 
     const eventId = `assistant-msg-${args.runId}-${args.seq}`;
     const event = ensureChatStore().appendEvent({
@@ -824,7 +838,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     conversationId: string;
     eventId: string;
     selfModApplied: {
-      commitHash: string;
+      applyId: string;
+      commitHash?: string;
       files: string[];
       batchIndex: number;
       status?: "pending" | "applied";
@@ -840,12 +855,28 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
   };
 
+  /**
+   * Patch a self-mod card in place. Identifies the row by `eventId` when the
+   * caller knows it, else by `applyId` (falling back to `commitHash` for cards
+   * persisted before the decoupling). `commitHash` is also written through, so
+   * a card staged before its commit landed gains its Undo affordance here.
+   */
   const patchSelfModApplyStatus = (args: {
     conversationId: string;
     eventId?: string;
-    commitHash: string;
+    applyId?: string;
+    commitHash?: string;
     status: "pending" | "applied";
   }): void => {
+    const matchesCard = (
+      payload: StoredSelfModApplied | undefined,
+    ): boolean => {
+      if (!payload) return false;
+      if (args.applyId && payload.applyId) {
+        return payload.applyId === args.applyId;
+      }
+      return Boolean(args.commitHash) && payload.commitHash === args.commitHash;
+    };
     const current = state.chatStore
       ?.listEvents(args.conversationId, 500)
       .find((event) => {
@@ -855,13 +886,15 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const payload = event.payload as
           | { selfModApplied?: StoredSelfModApplied }
           | undefined;
-        return payload?.selfModApplied?.commitHash === args.commitHash;
+        return matchesCard(payload?.selfModApplied);
       });
     const currentPayload = current?.payload as
       | { selfModApplied?: StoredSelfModApplied }
       | undefined;
     const currentSelfMod = currentPayload?.selfModApplied;
-    if (!current || currentSelfMod?.commitHash !== args.commitHash) {
+    // When the row was found by `eventId` we still confirm it is the card the
+    // caller meant, so a stale event id can't repoint another run's card.
+    if (!current || !currentSelfMod || !matchesCard(currentSelfMod)) {
       return;
     }
     const updated = ensureChatStore().mergeEventPayload({
@@ -870,12 +903,47 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       patch: {
         selfModApplied: {
           ...currentSelfMod,
+          ...(args.commitHash ? { commitHash: args.commitHash } : {}),
           status: args.status,
         },
       },
     });
     if (updated) {
       notifyLocalChatUpdated(peer, args.conversationId, updated);
+    }
+  };
+
+  /**
+   * Attach every not-yet-carded pending change for `conversationId` to that
+   * conversation's latest assistant reply.
+   *
+   * Called from `onEnd` for the ordinary case, and again whenever a change is
+   * staged, which is what makes a background agent that finalizes after the
+   * user's turn already ended still surface a card.
+   */
+  const attachPendingSelfModCards = (
+    conversationId: string,
+    eventId?: string | null,
+  ): void => {
+    const trimmedConversationId = conversationId?.trim();
+    if (!trimmedConversationId) return;
+    const targetEventId =
+      eventId?.trim() ||
+      state.lastAssistantEventIdByConversation.get(trimmedConversationId);
+    // No assistant reply to hang the card under yet. The change stays staged,
+    // so the next reply in this conversation picks it up.
+    if (!targetEventId) return;
+    const unattached = selectUnattachedPendingCards(
+      state.pendingSelfModApplies.values(),
+      trimmedConversationId,
+    );
+    for (const pending of unattached) {
+      pending.assistantMessageEventId = targetEventId;
+      attachSelfModToAssistantMessage({
+        conversationId: trimmedConversationId,
+        eventId: targetEventId,
+        selfModApplied: buildSelfModCardPayload(pending),
+      });
     }
   };
 
@@ -887,6 +955,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     getRepoRoot: () => state.init?.stellaAppDir ?? null,
     getPendingSelfModApplies: () => state.pendingSelfModApplies,
     patchSelfModApplyStatus,
+    onPendingApplyStaged: (conversationId) =>
+      attachPendingSelfModCards(conversationId),
   });
 
   const ensureRunner = () => {
@@ -1758,9 +1828,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       let composerImageTarget: ImageCapTarget | undefined;
       try {
         composerImageTarget =
-          (await (await ensureRunnerInitialized()).resolveImageTarget(
-            payload.agentType,
-          )) ?? undefined;
+          (await (
+            await ensureRunnerInitialized()
+          ).resolveImageTarget(payload.agentType)) ?? undefined;
       } catch {
         composerImageTarget = undefined;
       }
@@ -2021,12 +2091,22 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               seq: ev.seq,
               timezone: payload.timezone,
               responseTarget: ev.responseTarget,
-              ...(streamStartedAtMs !== undefined
-                ? { streamStartedAtMs }
-                : {}),
+              ...(streamStartedAtMs !== undefined ? { streamStartedAtMs } : {}),
             });
             if (assistantEventId) {
               lastAssistantMessageEventId = assistantEventId;
+              // Also remembered per conversation, so a self-mod run that
+              // finalizes after this turn ends still finds a reply to card.
+              state.lastAssistantEventIdByConversation.set(
+                payload.conversationId,
+                assistantEventId,
+              );
+              // A change staged before this reply existed (background agent
+              // that finished mid-turn) can attach now that one does.
+              attachPendingSelfModCards(
+                payload.conversationId,
+                assistantEventId,
+              );
             }
             // Boundary marker on the same wire as `STREAM` chunks so the
             // renderer can reset its in-flight streaming buffer before
@@ -2072,9 +2152,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 // ends with a tool call, the renderer keeps the working
                 // indicator up across the gap until the tool starts, instead
                 // of dismissing on the painted preamble text.
-                ...(ev.followedByToolCall
-                  ? { followedByToolCall: true }
-                  : {}),
+                ...(ev.followedByToolCall ? { followedByToolCall: true } : {}),
               });
             }
           },
@@ -2369,43 +2447,22 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               // one chat reply, patch `selfModApplied` onto the LAST
               // persisted assistant row so the inline "Undo changes"
               // affordance sits under the post-tool answer.
-              // When the agent commits but says nothing,
+              // When the agent changes something but says nothing,
               // `lastAssistantMessageEventId` is null and we drop the
               // inline button for that turn — accepted trade-off
               // against the alternative of a floating-button-only
               // empty bubble.
-              // Card attach is driven by the deferred-apply STASH, not by
-              // `ev.selfModApplied` (detectAppliedSince): with background
-              // spawn_agent the commit usually lands after the user turn ends
-              // and before the follow-up turn's baseline, so neither turn's
-              // baseline..HEAD window contains it and `ev.selfModApplied` is
-              // unreliably false. The stash (from finalizeRun) always carries
-              // the commit + files, so attach any not-yet-carded pending change
-              // for this conversation onto the latest assistant reply.
-              if (lastAssistantMessageEventId) {
-                for (const [
-                  commitHash,
-                  pending,
-                ] of state.pendingSelfModApplies) {
-                  if (
-                    pending.conversationId !== payload.conversationId ||
-                    pending.assistantMessageEventId
-                  ) {
-                    continue;
-                  }
-                  pending.assistantMessageEventId = lastAssistantMessageEventId;
-                  attachSelfModToAssistantMessage({
-                    conversationId: payload.conversationId,
-                    eventId: lastAssistantMessageEventId,
-                    selfModApplied: {
-                      commitHash,
-                      files: pending.files,
-                      batchIndex: 0,
-                      status: "pending",
-                    },
-                  });
-                }
-              }
+              // Card attach is driven by the deferred-apply stash, never by
+              // `ev.selfModApplied` (detectAppliedSince), which only sees
+              // commits inside this turn's baseline..HEAD window. The stash
+              // entry is written from the run's tracked writes when the run
+              // finalizes, so it is present here whether or not a commit
+              // landed; a run that finalizes after this turn ends attaches
+              // from `onPendingApplyStaged` instead.
+              attachPendingSelfModCards(
+                payload.conversationId,
+                lastAssistantMessageEventId,
+              );
             }
             if (isHiddenRun) {
               if (lastVisibleRunId) {
@@ -2695,9 +2752,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       let automationImageTarget: ImageCapTarget | undefined;
       try {
         automationImageTarget =
-          (await (await ensureRunnerInitialized()).resolveImageTarget(
-            payload.agentType,
-          )) ?? undefined;
+          (await (
+            await ensureRunnerInitialized()
+          ).resolveImageTarget(payload.agentType)) ?? undefined;
       } catch {
         automationImageTarget = undefined;
       }
@@ -3147,9 +3204,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         ]
           .filter(Boolean)
           .join("\n");
-        const beforeRemovalHead = await getGitHead(state.init.stellaAppDir).catch(
-          () => null,
-        );
+        const beforeRemovalHead = await getGitHead(
+          state.init.stellaAppDir,
+        ).catch(() => null);
         const blockingResult = await runner.runBlockingLocalAgent({
           conversationId: `store-uninstall:${payload.packageId}`,
           description: `Remove ${payload.packageId} store add-on`,
@@ -3166,9 +3223,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         if (blockingResult.status !== "ok") {
           throw new Error(blockingResult.error);
         }
-        const afterRemovalHead = await getGitHead(state.init.stellaAppDir).catch(
-          () => null,
-        );
+        const afterRemovalHead = await getGitHead(
+          state.init.stellaAppDir,
+        ).catch(() => null);
         if (!afterRemovalHead || afterRemovalHead === beforeRemovalHead) {
           throw new Error(
             "Store uninstall did not apply any changes, so the add-on remains installed.",
@@ -3206,7 +3263,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const runner = ensureRunner();
       const service = ensureStoreModService();
 
-      const headBeforeRun = await getGitHead(init.stellaAppDir).catch(() => null);
+      const headBeforeRun = await getGitHead(init.stellaAppDir).catch(
+        () => null,
+      );
       const baselineDirtyFiles = new Set(
         normalizeStoreInstallRollbackPaths(
           await listGitDirtyFiles(init.stellaAppDir).catch(() => []),
@@ -4035,7 +4094,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
       const init = state.init;
       const request = params as RuntimeOneShotCompletionRequest;
-      return await (await loadOneShotCompletion()).runOneShotCompletion({
+      return await (
+        await loadOneShotCompletion()
+      ).runOneShotCompletion({
         request,
         runtime: {
           stellaAppDir: init.stellaAppDir,

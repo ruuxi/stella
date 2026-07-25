@@ -24,7 +24,10 @@ import {
   createSelfModHmrController,
   type SelfModHmrController,
 } from "../../../../runtime/kernel/self-mod/hmr.js";
-import { getGitHead, listGitDirtyFiles } from "../../../../runtime/kernel/self-mod/git/log.js";
+import {
+  getGitHead,
+  listGitDirtyFiles,
+} from "../../../../runtime/kernel/self-mod/git/log.js";
 import {
   createSelfModCoordinator,
   type PendingSelfModApply,
@@ -54,9 +57,11 @@ type Harness = {
   requests: RecordedRequest[];
   statusPatches: Array<{
     conversationId: string;
-    commitHash: string;
+    applyId?: string;
+    commitHash?: string;
     status: "pending" | "applied";
   }>;
+  stagedConversations: string[];
 };
 
 const harnesses = new Set<Harness>();
@@ -87,7 +92,7 @@ const createHarness = async (): Promise<Harness> => {
   const requests: RecordedRequest[] = [];
   const peer: WorkerPeerLike = {
     notify: () => {},
-    request: async <TResult,>(method: string, params?: unknown) => {
+    request: async <TResult>(method: string, params?: unknown) => {
       requests.push({ method, params });
       return {} as TResult;
     },
@@ -102,6 +107,7 @@ const createHarness = async (): Promise<Harness> => {
   });
   const pendingApplies = new Map<string, PendingSelfModApply>();
   const statusPatches: Harness["statusPatches"] = [];
+  const stagedConversations: string[] = [];
 
   const coordinator = createSelfModCoordinator({
     peer,
@@ -113,9 +119,13 @@ const createHarness = async (): Promise<Harness> => {
     patchSelfModApplyStatus: (args) => {
       statusPatches.push({
         conversationId: args.conversationId,
-        commitHash: args.commitHash,
+        ...(args.applyId ? { applyId: args.applyId } : {}),
+        ...(args.commitHash ? { commitHash: args.commitHash } : {}),
         status: args.status,
       });
+    },
+    onPendingApplyStaged: (conversationId) => {
+      stagedConversations.push(conversationId);
     },
   });
 
@@ -130,6 +140,7 @@ const createHarness = async (): Promise<Harness> => {
     pendingApplies,
     requests,
     statusPatches,
+    stagedConversations,
   };
   harnesses.add(harness);
   return harness;
@@ -170,8 +181,12 @@ const runAgentSelfMod = async (
   relPath: string,
   content: string,
   conversationId: string,
-  mode: "author" | "install" | "update" | "uninstall" | "desktop-update" =
-    "author",
+  mode:
+    | "author"
+    | "install"
+    | "update"
+    | "uninstall"
+    | "desktop-update" = "author",
 ) => {
   // The orchestration layer registers the run with the HMR controller
   // before any writes; the coordinator lifecycle snapshots the git
@@ -217,9 +232,11 @@ describe("self-mod coordinator", () => {
     expect(git(h.repoRoot, ["show", "-s", "--format=%B", head])).toContain(
       "Stella-Conversation: conv-1",
     );
-    // …and the apply is parked behind the pending card, keyed by commit.
-    expect([...h.pendingApplies.keys()]).toEqual([head]);
-    const pending = h.pendingApplies.get(head)!;
+    // …and the apply is parked behind the pending card, keyed by the run that
+    // wrote it (not by commit — the card must not depend on git).
+    expect([...h.pendingApplies.keys()]).toEqual(["run-1"]);
+    const pending = h.pendingApplies.get("run-1")!;
+    expect(pending.applyId).toBe("run-1");
     expect(pending.commitHash).toBe(head);
     expect(pending.conversationId).toBe("conv-1");
     expect(pending.files).toEqual(["desktop/src/feature.tsx"]);
@@ -228,6 +245,118 @@ describe("self-mod coordinator", () => {
     expect(pausedRunIds(h)).toEqual(["run-1"]);
     expect(resumedRunIds(h)).toEqual([]);
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);
+  });
+
+  it("stages the card from tracked writes even when no commit lands", async () => {
+    // Dirty the file BEFORE the run begins so it lands in the run's baseline
+    // and `finalizeSelfModRun` commits nothing (returns null). The write is
+    // still tracked, which is all the card needs — applying is an HMR swap of
+    // content already on disk.
+    await writeRepoFile(
+      h,
+      "desktop/src/preexisting.tsx",
+      "export const a = 1;\n",
+    );
+    const headBefore = await getGitHead(h.repoRoot);
+
+    await h.controller.beginRun("run-nocommit");
+    await h.coordinator.lifecycle.beginRun({
+      runId: "run-nocommit",
+      taskDescription: "Task run-nocommit",
+      taskPrompt: "prompt",
+      conversationId: "conv-nc",
+      mode: "author",
+    });
+    await writeRepoFile(
+      h,
+      "desktop/src/preexisting.tsx",
+      "export const a = 2;\n",
+    );
+    await h.controller.recordWrite("run-nocommit", [
+      path.join(h.repoRoot, "desktop/src/preexisting.tsx"),
+    ]);
+    await h.coordinator.lifecycle.finalizeRun({
+      runId: "run-nocommit",
+      taskDescription: "Task run-nocommit",
+      taskPrompt: "prompt",
+      conversationId: "conv-nc",
+      threadKey: "thread-run-nocommit",
+      succeeded: true,
+    });
+
+    // Nothing was committed…
+    expect(await getGitHead(h.repoRoot)).toBe(headBefore);
+    // …yet the card is staged, identified by the run and with no hash, so the
+    // UI shows Update but withholds Undo.
+    const pending = h.pendingApplies.get("run-nocommit")!;
+    expect(pending).toBeDefined();
+    expect(pending.applyId).toBe("run-nocommit");
+    expect(pending.commitHash).toBeUndefined();
+    expect(pending.conversationId).toBe("conv-nc");
+    expect(pending.files).toEqual(["desktop/src/preexisting.tsx"]);
+    // Still deferred behind the card rather than auto-applied.
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(0);
+  });
+
+  it("signals each staged change so a late-finalizing run still gets a card", async () => {
+    // A background agent finalizes after the user turn already ended, so the
+    // turn's `onEnd` has no card to attach. The staged signal is what lets the
+    // server attach it to the conversation's latest reply instead.
+    await runAgentSelfMod(
+      h,
+      "run-late",
+      "desktop/src/late.tsx",
+      "export const late = true;\n",
+      "conv-late",
+    );
+
+    expect(h.stagedConversations).toEqual(["conv-late"]);
+    expect(h.pendingApplies.get("run-late")?.commitHash).toBe(
+      await getGitHead(h.repoRoot),
+    );
+  });
+
+  it("applies a card that has no commit hash and patches it by applyId", async () => {
+    // The user can click Update on a card whose commit never landed: the id on
+    // the wire is only used for the lost-stash fallback, so an absent hash must
+    // not block the apply.
+    await writeRepoFile(h, "desktop/src/nc2.tsx", "export const a = 1;\n");
+    await h.controller.beginRun("run-nc2");
+    await h.coordinator.lifecycle.beginRun({
+      runId: "run-nc2",
+      taskDescription: "Task run-nc2",
+      taskPrompt: "prompt",
+      conversationId: "conv-nc2",
+      mode: "author",
+    });
+    await writeRepoFile(h, "desktop/src/nc2.tsx", "export const a = 2;\n");
+    await h.controller.recordWrite("run-nc2", [
+      path.join(h.repoRoot, "desktop/src/nc2.tsx"),
+    ]);
+    await h.coordinator.lifecycle.finalizeRun({
+      runId: "run-nc2",
+      taskDescription: "Task run-nc2",
+      taskPrompt: "prompt",
+      conversationId: "conv-nc2",
+      threadKey: "thread-run-nc2",
+      succeeded: true,
+    });
+    expect(h.pendingApplies.get("run-nc2")?.commitHash).toBeUndefined();
+
+    const result = await h.coordinator.applyPendingWithMorph({});
+
+    expect(result.applied).toBe(true);
+    expect(result.commitHash).toBeUndefined();
+    // Card drained and flipped to applied, matched by applyId rather than hash.
+    expect(h.pendingApplies.size).toBe(0);
+    expect(h.statusPatches).toEqual([
+      {
+        conversationId: "conv-nc2",
+        applyId: "run-nc2",
+        status: "applied",
+      },
+    ]);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
   });
 
   it("store install finalize auto-applies through the morph instead of stashing a card", async () => {
@@ -246,9 +375,8 @@ describe("self-mod coordinator", () => {
     expect(h.pendingApplies.size).toBe(0);
     const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
     expect(transitions).toHaveLength(1);
-    const transitionId = (
-      transitions[0]!.params as { transitionId: string }
-    ).transitionId;
+    const transitionId = (transitions[0]!.params as { transitionId: string })
+      .transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(resumedRunIds(h)).toEqual(["run-install"]);
@@ -263,20 +391,15 @@ describe("self-mod coordinator", () => {
       "install-update-conversation",
       "desktop-update",
     );
-    expect(
-      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
-    ).toHaveLength(1);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
 
-    const result =
-      await h.coordinator.externalLifecycle.finishExternalSelfMod({
-        runId: "run-desktop-update",
-        succeeded: true,
-      });
+    const result = await h.coordinator.externalLifecycle.finishExternalSelfMod({
+      runId: "run-desktop-update",
+      succeeded: true,
+    });
 
     expect(result).toEqual({ ok: true, transitioned: true });
-    expect(
-      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
-    ).toHaveLength(1);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
   });
 
   it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {
@@ -307,15 +430,24 @@ describe("self-mod coordinator", () => {
     expect(transitions).toHaveLength(1);
     expect(h.pendingApplies.size).toBe(0);
     expect(h.statusPatches).toEqual([
-      { conversationId: "conv-1", commitHash: firstHead, status: "applied" },
-      { conversationId: "conv-1", commitHash: secondHead, status: "applied" },
+      {
+        conversationId: "conv-1",
+        applyId: "run-1",
+        commitHash: firstHead,
+        status: "applied",
+      },
+      {
+        conversationId: "conv-1",
+        applyId: "run-2",
+        commitHash: secondHead,
+        status: "applied",
+      },
     ]);
     expect(h.coordinator.hasPendingApplyBatches()).toBe(true);
 
     // Host raised the cover and calls back; the worker applies + releases.
-    const transitionId = (
-      transitions[0]!.params as { transitionId: string }
-    ).transitionId;
+    const transitionId = (transitions[0]!.params as { transitionId: string })
+      .transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);

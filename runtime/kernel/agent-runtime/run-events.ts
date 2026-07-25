@@ -38,7 +38,7 @@ import type {
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
 } from "./types.js";
-import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
+import type { SelfModCommitAppliedPayload } from "../../contracts/local-chat.js";
 import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
 const logger = createRuntimeLogger("agent-runtime.events");
@@ -324,7 +324,7 @@ export const createRunEventRecorder = ({
 
     recordRunEnd(args: {
       finalText: string;
-      selfModApplied?: SelfModAppliedPayload;
+      selfModApplied?: SelfModCommitAppliedPayload;
       responseTarget?: RuntimeEndEvent["responseTarget"];
     }): RuntimeEndEvent {
       const seq = nextSeq();
