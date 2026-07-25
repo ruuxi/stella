@@ -730,6 +730,9 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       agent_depth INTEGER NOT NULL,
       max_agent_depth INTEGER,
       parent_agent_id TEXT,
+      -- Retired with the Manager agent type. Kept (nullable, never read or
+      -- written) so existing databases stay schema-compatible without a
+      -- destructive table rebuild.
       manager_turn_state_json TEXT,
       self_mod_metadata_json TEXT,
       model_config_json TEXT,

@@ -7,14 +7,10 @@ import {
   summarizeSkillsSync,
   type SkillsSyncReport,
 } from "./skills-sync.js";
-import {
-  summarizeBundledSync,
-  type BundledSyncReport,
-} from "./bundled-sync.js";
+import { type BundledSyncReport } from "./bundled-sync.js";
 import {
   StalePromptManifestError,
   applyPromptManifestIfCurrent,
-  reconcileBundledManagerPromptFallback,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
   type PromptManifestResolution,
@@ -148,17 +144,6 @@ export const ensureStellaDataDirSeeded = async (
     }
   }
 
-  const managerFallbackSync = await reconcileBundledManagerPromptFallback(
-    stellaDataDir,
-    resolveBundledAgentMetadataDir(stellaAppDir),
-  );
-  const managerFallbackSummary = summarizeBundledSync(managerFallbackSync);
-  if (managerFallbackSummary !== "no-op") {
-    console.log(
-      `[stella-home] manager prompt fallback sync: ${managerFallbackSummary}`,
-    );
-  }
-
   personalitySync ??= { actions: [] };
 
   return {
@@ -207,10 +192,6 @@ export const syncStellaPromptSnapshot = async (
       if (!(error instanceof StalePromptManifestError)) throw error;
     }
   }
-  await reconcileBundledManagerPromptFallback(
-    stellaDataDir,
-    resolveBundledAgentMetadataDir(stellaAppDir),
-  );
   return resolution;
 };
 

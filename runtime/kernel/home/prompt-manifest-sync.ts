@@ -7,6 +7,8 @@ import type { SqliteDatabase } from "../storage/shared.js";
 import {
   STELLA_PROMPT_COUNT,
   STELLA_PROMPT_ID_SET,
+  STELLA_PROMPT_RETIRED_IDS,
+  STELLA_PROMPT_RETIRED_ID_SET,
   STELLA_PROMPT_LEGACY_COUNT,
   STELLA_PROMPT_LEGACY_IDS,
   STELLA_PROMPT_MAX_CONTENT_BYTES,
@@ -21,7 +23,6 @@ import {
 } from "../../contracts/stella-api.js";
 import { ensurePrivateDir } from "../shared/private-fs.js";
 import {
-  createFileEntryAdapter,
   reconcileBundledEntries,
   type BundledEntryAdapter,
   type BundledSyncReport,
@@ -133,8 +134,9 @@ export const parseRemotePromptManifest = (
     !Number.isSafeInteger(candidate.publishedAt) ||
     candidate.publishedAt < 0 ||
     !Array.isArray(candidate.prompts) ||
-    (candidate.prompts.length !== STELLA_PROMPT_COUNT &&
-      candidate.prompts.length !== STELLA_PROMPT_LEGACY_COUNT)
+    candidate.prompts.length < STELLA_PROMPT_LEGACY_COUNT ||
+    candidate.prompts.length >
+      STELLA_PROMPT_COUNT + STELLA_PROMPT_RETIRED_IDS.length
   ) {
     return null;
   }
@@ -144,7 +146,10 @@ export const parseRemotePromptManifest = (
     if (
       !prompt ||
       typeof prompt.id !== "string" ||
-      !STELLA_PROMPT_ID_SET.has(prompt.id) ||
+      !(
+        STELLA_PROMPT_ID_SET.has(prompt.id) ||
+        STELLA_PROMPT_RETIRED_ID_SET.has(prompt.id)
+      ) ||
       ids.has(prompt.id) ||
       typeof prompt.content !== "string" ||
       prompt.content.length === 0 ||
@@ -167,6 +172,12 @@ export const parseRemotePromptManifest = (
   ) {
     return null;
   }
+  // The manifest is kept exactly as published — retired entries included — so
+  // `revision` keeps describing the prompt list it was computed over. Stripping
+  // here instead would make this parser non-idempotent: the stripped value gets
+  // written to the on-disk cache and re-parsed on the next boot, where the
+  // revision would no longer match and the cache would be discarded forever.
+  // Retired ids are skipped at reconciliation instead.
   return candidate as RemotePromptManifest;
 };
 
@@ -787,6 +798,10 @@ const resolveReconciledPrompts = async (
     ["prompts", new Map()],
   ]);
   for (const prompt of manifest.prompts) {
+    // A prompt this app has retired has no bundled agent metadata to prepend,
+    // so it is skipped rather than installed. It stays in the manifest for
+    // revision integrity; it just never becomes a file in home.
+    if (STELLA_PROMPT_RETIRED_ID_SET.has(prompt.id)) continue;
     const area = prompt.id.startsWith("agents/") ? "agents" : "prompts";
     const id = prompt.id.slice(area.length + 1, -3);
     const content =
@@ -871,26 +886,3 @@ export const reconcileRemotePromptManifest = async (
   }
   return reports;
 };
-
-/**
- * Transitional fallback for app versions that know about the Manager agent
- * before the deployed prompt manifest does. Remote reconciliation always runs
- * first; this only fills a missing home file and participates in the same
- * hash-history manifest, so a later remote Manager prompt can replace an
- * untouched fallback without trampling user edits.
- */
-export const reconcileBundledManagerPromptFallback = async (
-  stellaDataDir: string,
-  agentMetadataDir: string,
-): Promise<BundledSyncReport> =>
-  await reconcileBundledEntries(
-    agentMetadataDir,
-    path.join(stellaDataDir, "agents"),
-    createFileEntryAdapter(".md"),
-    {
-      includeBundledId: (id) => id === "manager",
-      sourceRevision: "bundled-manager-fallback",
-      seedMissingOnly: true,
-      removeObsolete: false,
-    },
-  );
