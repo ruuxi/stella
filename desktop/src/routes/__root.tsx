@@ -77,11 +77,8 @@ import {
   openHomeDisplayTab,
 } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
-import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
-  dispatchClosePanel,
-  dispatchOpenWorkspacePanel,
   STELLA_COMPOSE_TEXT_EVENT,
   type StellaOpenPanelChatDetail,
   type StellaComposeTextDetail,
@@ -362,16 +359,6 @@ function RootChrome() {
     ensureChatDisplayTab();
   }, []);
 
-  const handleContextMenuOpenPanel = useCallback(() => {
-    dispatchOpenWorkspacePanel();
-  }, []);
-
-  const handleContextMenuClosePanel = useCallback(() => {
-    dispatchClosePanel();
-  }, []);
-
-  const isContextMenuPanelOpen = panelOpen;
-
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
     rightSidebarRef,
     isMiniWindow,
@@ -546,11 +533,6 @@ function RootChrome() {
 
       {!isFullWindow ? <ShellTopBar /> : null}
 
-      <StellaContextMenu
-        isOpen={isContextMenuPanelOpen}
-        onOpen={handleContextMenuOpenPanel}
-        onClose={handleContextMenuClosePanel}
-      >
         <div className="content-area">
           <div
             className={`persistent-chat-surface${isOnChatRoute ? " persistent-chat-surface--active" : ""}`}
@@ -594,7 +576,6 @@ function RootChrome() {
             />
           ) : null}
         </div>
-      </StellaContextMenu>
 
       <Suspense fallback={null}>
         <RightSidebar ref={rightSidebarRef} />

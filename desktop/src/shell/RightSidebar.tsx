@@ -5,7 +5,6 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -21,10 +20,6 @@ import {
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
-import {
-  dispatchClosePanel,
-  dispatchOpenWorkspacePanel,
-} from "@/shared/lib/stella-orb-chat";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
@@ -396,19 +391,6 @@ export const RightSidebar = forwardRef<
     displayTabs.setPanelWidth(null);
   }, []);
 
-  const handleContextMenu = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
-      event.preventDefault();
-
-      if (panelOpen) {
-        dispatchClosePanel();
-      } else {
-        dispatchOpenWorkspacePanel();
-      }
-    },
-    [panelOpen],
-  );
-
   const resolvedPortalTarget =
     portalTarget ?? document.querySelector(".full-body") ?? document.body;
 
@@ -429,7 +411,6 @@ export const RightSidebar = forwardRef<
       }`}
       aria-label="Workspace"
       aria-hidden={!shellVisible}
-      onContextMenu={handleContextMenu}
     >
       {panelOpen ? (
         <div

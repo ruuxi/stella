@@ -17,6 +17,7 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
+import { ShellRadialDial } from "./radial/ShellRadialDial";
 import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
 import "./full-shell.layout.css";
 import "./mobile.css";
@@ -236,6 +237,10 @@ export const FullShell = () => {
           <>
             <RouterProvider router={router} />
             <AskStellaSelectionChip />
+            {/* Mounted beside the router rather than inside it: the dial is
+                raised from anywhere on the shell surface, including the
+                display panel, which portals out of the route tree. */}
+            {!isMiniWindow ? <ShellRadialDial /> : null}
           </>
         ) : needsOnboarding ? (
           <OnboardingExperience

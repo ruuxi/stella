@@ -1,0 +1,17 @@
+/* The shell's radial dial host — see `ShellRadialDial.tsx`.
+
+   Fixed to the viewport and centered on the press point. It never takes
+   pointer events: the gesture runs on window-level listeners, so the dial only
+   has to paint. Letting it hit-test would also mean the release that commits a
+   selection could land on the dial itself rather than the surface underneath. */
+
+.shell-radial-dial {
+  position: fixed;
+  z-index: 9000;
+  pointer-events: none;
+  display: none;
+}
+
+.shell-radial-dial[data-visible="true"] {
+  display: block;
+}

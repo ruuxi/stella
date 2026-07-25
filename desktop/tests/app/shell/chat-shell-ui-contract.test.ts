@@ -9,7 +9,7 @@ import {
   getDisplayedActivityPillState,
   shouldTrayHoldSearchLayout,
 } from "@/app/chat/ComposerActivityPill";
-import { isComposerContextMenuTarget } from "@/shell/context-menu/StellaContextMenu";
+import { isRadialGestureExempt } from "@/shell/radial/radial-gesture-target";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
 const SOURCE_ROOT = path.resolve(
@@ -86,16 +86,16 @@ describe("chat shell UI contracts", () => {
     expect(getContextSuggestionLabel(tab)).toBe("Safari — ChatGPT");
   });
 
-  it("allows native context menus inside composer forms only", () => {
+  it("leaves the right button to native menus inside composer forms only", () => {
     const form = document.createElement("form");
     form.dataset.composerContextMenu = "native";
     const textarea = document.createElement("textarea");
     form.appendChild(textarea);
     const outside = document.createElement("div");
 
-    expect(isComposerContextMenuTarget(textarea)).toBe(true);
-    expect(isComposerContextMenuTarget(form)).toBe(true);
-    expect(isComposerContextMenuTarget(outside)).toBe(false);
+    expect(isRadialGestureExempt(textarea)).toBe(true);
+    expect(isRadialGestureExempt(form)).toBe(true);
+    expect(isRadialGestureExempt(outside)).toBe(false);
   });
 
   it("moves suggestion UI into + and keeps search above the composer", () => {
