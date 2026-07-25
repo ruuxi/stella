@@ -1,27 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUp, ChevronUp, Folder } from "@/ui/icons";
+import { ChevronUp, Folder } from "@/ui/icons";
 import { DropOverlay } from "@/app/chat/DropOverlay";
-import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { displayTabs } from "@/features/workspace-display/tab-store";
 import { removeGeneratedMediaItem } from "../payload-to-tab-spec";
-import {
-  MEDIA_ACTIONS,
-  type MediaActionId,
-  type MediaAssetKind,
-  type MediaTabItem,
-} from "./media-actions";
+import type { MediaTabItem } from "./media-item";
 import {
   SUPPORTED_MEDIA_ACCEPT,
   dataTransferHasSupportedMedia,
   importLocalMedia,
   isSupportedMediaFile,
-  readSourceAsDataUri,
 } from "@/features/workspace-display/media-files";
 import { notifyMediaGenerationError } from "@/global/billing/paid-media-tier-toast";
-import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";
-import { AttachedChip } from "./AttachedChip";
 import { MediaActionBar } from "./MediaActionBar";
 import { HeroPrompt } from "./HeroPrompt";
 import "../media-tab.css";
@@ -48,17 +39,11 @@ export const MediaTabContent = ({
       return { sourceId: selectedItemId, selectedId: typeof value === "function" ? value(currentId) : value };
     });
   }, [selectedItemId]);
-  const [prompt, setPrompt] = useState("");
-  const [actionId, setActionId] = useState<MediaActionId>("text_to_image");
-  const [attachedItemId, setAttachedItemId] = useState<string | null>(null);
-  const [composerExpanded, setComposerExpanded] = useState(false);
   const [draggingMedia, setDraggingMedia] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [trayVisible, setTrayVisible] = useState(TRAY_INITIAL);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const dragCounterRef = useRef(0);
-  const { submitting, submit } = useMediaGeneration();
 
   const requestedSelectedId = selection.sourceId === selectedItemId ? selection.selectedId : selectedItemId ?? null;
   const effectiveSelectedId = requestedSelectedId && items.some((item) => item.id === requestedSelectedId) ? requestedSelectedId : items.at(-1)?.id ?? null;
@@ -71,7 +56,6 @@ export const MediaTabContent = ({
   const handleDeleteItem = useCallback((id: string) => {
     setLocalItems({ source: incomingItems, value: removeGeneratedMediaItem(id) });
     setSelectedId((current) => (current === id ? null : current));
-    setAttachedItemId((current) => (current === id ? null : current));
   }, [incomingItems, setSelectedId]);
 
   const handlePickFile = useCallback(() => {
@@ -165,60 +149,6 @@ export const MediaTabContent = ({
     [importDroppedFiles],
   );
 
-  const attachedItem = items.find((item) => item.id === attachedItemId) ?? null;
-  const attachedKind: MediaAssetKind | null = attachedItem?.asset.kind ?? null;
-
-  const visibleActions = useMemo(
-    () =>
-      MEDIA_ACTIONS.filter(
-        (action) =>
-          !action.sourceKind ||
-          (attachedKind != null && action.sourceKind === attachedKind),
-      ),
-    [attachedKind],
-  );
-  const activeAction =
-    visibleActions.find((action) => action.id === actionId) ??
-    visibleActions[0] ??
-    MEDIA_ACTIONS[0];
-
-  const compatibleAttachedItem =
-    attachedItem &&
-    activeAction.sourceKind &&
-    attachedItem.asset.kind === activeAction.sourceKind
-      ? attachedItem
-      : null;
-  const compatibleImagePath =
-    compatibleAttachedItem?.asset.kind === "image"
-      ? compatibleAttachedItem.asset.filePaths[0]
-      : null;
-
-  const needsImageSource = activeAction.sourceKind === "image";
-  const canSubmit =
-    prompt.trim().length > 0 &&
-    !submitting &&
-    (!needsImageSource || Boolean(compatibleImagePath));
-
-  const onSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    try {
-      const source = compatibleImagePath
-        ? await readSourceAsDataUri(compatibleImagePath)
-        : null;
-      await submit({
-        capability: activeAction.id,
-        prompt: prompt.trim(),
-        ...(source ? { source } : {}),
-      });
-      setPrompt("");
-      setComposerExpanded(false);
-      if (attachedItemId) setAttachedItemId(null);
-    } catch {
-      // submitMediaJob already toasted; nothing to do here.
-    }
-  };
-
   const expandPanel = useCallback(() => {
     displayTabs.setPanelExpanded(true);
   }, []);
@@ -271,216 +201,141 @@ export const MediaTabContent = ({
       <DropOverlay visible={draggingMedia} variant="sidebar" />
 
       <div className="media-tab__surface">
-      <div className="media-tab__main">
-      <div className="media-tab__hero">
-        {selectedItem ? (
-          <>
-            <div
-              className="media-tab__hero-bar"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="media-tab__hero-bar-top">
-                {selectedItem.capability ? (
-                  <span className="media-tab__hero-cap">
-                    {selectedItem.capability.replace(/_/g, " ")}
-                  </span>
+        <div className="media-tab__hero">
+          {selectedItem ? (
+            <>
+              <div
+                className="media-tab__hero-bar"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="media-tab__hero-bar-top">
+                  {selectedItem.capability ? (
+                    <span className="media-tab__hero-cap">
+                      {selectedItem.capability.replace(/_/g, " ")}
+                    </span>
+                  ) : null}
+                  <div
+                    className="media-tab__hero-actions"
+                    role="group"
+                    aria-label="Item actions"
+                  >
+                    <MediaActionBar
+                      key={selectedItem.id}
+                      item={selectedItem}
+                      onDelete={() => handleDeleteItem(selectedItem.id)}
+                    />
+                  </div>
+                </div>
+                {selectedItem.prompt ? (
+                  <HeroPrompt key={selectedItem.id} text={selectedItem.prompt} />
                 ) : null}
-                <div
-                  className="media-tab__hero-actions"
-                  role="group"
-                  aria-label="Item actions"
-                >
-                  <MediaActionBar
-                    key={selectedItem.id}
-                    item={selectedItem}
-                    onDelete={() => handleDeleteItem(selectedItem.id)}
+              </div>
+              <div className="media-tab__hero-preview">
+                <MediaPreviewCard
+                  asset={selectedItem.asset}
+                  inDialog
+                  {...(selectedItem.prompt ? { prompt: selectedItem.prompt } : {})}
+                  {...(selectedItem.capability
+                    ? { capability: selectedItem.capability }
+                    : {})}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="media-tab__empty">
+              <div className="media-tab__empty-title">No media yet</div>
+              <div className="media-tab__empty-body">
+                Drop an image, video, or sound file in, or add one from your
+                computer below.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="media-tab__footer">
+          <div
+            className={`media-tab__history${
+              historyExpanded ? " media-tab__history--expanded" : ""
+            }`}
+          >
+            {historyExpanded ? (
+              <div
+                className="media-tab__history-scroll"
+                onScroll={handleHistoryScroll}
+              >
+                <div className="media-tab__history-grid">
+                  <button
+                    type="button"
+                    className="media-tab__rail-import"
+                    onClick={handlePickFile}
+                    aria-label="Add a file from your computer"
+                    title="Add a file from your computer"
+                  >
+                    <Folder size={18} strokeWidth={1.85} />
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={SUPPORTED_MEDIA_ACCEPT}
+                    className="media-tab__file-input"
+                    onChange={handleFileChange}
                   />
+                  {trayItems.map((item) => (
+                    <MediaTile
+                      key={item.id}
+                      item={item}
+                      active={item.id === selectedItem?.id}
+                      onSelect={() => handleSelectExpanded(item.id)}
+                      onOpen={expandPanel}
+                    />
+                  ))}
                 </div>
               </div>
-              {selectedItem.prompt ? (
-                <HeroPrompt key={selectedItem.id} text={selectedItem.prompt} />
-              ) : null}
-            </div>
-            <div className="media-tab__hero-preview">
-              <MediaPreviewCard
-                asset={selectedItem.asset}
-                inDialog
-                {...(selectedItem.prompt ? { prompt: selectedItem.prompt } : {})}
-                {...(selectedItem.capability
-                  ? { capability: selectedItem.capability }
-                  : {})}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="media-tab__empty">
-            <div className="media-tab__empty-title">Nothing made yet</div>
-            <div className="media-tab__empty-body">
-              Make a photo, video, or sound below, or drop a file in to edit
-              it.
-            </div>
-          </div>
-        )}
-      </div>
-      </div>
-
-      <div className="media-tab__footer">
-      <div
-        className={`media-tab__history${
-          historyExpanded ? " media-tab__history--expanded" : ""
-        }`}
-      >
-        {historyExpanded ? (
-          <div
-            className="media-tab__history-scroll"
-            onScroll={handleHistoryScroll}
-          >
-            <div className="media-tab__history-grid">
-              <button
-                type="button"
-                className="media-tab__rail-import"
-                onClick={handlePickFile}
-                aria-label="Add a file from your computer"
-                title="Add a file from your computer"
-              >
-                <Folder size={18} strokeWidth={1.85} />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={SUPPORTED_MEDIA_ACCEPT}
-                className="media-tab__file-input"
-                onChange={handleFileChange}
-              />
-              {trayItems.map((item) => (
-                <MediaTile
-                  key={item.id}
-                  item={item}
-                  active={item.id === selectedItem?.id}
-                  onSelect={() => handleSelectExpanded(item.id)}
-                  onAttach={() => setAttachedItemId(item.id)}
-                  onOpen={expandPanel}
+            ) : (
+              <div className="media-tab__rail" aria-label="Generated media">
+                <button
+                  type="button"
+                  className="media-tab__rail-import"
+                  onClick={handlePickFile}
+                  aria-label="Add a file from your computer"
+                  title="Add a file from your computer"
+                >
+                  <Folder size={18} strokeWidth={1.85} />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={SUPPORTED_MEDIA_ACCEPT}
+                  className="media-tab__file-input"
+                  onChange={handleFileChange}
                 />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="media-tab__rail" aria-label="Generated media">
-            <button
-              type="button"
-              className="media-tab__rail-import"
-              onClick={handlePickFile}
-              aria-label="Add a file from your computer"
-              title="Add a file from your computer"
-            >
-              <Folder size={18} strokeWidth={1.85} />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={SUPPORTED_MEDIA_ACCEPT}
-              className="media-tab__file-input"
-              onChange={handleFileChange}
-            />
-            {visibleRailItems.map((item) => (
-              <MediaTile
-                key={item.id}
-                item={item}
-                active={item.id === selectedItem?.id}
-                onSelect={() => setSelectedId(item.id)}
-                onAttach={() => setAttachedItemId(item.id)}
-                onOpen={expandPanel}
-              />
-            ))}
-          </div>
-        )}
-        {hasOverflowItems ? (
-          <button
-            type="button"
-            className={`media-tab__history-toggle${
-              historyExpanded ? " media-tab__history-toggle--open" : ""
-            }`}
-            onClick={handleToggleExpand}
-            aria-expanded={historyExpanded}
-            aria-label={historyExpanded ? "Hide all media" : "Show all media"}
-            title={historyExpanded ? "Hide all media" : "Show all media"}
-          >
-            <ChevronUp size={16} strokeWidth={2.2} />
-          </button>
-        ) : null}
-      </div>
-
-      <form
-        className={`media-tab__composer${composerExpanded ? " expanded" : ""}`}
-        onSubmit={onSubmit}
-      >
-        <div
-          className="media-tab__modes"
-          role="tablist"
-          aria-label="Media modes"
-        >
-          {visibleActions.map((action) => {
-            const attachedHere =
-              attachedItem && attachedItem.asset.kind === action.sourceKind;
-            const disabled = action.sourceKind === "image" && !attachedHere;
-            return (
+                {visibleRailItems.map((item) => (
+                  <MediaTile
+                    key={item.id}
+                    item={item}
+                    active={item.id === selectedItem?.id}
+                    onSelect={() => setSelectedId(item.id)}
+                    onOpen={expandPanel}
+                  />
+                ))}
+              </div>
+            )}
+            {hasOverflowItems ? (
               <button
-                key={action.id}
                 type="button"
-                role="tab"
-                aria-selected={action.id === activeAction.id}
-                className={`media-tab__mode${
-                  action.id === activeAction.id ? " media-tab__mode--active" : ""
+                className={`media-tab__history-toggle${
+                  historyExpanded ? " media-tab__history-toggle--open" : ""
                 }`}
-                disabled={disabled}
-                onClick={() => setActionId(action.id)}
+                onClick={handleToggleExpand}
+                aria-expanded={historyExpanded}
+                aria-label={historyExpanded ? "Hide all media" : "Show all media"}
+                title={historyExpanded ? "Hide all media" : "Show all media"}
               >
-                {action.label}
+                <ChevronUp size={16} strokeWidth={2.2} />
               </button>
-            );
-          })}
+            ) : null}
+          </div>
         </div>
-        <div className="media-tab__composer-row">
-          {compatibleAttachedItem ? (
-            <AttachedChip
-              item={compatibleAttachedItem}
-              onRemove={() => setAttachedItemId(null)}
-            />
-          ) : null}
-          <textarea
-            ref={promptInputRef}
-            className="media-tab__prompt-input"
-            value={prompt}
-            rows={1}
-            onChange={(event) => {
-              setPrompt(event.currentTarget.value);
-              requestAnimationFrame(() => {
-                updateComposerTextareaExpansion(
-                  promptInputRef.current,
-                  setComposerExpanded,
-                );
-              });
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-            placeholder={activeAction.placeholder}
-            aria-label={activeAction.placeholder}
-          />
-          <button
-            type="submit"
-            className="media-tab__prompt-submit"
-            disabled={!canSubmit}
-            aria-label={submitting ? "Starting" : "Make"}
-          >
-            <ArrowUp size={14} strokeWidth={2.4} />
-          </button>
-        </div>
-      </form>
-      </div>
       </div>
     </div>
   );

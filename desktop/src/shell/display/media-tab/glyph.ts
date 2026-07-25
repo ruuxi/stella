@@ -7,7 +7,7 @@ import {
   Music,
   type IconComponent,
 } from "@/ui/icons";
-import type { MediaTabItem } from "./media-actions";
+import type { MediaTabItem } from "./media-item";
 
 export const glyphForMediaItem = (
   item: MediaTabItem,

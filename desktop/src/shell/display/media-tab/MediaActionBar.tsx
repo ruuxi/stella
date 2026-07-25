@@ -9,7 +9,7 @@ import {
 import { Copy, Download, Trash2 } from "@/ui/icons";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
-import type { MediaTabItem } from "./media-actions";
+import type { MediaTabItem } from "./media-item";
 
 const filePathsForItem = (item: MediaTabItem): string[] => {
   switch (item.asset.kind) {

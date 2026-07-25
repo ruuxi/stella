@@ -1,7 +1,6 @@
 import { useMemo } from "react";
-import { Plus } from "@/ui/icons";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
-import type { MediaTabItem } from "./media-actions";
+import type { MediaTabItem } from "./media-item";
 import { glyphForMediaItem } from "./glyph";
 
 export const MediaTile = ({
@@ -9,13 +8,11 @@ export const MediaTile = ({
   active,
   onSelect,
   onOpen,
-  onAttach,
 }: {
   item: MediaTabItem;
   active: boolean;
   onSelect: () => void;
   onOpen: () => void;
-  onAttach: () => void;
 }) => {
   const filePaths = useMemo(
     () => (item.asset.kind === "image" ? item.asset.filePaths.slice(0, 1) : []),
@@ -27,7 +24,6 @@ export const MediaTile = ({
     item.asset.kind === "image" && item.asset.filePaths.length === 0;
   const isMissing = (missing[0] ?? false) && !isPending;
   const { Icon, label, badge } = glyphForMediaItem(item);
-  const canAttach = item.asset.kind === "image" && !isPending && !isMissing;
 
   return (
     <div
@@ -61,20 +57,6 @@ export const MediaTile = ({
         </span>
       )}
       {badge ? <span className="media-tab__tile-badge">{badge}</span> : null}
-      {canAttach ? (
-        <button
-          type="button"
-          className="media-tab__tile-attach"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAttach();
-          }}
-          aria-label="Use this media"
-          title="Use this media"
-        >
-          <Plus size={12} strokeWidth={2.4} />
-        </button>
-      ) : null}
     </div>
   );
 };

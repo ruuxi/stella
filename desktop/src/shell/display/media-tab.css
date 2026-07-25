@@ -1,4 +1,4 @@
-/* Media tab — one surface, three zones (viewer / history / make).
+/* Media tab — one surface, two zones (viewer / history).
    No nested cards, no glass, no drop shadows. Hairlines only. */
 
 .media-tab {
@@ -8,7 +8,9 @@
   display: flex;
   flex-direction: column;
   padding: 8px 8px 6px;
-  --media-tab-footer-slot: 182px;
+  /* Height of the absolutely-docked history rail, reserved so the
+     viewer never sits underneath it. */
+  --media-tab-footer-slot: 70px;
   overflow: hidden;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
@@ -26,15 +28,6 @@
   overflow: hidden;
 }
 
-.media-tab__main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: var(--media-tab-footer-slot);
-  overflow: hidden;
-}
-
 .media-tab__footer {
   position: absolute;
   left: 0;
@@ -43,7 +36,6 @@
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   padding: 6px 0 0;
   background: transparent;
 }
@@ -55,6 +47,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: var(--media-tab-footer-slot);
+  overflow: hidden;
 }
 
 .media-tab__hero .display-media {
@@ -160,9 +154,7 @@
 .media-tab__action-btn:focus-visible,
 .media-tab__history-toggle:focus-visible,
 .media-tab__rail-import:focus-visible,
-.media-tab__tile:focus-visible,
-.media-tab__mode:focus-visible,
-.media-tab__attached-x:focus-visible {
+.media-tab__tile:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -256,7 +248,7 @@
   color: var(--text-weak);
 }
 
-/* ── History (separate from composer; surface only when expanded) ─ */
+/* ── History (docked rail; surfaces only when expanded) ─────────── */
 
 .media-tab__history {
   position: relative;
@@ -447,232 +439,4 @@
   letter-spacing: 0.02em;
   color: var(--text-strong);
   background: color-mix(in oklch, var(--background) 82%, var(--foreground));
-}
-
-.media-tab__tile-attach {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--background) 78%, var(--foreground));
-  color: var(--text-strong);
-  display: grid;
-  place-items: center;
-  cursor: default;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.media-tab__tile:hover .media-tab__tile-attach,
-.media-tab__tile:focus-within .media-tab__tile-attach {
-  opacity: 1;
-}
-
-/* ── Composer (fused into footer dock) ─────────────────────────── */
-
-.media-tab__composer {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin: 0 10px 6px;
-  padding: 8px 10px 10px;
-  background: var(--background);
-  border: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
-  border-radius: 12px;
-  box-shadow: none;
-  overflow: visible;
-}
-
-.media-tab__composer:focus-within .media-tab__composer-row {
-  border-color: color-mix(in oklch, var(--primary) 35%, transparent);
-}
-
-.media-tab__modes {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.media-tab__modes::-webkit-scrollbar {
-  display: none;
-}
-
-.media-tab__mode {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-  padding: 3px 9px 5px;
-  margin-bottom: -1px;
-  border-radius: 0;
-  color: var(--text-weak);
-  cursor: default;
-  white-space: nowrap;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.media-tab__mode:not(.media-tab__mode--active):hover:not(:disabled) {
-  color: var(--text-base);
-}
-
-.media-tab__mode--active {
-  color: var(--text-strong);
-  font-weight: var(--weight-semibold);
-  border-bottom-color: var(--primary);
-}
-
-.media-tab__mode:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.media-tab__composer-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  min-height: 40px;
-  padding: 6px 8px 6px 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 2%, transparent);
-  transition:
-    border-color 0.15s ease,
-    border-radius 0.2s ease;
-}
-
-.media-tab__composer.expanded .media-tab__composer-row {
-  border-radius: 20px;
-}
-
-.media-tab__attached {
-  flex: 0 0 auto;
-  position: relative;
-  display: inline-block;
-  width: 26px;
-  height: 26px;
-}
-
-.media-tab__attached-clip {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 5px;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-}
-
-.media-tab__attached-thumb {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.media-tab__attached-glyph {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: var(--text-weak);
-}
-
-.media-tab__attached-x {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  background: var(--background);
-  color: var(--text-base);
-  display: grid;
-  place-items: center;
-  cursor: default;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.media-tab__attached:hover .media-tab__attached-x,
-.media-tab__attached:focus-within .media-tab__attached-x {
-  opacity: 1;
-}
-
-.media-tab__prompt-input {
-  flex: 1;
-  min-width: 0;
-  appearance: none;
-  background: transparent;
-  border: none;
-  outline: none;
-  font: inherit;
-  font-size: var(--font-size-base);
-  line-height: 1.45;
-  color: var(--foreground);
-  padding: 4px 0;
-  field-sizing: content;
-  min-height: 22px;
-  max-height: 120px;
-  resize: none;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.media-tab__prompt-input::placeholder {
-  color: var(--text-weak);
-}
-
-.media-tab__prompt-submit {
-  appearance: none;
-  border: 1px solid transparent;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: var(--primary-foreground, var(--background));
-  display: grid;
-  place-items: center;
-  cursor: default;
-  flex: 0 0 auto;
-  transition:
-    opacity 0.15s ease,
-    background 0.15s ease;
-}
-
-.media-tab__prompt-submit:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 12%, var(--primary));
-}
-
-.media-tab__prompt-submit:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.media-tab__prompt-submit:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.media-tab__prompt-submit svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
