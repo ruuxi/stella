@@ -1,5 +1,5 @@
 /* Search section — a query field above the shared workspace overview.
-   See `SearchSection.tsx`. */
+   See `HomeSection.tsx`. */
 
 .sidebar-search {
   display: flex;

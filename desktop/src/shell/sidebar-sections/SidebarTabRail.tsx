@@ -1,10 +1,11 @@
 /**
- * The right sidebar's four-tab rail: Tasks, Files, Search, Apps.
+ * The right sidebar's tab rail: Home, Files, Apps.
  *
  * Clicking a tab goes through the same `selectSection` verb the radial dial
  * uses, so both entry points share one open/switch/close rule — including the
  * "select the active tab again to close" behavior, which is why these are
- * buttons rather than a radio group.
+ * buttons rather than a radio group. (The dial has a fourth wedge, Close,
+ * which is not a section and so has no tab here.)
  */
 
 import {
@@ -17,7 +18,6 @@ import {
   AppWindowMac,
   Folder,
   LayoutList,
-  Search,
   type IconProps,
 } from "@/ui/icons";
 import type { ComponentType } from "react";
@@ -27,9 +27,8 @@ export const SIDEBAR_SECTION_META: Record<
   SidebarSection,
   { label: string; Icon: ComponentType<IconProps> }
 > = {
-  tasks: { label: "Tasks", Icon: LayoutList },
+  home: { label: "Home", Icon: LayoutList },
   files: { label: "Files", Icon: Folder },
-  search: { label: "Search", Icon: Search },
   apps: { label: "Apps", Icon: AppWindowMac },
 };
 

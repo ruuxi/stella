@@ -766,6 +766,8 @@ export class OverlayWindowController {
   async showRadial(options?: {
     compactFocused?: boolean
     miniAlwaysOnTop?: boolean
+    /** Which dial this session is: the system chord dial or the shell's. */
+    variant?: 'system' | 'shell'
   }) {
     if (this.radialHideTimeout) {
       clearTimeout(this.radialHideTimeout)
@@ -801,6 +803,7 @@ export class OverlayWindowController {
       screenY: localY,
       compactFocused: options?.compactFocused ?? false,
       miniAlwaysOnTop: options?.miniAlwaysOnTop ?? false,
+      variant: options?.variant ?? 'system',
     }
 
     this.overlayWindow.send('radial:show', payload)

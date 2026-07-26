@@ -71,9 +71,9 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   );
   context.state.processRuntime.registerCleanup(
     "will-quit",
-    "shell-radial-frame-press-service",
+    "shell-radial-gesture-service",
     () => {
-      context.services.shellRadialFramePressService.stop();
+      context.services.shellRadialGestureService.stop();
     },
   );
   context.state.processRuntime.registerCleanup(

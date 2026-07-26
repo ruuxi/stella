@@ -91,6 +91,13 @@ const NavItem = ({
   );
 };
 
+/**
+ * Deliberately unlinked from every bar: Store and Social are being reworked
+ * and are not navigable from the UI for now. Their routes stay registered —
+ * share cards and the social invite layer still deep-link into them.
+ */
+const UNLINKED_NAV_IDS: readonly string[] = ["store", "social"];
+
 type ShellTopBarPrimaryNavProps = {
   /**
    * Nav entry ids to suppress. The full-window bar omits `apps`, whose
@@ -109,6 +116,7 @@ export const ShellTopBarPrimaryNav = ({
         (a) =>
           !a.hideFromSidebar &&
           a.slot === "top" &&
+          !UNLINKED_NAV_IDS.includes(a.id) &&
           !(omitIds?.includes(a.id) ?? false),
       ),
     [allApps, omitIds],

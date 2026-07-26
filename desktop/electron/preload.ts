@@ -499,6 +499,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       screenY?: number;
       compactFocused?: boolean;
       miniAlwaysOnTop?: boolean;
+      variant?: "system" | "shell";
     }>("radial:show"),
     onHide: onIpcSignal("radial:hide"),
     animDone: () => ipcRenderer.send("radial:animDone"),
@@ -511,21 +512,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>("radial:addIcon"),
   },
 
-  // The shell's right-button radial dial. The main process forwards presses
-  // that land inside embedded frames (artifact iframes, webview surfaces) —
-  // which the shell's own DOM listeners can never see — plus the global
-  // move/release stream for the rest of that gesture.
+  // The shell's right-button radial dial. The dial itself lives in the
+  // always-on-top overlay window and the gesture is captured by the global
+  // input hook; the shell renderer only answers whether a pressed point is
+  // exempt (editable/composer targets keep their native menu) and applies
+  // the committed wedge.
   shellRadial: {
-    onPress: onIpcWithEvent<{ x: number; y: number }>("shell-radial:press"),
-    onMove: onIpcWithEvent<{ x: number; y: number }>("shell-radial:move"),
-    onUp: onIpcWithEvent<{ x: number; y: number }>("shell-radial:up"),
-    onCancel: onIpcSignal("shell-radial:cancel"),
-    // The renderer announces DOM-initiated gestures so the main process can
-    // track the release at the OS level too. DOM delivery of the release is
-    // not guaranteed — embedded frames and window drag regions can both eat
-    // it — so the global hook is the authoritative closer for every gesture.
-    trackGesture: () => ipcRenderer.send("shell-radial:track"),
-    endGestureTracking: () => ipcRenderer.send("shell-radial:untrack"),
+    onQueryPress: onIpcWithEvent<{ x: number; y: number; token: number }>(
+      "shell-radial:query-press",
+    ),
+    respondPress: (token: number, claim: boolean) =>
+      ipcRenderer.send("shell-radial:press-response", { token, claim }),
+    onCommit: onIpcWithEvent<{ index: number }>("shell-radial:commit"),
   },
 
   overlay: {

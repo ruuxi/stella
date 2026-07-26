@@ -4,7 +4,7 @@ import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
-import { ShellRadialFramePressService } from "../services/shell-radial-frame-press.js";
+import { ShellRadialGestureService } from "../services/shell-radial-gesture-service.js";
 import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ConnectorCredentialService } from "../services/connector-credential-service.js";
@@ -58,7 +58,10 @@ export const createBootstrapServices = (options: {
     // Mobile-only: desktop windows maintain their own decoration stores from
     // the live stream; the bridge snapshot exists for the phone's benefit.
     onTaskDecorationUpdated: (payload) => {
-      options.getMobileBroadcast()?.("localChat:taskDecorationUpdated", payload);
+      options.getMobileBroadcast()?.(
+        "localChat:taskDecorationUpdated",
+        payload,
+      );
     },
   });
   externalLinkService.setDevBuild(config.useDevServer);
@@ -304,21 +307,33 @@ export const createBootstrapServices = (options: {
     },
   });
 
-  // Starts immediately (not alongside radialGestureService in app-shell):
-  // its only standing cost is an app-level `web-contents-created` listener,
-  // and attaching before any window exists guarantees the full window's
-  // contents are covered.
-  const shellRadialFramePressService = new ShellRadialFramePressService({
+  // The shell dial rides the same overlay window and global hook as the
+  // chord dial; its uiohook listeners only receive events once the mouse
+  // hook is started by radialGestureService, so starting here is safe even
+  // though that happens later.
+  const shellRadialGestureService = new ShellRadialGestureService({
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
+    isSystemRadialActive: () => radialGestureService.isRadialActive(),
+    shouldEnable: () =>
+      !uiStateService.state.suppressNativeRadialDuringOnboarding &&
+      (process.platform !== "darwin" ||
+        hasMacPermission("accessibility", false)),
+    overlay: {
+      showShellRadial: () =>
+        void state.overlayController?.showRadial({ variant: "shell" }),
+      hideRadial: () => state.overlayController?.hideRadial(),
+      updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
+      getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
+    },
   });
-  shellRadialFramePressService.start();
+  shellRadialGestureService.start();
 
   return {
     authService,
     backupService,
     captureService,
     radialGestureService,
-    shellRadialFramePressService,
+    shellRadialGestureService,
     credentialService,
     connectorCredentialService,
     connectorConnectService,

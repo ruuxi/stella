@@ -9,7 +9,7 @@ import {
   getDisplayedActivityPillState,
 } from "@/app/chat/ComposerActivityPill";
 import { isRadialGestureExempt } from "@/shell/radial/radial-gesture-target";
-import { shouldHoldSearchLayout } from "@/shell/sidebar-sections/SearchSection";
+import { shouldHoldSearchLayout } from "@/shell/sidebar-sections/HomeSection";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
 const SOURCE_ROOT = path.resolve(
@@ -113,43 +113,34 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
     );
-    const search = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
+    const home = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
 
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
-    // The pill is the entry point; the field itself lives in the Search
-    // section. `openLocation` rather than `selectSection`, so a second click
-    // can never close the panel on a live query.
-    expect(activityPill).toContain(
-      'sidebarSections.openLocation("search", null)',
-    );
-    expect(search).toContain('placeholder="Search activity, files, and more"');
+    // The pill is the entry point; the field itself lives at the top of the
+    // Home section's list view. `openLocation` rather than `selectSection`,
+    // so a second click can never close the panel on a live query.
+    expect(activityPill).toContain('sidebarSections.openLocation("home", null)');
+    expect(home).toContain('placeholder="Search activity, files, and more"');
   });
 
-  it("keeps Search's query out of the Tasks activity index", () => {
-    const tasks = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/TasksSection.tsx"),
-      "utf8",
-    );
-    const search = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
+  it("hosts search inside Home without stealing the composer's caret", () => {
+    const home = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
 
-    // Tasks must not subscribe to the shared search store, or typing in the
-    // Search tab would leak filtered results into the stable activity index.
-    expect(tasks).not.toContain("useDisplaySearchQuery");
-    expect(tasks).not.toContain("display-search-store");
-    // It renders the overview unfiltered (no query prop threaded in).
-    expect(tasks).toMatch(/<WorkspaceSections\s+variant="overview"/);
-    expect(tasks).not.toMatch(/\bquery=/);
-
-    // Search is the one surface that does thread the query through.
-    expect(search).toContain("useDisplaySearchQuery");
-    expect(search).toContain("query={deferredQuery}");
+    // Home is the one surface that threads the shared query through: the old
+    // Search tab folded into it as a control over the same overview.
+    expect(home).toContain("useDisplaySearchQuery");
+    expect(home).toContain("query={deferredQuery}");
+    // Home is the default section; auto-focusing its search field would take
+    // the caret from the composer on every panel open. The old Search tab
+    // focused on activation — Home must not.
+    expect(home).not.toMatch(/\.focus\(\)/);
   });
 
   it("holds the search layout through engage and a single-settle clear", () => {
@@ -171,21 +162,19 @@ describe("chat shell UI contracts", () => {
   });
 
   it("bounds the searching results box to a resolved height with internal scroll", () => {
-    const search = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/SearchSection.tsx"),
+    const home = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
     const css = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/search-section.css"),
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/home-search.css"),
       "utf8",
     );
 
     // The component drives the searching layout off the hold predicate (not a
     // bare input check) and marks the section for CSS.
-    expect(search).toContain(
-      "shouldHoldSearchLayout(inputValue, deferredQuery)",
-    );
-    expect(search).toContain("data-searching={searching || undefined}");
+    expect(home).toContain("shouldHoldSearchLayout(inputValue, deferredQuery)");
+    expect(home).toContain("data-searching={searching || undefined}");
 
     // The base body scrolls its overflow internally.
     expect(css).toMatch(/\.sidebar-search__body\s*\{[^}]*overflow-y:\s*auto/);

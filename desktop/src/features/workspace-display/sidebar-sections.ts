@@ -1,5 +1,5 @@
 /**
- * The right sidebar's four fixed sections — Tasks, Files, Search, Apps —
+ * The right sidebar's three fixed sections — Home, Files, Apps —
  * and the "where was I" memory each one keeps.
  *
  * This sits beside `tab-store` rather than inside it because the two answer
@@ -21,7 +21,7 @@ import { useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 import { displayTabs } from "./tab-store";
 
-export const SIDEBAR_SECTIONS = ["tasks", "files", "search", "apps"] as const;
+export const SIDEBAR_SECTIONS = ["home", "files", "apps"] as const;
 
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
 
@@ -30,19 +30,27 @@ export const isSidebarSection = (value: unknown): value is SidebarSection =>
   (SIDEBAR_SECTIONS as readonly string[]).includes(value);
 
 /**
+ * Older builds persisted section ids that no longer exist: `tasks` was
+ * renamed to `home`, and `search` was folded into it as an in-view control.
+ * Both degrade to `home` rather than resetting the user's spot to a default.
+ */
+const migrateLegacySection = (value: unknown): SidebarSection | null => {
+  if (isSidebarSection(value)) return value;
+  if (value === "tasks" || value === "search") return "home";
+  return null;
+};
+
+/**
  * Per-section sub-location. `null` always means "show this section's default
  * list view".
  *
- * - `tasks` — a display-tab id for an agent-thread drill-down.
+ * - `home`  — a display-tab id for an agent-thread drill-down.
  * - `files` — a display-tab id for the open artifact.
  * - `apps`  — a user-app slug.
- * - `search` — always null; the query itself lives in `display-search-store`
- *   so the composer pill and the Search section share one query.
  */
 export type SidebarSectionLocations = {
-  tasks: string | null;
+  home: string | null;
   files: string | null;
-  search: null;
   apps: string | null;
 };
 
@@ -57,16 +65,15 @@ const STORAGE_KEY_SECTION = "stella.sidebar.activeSection";
 const STORAGE_KEY_LOCATIONS = "stella.sidebar.sectionLocations";
 
 const DEFAULT_LOCATIONS: SidebarSectionLocations = {
-  tasks: null,
+  home: null,
   files: null,
-  search: null,
   apps: null,
 };
 
 const readPersistedSection = (): SidebarSection => {
-  if (typeof window === "undefined") return "tasks";
+  if (typeof window === "undefined") return "home";
   const raw = uiState.getItem(STORAGE_KEY_SECTION);
-  return isSidebarSection(raw) ? raw : "tasks";
+  return migrateLegacySection(raw) ?? "home";
 };
 
 /**
@@ -83,12 +90,14 @@ const readPersistedLocations = (): SidebarSectionLocations => {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return DEFAULT_LOCATIONS;
     const record = parsed as Record<string, unknown>;
-    const pick = (key: "tasks" | "files" | "apps"): string | null =>
-      typeof record[key] === "string" && record[key] ? record[key] : null;
+    const pick = (key: string): string | null =>
+      typeof record[key] === "string" && record[key]
+        ? (record[key] as string)
+        : null;
     return {
-      tasks: pick("tasks"),
+      // `tasks` is the pre-rename key for the same drill-down location.
+      home: pick("home") ?? pick("tasks"),
       files: pick("files"),
-      search: null,
       apps: pick("apps"),
     };
   } catch {
@@ -118,7 +127,7 @@ const persistLocations = (locations: SidebarSectionLocations): void => {
   uiState.setItem(
     STORAGE_KEY_LOCATIONS,
     JSON.stringify({
-      tasks: locations.tasks,
+      home: locations.home,
       files: locations.files,
       apps: locations.apps,
     }),
@@ -176,10 +185,8 @@ export const sidebarSections = {
 
   /**
    * Record where a section is. Passing `null` returns it to its list view.
-   * `search` has no sub-location and is ignored.
    */
   setLocation(section: SidebarSection, location: string | null): void {
-    if (section === "search") return;
     if (snapshot.locations[section] === location) return;
     const locations = { ...snapshot.locations, [section]: location };
     persistLocations(locations);
@@ -202,9 +209,9 @@ export const sidebarSections = {
   },
 
   reset(): void {
-    persistSection("tasks");
+    persistSection("home");
     persistLocations(DEFAULT_LOCATIONS);
-    emit({ activeSection: "tasks", locations: DEFAULT_LOCATIONS });
+    emit({ activeSection: "home", locations: DEFAULT_LOCATIONS });
   },
 };
 

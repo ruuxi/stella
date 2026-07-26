@@ -217,9 +217,10 @@ const ActivityPillBody = memo(function ActivityPillBody({
       data-state={state}
       data-open={open || undefined}
       // `openLocation` rather than `selectSection`: the pill is an entry
-      // point, so clicking it while Search is already showing must reveal the
-      // field again, not close the panel out from under a live query.
-      onClick={() => sidebarSections.openLocation("search", null)}
+      // point, so clicking it while Home is already showing must reveal the
+      // list (where the search field lives) again, not close the panel out
+      // from under a live query.
+      onClick={() => sidebarSections.openLocation("home", null)}
       aria-label={state === "idle" ? "Search" : `${label} — open search`}
     >
       <span className="composer-activity-pill__glyph" aria-hidden="true">
@@ -240,7 +241,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const { state, runningCount } = useActivityPillState(tasks);
   const displayedState = getDisplayedActivityPillState(
     state,
-    panelOpen && activeSection === "tasks",
+    panelOpen && activeSection === "home",
   );
 
   return (
@@ -255,7 +256,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={panelOpen && activeSection === "search"}
+        open={panelOpen && activeSection === "home"}
       />
     </motion.div>
   );

@@ -59,7 +59,7 @@ describe("payload → Files retargeting", () => {
     expect(displayTabs.getTabListSnapshot().tabs).toHaveLength(1);
     expect(files()).toBe("pdf:/tmp/report.pdf");
     expect(panelOpen()).toBe(false);
-    expect(sidebarSections.getSnapshot().activeSection).toBe("tasks");
+    expect(sidebarSections.getSnapshot().activeSection).toBe("home");
   });
 
   it("routes canvas and media into Files rather than their own tabs", () => {

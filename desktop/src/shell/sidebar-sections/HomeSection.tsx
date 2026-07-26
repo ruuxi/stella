@@ -1,20 +1,30 @@
 /**
- * Search — one query field over the same workspace overview Tasks renders,
- * filtered. Files and Store only ever list here, as search results.
+ * Home — the agent activity index, with search folded in as a control.
  *
- * Has no sub-location: the query itself lives in `display-search-store` so the
- * composer pill and this tab share one query.
+ * Sub-location (`sidebarSections` → `locations.home`) is the display-tab id of
+ * an agent-thread drill-down, or `null` for the thread list.
+ *
+ * The search field at the top of the list view is the old Search section,
+ * demoted from a tab of its own: it filters the same workspace overview this
+ * section renders, and its query lives in `display-search-store` so the
+ * composer pill and this view share one query. With an empty query the list
+ * is the plain unfiltered activity overview.
  */
 
-import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import {
   displaySearchStore,
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
-import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
+import {
+  sidebarSections,
+  useSidebarSectionLocation,
+} from "@/features/workspace-display/sidebar-sections";
+import { useDisplayTabList } from "@/features/workspace-display/tab-store";
 import { WorkspaceSections } from "@/shell/workspace/WorkspaceSections";
-import { Search } from "@/ui/icons";
-import "./search-section.css";
+import { ChevronLeft, Search } from "@/ui/icons";
+import { DeferredDisplayContent } from "./DeferredDisplayContent";
+import "./home-search.css";
 
 /**
  * Whether the results region should hold its fixed "searching" layout (a
@@ -36,19 +46,15 @@ export const shouldHoldSearchLayout = (
   deferredQuery: string,
 ): boolean => inputValue.trim().length > 0 || deferredQuery.trim().length > 0;
 
-export function SearchSection() {
-  const active = useActiveSidebarSection() === "search";
+/**
+ * The activity list with its search field. Unlike the old Search tab, the
+ * field never auto-focuses: Home is the default section, and stealing the
+ * caret from the composer on every panel open would be hostile.
+ */
+function HomeOverview() {
   const query = useDisplaySearchQuery();
   const [inputValue, setInputValue] = useState(query);
   const deferredQuery = useDeferredValue(query);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Every section stays mounted for the panel's lifetime, so the field takes
-  // focus on becoming active rather than on mount — otherwise it would steal
-  // the caret once, at startup, while some other tab is on screen.
-  useEffect(() => {
-    if (active) inputRef.current?.focus();
-  }, [active]);
 
   // Keep typing on the input's tiny local state and only wake the full
   // activity/files search tree after a short pause. `useDeferredValue` gives
@@ -63,9 +69,7 @@ export function SearchSection() {
   // While searching, the body becomes a resolved-height, internally-scrolling
   // box (see CSS) so the section's layout stays put no matter how many results
   // match — the results scroll inside a stable frame instead of re-flowing per
-  // keystroke. The layout is held on the immediate input OR the still-deferred
-  // query so it engages before the first result and collapses only once, after
-  // the field clears and results reconcile.
+  // keystroke.
   const searching = shouldHoldSearchLayout(inputValue, deferredQuery);
 
   return (
@@ -73,7 +77,6 @@ export function SearchSection() {
       <div className="sidebar-search__field">
         <Search size={15} strokeWidth={1.75} aria-hidden="true" />
         <input
-          ref={inputRef}
           type="text"
           className="sidebar-search__input"
           value={inputValue}
@@ -96,5 +99,40 @@ export function SearchSection() {
         />
       </div>
     </div>
+  );
+}
+
+export function HomeSection() {
+  const openTabId = useSidebarSectionLocation("home");
+  const { tabs } = useDisplayTabList();
+
+  // A remembered id can outlive its tab (the registry is not persisted across
+  // launches). Falling back to the list is the graceful degradation.
+  const openTab = openTabId
+    ? (tabs.find((tab) => tab.id === openTabId) ?? null)
+    : null;
+
+  if (!openTab) {
+    return <HomeOverview />;
+  }
+
+  return (
+    <>
+      <div className="sidebar-section__viewer-head">
+        <button
+          type="button"
+          className="sidebar-section__back"
+          onClick={() => sidebarSections.clearLocation("home")}
+          aria-label="Back to home"
+        >
+          <ChevronLeft size={15} strokeWidth={1.75} aria-hidden="true" />
+          Home
+        </button>
+        <span className="sidebar-section__viewer-title">{openTab.title}</span>
+      </div>
+      <div className="sidebar-section__viewer-body">
+        <DeferredDisplayContent key={openTab.id} render={openTab.render} />
+      </div>
+    </>
   );
 }

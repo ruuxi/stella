@@ -60,7 +60,7 @@ export const openDisplayPayloadTab = (
 };
 
 /**
- * A read-only agent thread is the Tasks section's drill-down, so opening one
+ * A read-only agent thread is the Home section's drill-down, so opening one
  * points that section at it as well as registering the viewer. Registering
  * alone leaves the panel on whatever section was last active and never shows
  * the thread. Every entry point relies on this: the activity rows, and the
@@ -69,7 +69,7 @@ export const openDisplayPayloadTab = (
 export const openAgentThreadTab = (args: AgentThreadTabArgs): void => {
   const spec = getAdapter().createAgentThreadTabSpec(args);
   displayTabs.openTab(spec);
-  sidebarSections.openLocation("tasks", spec.id);
+  sidebarSections.openLocation("home", spec.id);
 };
 
 export const openSourceDiffBatch = (batch: SourceDiffBatch): void => {

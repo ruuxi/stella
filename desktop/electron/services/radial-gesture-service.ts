@@ -112,6 +112,12 @@ export type DictationPushToTalkHandlers = {
 
 export class RadialGestureService {
   private mouseHook: MouseHookManager | null = null;
+
+  /** Whether the chord dial is mid-gesture. The shell dial defers to it. */
+  isRadialActive(): boolean {
+    return this.mouseHook?.isRadialActive() ?? false;
+  }
+
   private selectionCommitted = false;
   private startedInCompactMode = false;
   private contextBeforeGesture: ChatContext | null = null;

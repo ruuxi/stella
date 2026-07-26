@@ -1,13 +1,18 @@
 /**
- * The overlay window's radial dial — the system-wide one, raised by holding the
- * global trigger chord.
+ * The overlay window's radial dial, in two variants that share one surface:
+ * the system-wide dial raised by holding the global trigger chord, and the
+ * shell dial raised by holding the right mouse button over the full window.
+ * `radial:show` carries which variant a session is; the wedge set and the
+ * committed meaning differ, the gesture machinery does not.
  *
  * This is only a driver. It owns no geometry and no motion: it subscribes to
  * the main process's `radial:*` IPC, keeps the highlighted wedge in sync with
  * the cursor, and renders `RadialDialSurface`. The gesture itself is captured
  * globally in the main process by `uiohook`, which is why nothing here binds a
  * pointer event — by the time a cursor position arrives it has already been
- * resolved against the dial's screen bounds.
+ * resolved against the dial's screen bounds. Living in the always-on-top
+ * overlay window is what makes it reliable over any content: it never fights
+ * embedded frames or drag regions for events, because it receives none.
  *
  * Selection is committed in the main process too (`radial-wedge.ts` recomputes
  * it from the release position), so the wedge this component highlights is
@@ -16,15 +21,21 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, MessageSquare, Mic, Plus, X } from "@/ui/icons";
+import {
+  AppWindowMac,
+  Camera,
+  Folder,
+  LayoutList,
+  MessageSquare,
+  Mic,
+  Plus,
+  X,
+} from "@/ui/icons";
 import { getElectronApi } from "@/platform/electron/electron";
 import { getWedgeIndexAt } from "@/shared/lib/radial-geometry";
 import { useTheme } from "@/context/theme-context";
 import type { RadialWedge } from "@/shared/types/electron";
-import {
-  RadialDialSurface,
-  type RadialDialWedge,
-} from "./RadialDialSurface";
+import { RadialDialSurface, type RadialDialWedge } from "./RadialDialSurface";
 import { useRadialDialAnimation } from "./use-radial-dial-animation";
 
 const BASE_WEDGES: readonly RadialDialWedge[] = [
@@ -34,6 +45,22 @@ const BASE_WEDGES: readonly RadialDialWedge[] = [
   { id: "voice", label: "Voice", icon: Mic },
 ];
 
+/**
+ * The shell variant's wedges, in the shared quadrant order (index 0 at the
+ * upper-right, clockwise). Home/Files/Apps mirror the sidebar's tab rail;
+ * Close is dial-only — it closes the sidebar rather than selecting a section.
+ * The main process commits by index; the shell maps indices through this same
+ * order (see ShellRadialBridge), so the two must not drift.
+ */
+const SHELL_WEDGES: readonly RadialDialWedge[] = [
+  { id: "home", label: "Home", icon: LayoutList },
+  { id: "files", label: "Files", icon: Folder },
+  { id: "close", label: "Close", icon: X },
+  { id: "apps", label: "Apps", icon: AppWindowMac },
+];
+
+export type RadialDialVariant = "system" | "shell";
+
 export function RadialDial({
   closeChatWedge = false,
 }: {
@@ -41,25 +68,25 @@ export function RadialDial({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addIconDataUrl, setAddIconDataUrl] = useState<string | null>(null);
+  const [variant, setVariant] = useState<RadialDialVariant>("system");
   const { colors } = useTheme();
 
-  const wedges = useMemo<readonly RadialDialWedge[]>(
-    () =>
-      BASE_WEDGES.map((wedge) => {
-        if (wedge.id === "chat" && closeChatWedge) {
-          return { ...wedge, label: "Close", icon: X };
-        }
-        if (wedge.id === "add") {
-          return { ...wedge, iconDataUrl: addIconDataUrl };
-        }
-        return wedge;
-      }),
-    [closeChatWedge, addIconDataUrl],
-  );
+  const wedges = useMemo<readonly RadialDialWedge[]>(() => {
+    if (variant === "shell") return SHELL_WEDGES;
+    return BASE_WEDGES.map((wedge) => {
+      if (wedge.id === "chat" && closeChatWedge) {
+        return { ...wedge, label: "Close", icon: X };
+      }
+      if (wedge.id === "add") {
+        return { ...wedge, iconDataUrl: addIconDataUrl };
+      }
+      return wedge;
+    });
+  }, [variant, closeChatWedge, addIconDataUrl]);
 
   const selectedIndex = useMemo(
-    () => (selectedId ? BASE_WEDGES.findIndex((w) => w.id === selectedId) : -1),
-    [selectedId],
+    () => (selectedId ? wedges.findIndex((w) => w.id === selectedId) : -1),
+    [selectedId, wedges],
   );
 
   const animation = useRadialDialAnimation({
@@ -79,6 +106,8 @@ export function RadialDial({
   showRef.current = show;
   const hideRef = useRef(hide);
   hideRef.current = hide;
+  // The IPC effect runs once; it reads the live variant through a ref.
+  const variantRef = useRef<RadialDialVariant>("system");
 
   useEffect(() => {
     if (!getElectronApi()) return;
@@ -92,14 +121,26 @@ export function RadialDial({
       centerY: number,
     ): string | null => {
       const index = getWedgeIndexAt(x, y, centerX, centerY);
-      return index === null ? null : (BASE_WEDGES[index]?.id ?? null);
+      if (index === null) return null;
+      const set = variantRef.current === "shell" ? SHELL_WEDGES : BASE_WEDGES;
+      return set[index]?.id ?? null;
     };
 
     const cleanupShow = electronAPI.radial.onShow(
       (
         _event: unknown,
-        data: { centerX: number; centerY: number; x?: number; y?: number },
+        data: {
+          centerX: number;
+          centerY: number;
+          x?: number;
+          y?: number;
+          variant?: RadialDialVariant;
+        },
       ) => {
+        const nextVariant: RadialDialVariant =
+          data.variant === "shell" ? "shell" : "system";
+        variantRef.current = nextVariant;
+        setVariant(nextVariant);
         // Reset to the Plus glyph; the icon of the app under the dial arrives
         // asynchronously via radial:addIcon once the window lookup settles.
         setAddIconDataUrl(null);

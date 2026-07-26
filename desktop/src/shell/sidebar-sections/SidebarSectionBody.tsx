@@ -1,5 +1,5 @@
 /**
- * Renders whichever of the four sections is active.
+ * Renders whichever of the three sections is active.
  *
  * Every section is mounted for the lifetime of the panel and hidden with
  * `display: none` rather than unmounted. That is load-bearing, not an
@@ -14,14 +14,12 @@ import { SIDEBAR_SECTIONS } from "@/features/workspace-display/sidebar-sections"
 import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
 import { AppsSection } from "./AppsSection";
 import { FilesSection } from "./FilesSection";
-import { SearchSection } from "./SearchSection";
-import { TasksSection } from "./TasksSection";
+import { HomeSection } from "./HomeSection";
 import "./sidebar-sections.css";
 
 const SECTION_BODIES = {
-  tasks: TasksSection,
+  home: HomeSection,
   files: FilesSection,
-  search: SearchSection,
   apps: AppsSection,
 } as const;
 

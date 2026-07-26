@@ -43,12 +43,12 @@ describe("selectSection — open / switch / close", () => {
   });
 
   it("reopens on the section it was closed from", () => {
-    sidebarSections.selectSection("search");
-    sidebarSections.selectSection("search"); // close
+    sidebarSections.selectSection("apps");
+    sidebarSections.selectSection("apps"); // close
     expect(panelOpen()).toBe(false);
-    sidebarSections.selectSection("search"); // reopen
+    sidebarSections.selectSection("apps"); // reopen
     expect(panelOpen()).toBe(true);
-    expect(activeSection()).toBe("search");
+    expect(activeSection()).toBe("apps");
   });
 
   it("round-trips every section", () => {
@@ -89,7 +89,7 @@ describe("per-section memory", () => {
 
   it("switching away and back does not reset to the list view", () => {
     sidebarSections.openLocation("apps", "discipline");
-    sidebarSections.selectSection("tasks");
+    sidebarSections.selectSection("home");
     sidebarSections.selectSection("apps");
     expect(locations().apps).toBe("discipline");
   });
@@ -104,10 +104,6 @@ describe("per-section memory", () => {
     expect(locations().files).toBeNull();
   });
 
-  it("search has no sub-location", () => {
-    sidebarSections.setLocation("search", "anything");
-    expect(locations().search).toBeNull();
-  });
 });
 
 describe("openLocation", () => {

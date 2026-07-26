@@ -7,19 +7,26 @@ export type RadialWedge = (typeof RADIAL_WEDGES)[number] | 'dismiss'
 
 const DEAD_ZONE_RADIUS = 30 // Larger center zone for "dismiss"
 
-export const calculateSelectedWedge = (
+/**
+ * Which wedge index a cursor position selects, or `null` inside the dead
+ * zone. Index 0 starts at 12 o'clock and advances clockwise — the same
+ * convention as the renderer's `getWedgeIndexAt`, so highlight and commit
+ * agree. Both dial variants (system chord and shell right-button) commit
+ * through this.
+ */
+export const calculateSelectedWedgeIndex = (
   cursorX: number,
   cursorY: number,
   centerX: number,
   centerY: number
-): RadialWedge => {
+): number | null => {
   const dx = cursorX - centerX
   const dy = cursorY - centerY
   const distance = Math.sqrt(dx * dx + dy * dy)
 
   // Center zone = dismiss (cancel action)
   if (distance < DEAD_ZONE_RADIUS) {
-    return 'dismiss'
+    return null
   }
 
   // Calculate angle (0 = right, going clockwise)
@@ -27,14 +34,22 @@ export const calculateSelectedWedge = (
   // Normalize to 0-360
   if (angle < 0) angle += 360
 
-  // 4 wedges, each 90 degrees
-  // Starting from top (-90 degrees / 270 degrees)
-  // Adjust angle to start from top
+  // 4 wedges, each 90 degrees, starting from top
   angle = (angle + 90) % 360
 
-  // Determine wedge index
   const wedgeIndex = Math.floor(angle / 90)
+  return wedgeIndex >= 0 && wedgeIndex < RADIAL_WEDGES.length
+    ? wedgeIndex
+    : null
+}
 
-  // Map: 0=Capture (top), 1=Chat (right), 2=Add (bottom), 3=Voice (left)
-  return RADIAL_WEDGES[wedgeIndex] ?? 'dismiss'
+export const calculateSelectedWedge = (
+  cursorX: number,
+  cursorY: number,
+  centerX: number,
+  centerY: number
+): RadialWedge => {
+  const index = calculateSelectedWedgeIndex(cursorX, cursorY, centerX, centerY)
+  if (index === null) return 'dismiss'
+  return RADIAL_WEDGES[index] ?? 'dismiss'
 }
