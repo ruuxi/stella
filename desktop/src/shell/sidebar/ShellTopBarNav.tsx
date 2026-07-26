@@ -2,10 +2,7 @@ import { Link, useMatchRoute, useRouter } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
-  useState,
   useSyncExternalStore,
 } from "react";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
@@ -33,7 +30,6 @@ interface NavItemProps {
   badgeCount?: number;
   showHintDot?: boolean;
   onHintDismiss?: () => void;
-  registerRef: (id: string, el: HTMLAnchorElement | null) => void;
 }
 
 const NavItem = ({
@@ -42,7 +38,6 @@ const NavItem = ({
   badgeCount = 0,
   showHintDot = false,
   onHintDismiss,
-  registerRef,
 }: NavItemProps) => {
   const showBadge = badgeCount > 0;
   const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
@@ -73,7 +68,6 @@ const NavItem = ({
 
   return (
     <Link
-      ref={(el) => registerRef(app.id, el)}
       to={app.route}
       className="shell-topbar-nav-item"
       data-active={active ? "true" : undefined}
@@ -125,14 +119,12 @@ export const ShellTopBarPrimaryNav = ({
   const matchRoute = useMatchRoute();
   const onAppsRoute = Boolean(matchRoute({ to: "/apps", fuzzy: true }));
 
-  // The route-matched app drives the re-entry click + selected text; the
-  // sliding "thumb" only paints when that app also wants the selected state.
+  // The route-matched app drives the re-entry click + the plain-text
+  // selected state (stronger color + weight — deliberately no pill fill).
   const matchedApp = navApps.find((a) =>
     Boolean(matchRoute({ to: a.route, fuzzy: true })),
   );
   const matchedId = matchedApp?.id ?? null;
-  const selectedId =
-    matchedApp && !matchedApp.suppressActiveState ? matchedApp.id : null;
 
   useEffect(() => {
     if (newAppsHint.active && onAppsRoute) {
@@ -152,80 +144,8 @@ export const ShellTopBarPrimaryNav = ({
     [newAppsHint.active],
   );
 
-  // --- Sliding selection thumb -------------------------------------------
-  const navRef = useRef<HTMLElement>(null);
-  const itemRefs = useRef(new Map<string, HTMLAnchorElement>());
-  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(
-    null,
-  );
-  const [thumbVisible, setThumbVisible] = useState(false);
-  // Suppress the slide animation on first paint so the thumb appears under
-  // the active item instead of sweeping in from the left edge.
-  const [animate, setAnimate] = useState(false);
-
-  const registerRef = useCallback(
-    (id: string, el: HTMLAnchorElement | null) => {
-      if (el) itemRefs.current.set(id, el);
-      else itemRefs.current.delete(id);
-    },
-    [],
-  );
-
-  const measure = useCallback(() => {
-    const el = selectedId ? itemRefs.current.get(selectedId) ?? null : null;
-    if (!el) {
-      setThumbVisible(false);
-      return;
-    }
-    // Keep the last known geometry while hiding so it never collapses to 0.
-    setThumb({ left: el.offsetLeft, width: el.offsetWidth });
-    setThumbVisible(true);
-  }, [selectedId]);
-
-  useLayoutEffect(() => {
-    measure();
-  }, [measure, navApps]);
-
-  useEffect(() => {
-    const nav = navRef.current;
-    if (!nav || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(nav);
-    itemRefs.current.forEach((el) => ro.observe(el));
-    return () => ro.disconnect();
-  }, [measure, navApps]);
-
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setAnimate(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void document.fonts?.ready.then(() => {
-      if (!cancelled) measure();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [measure]);
-
   return (
-    <nav ref={navRef} className="shell-topbar-nav" aria-label="Apps">
-      <span
-        className="shell-topbar-nav-thumb"
-        data-animate={animate ? "true" : undefined}
-        data-visible={thumbVisible ? "true" : undefined}
-        aria-hidden="true"
-        style={
-          thumb
-            ? {
-                transform: `translateX(${thumb.left}px)`,
-                width: `${thumb.width}px`,
-              }
-            : undefined
-        }
-      />
+    <nav className="shell-topbar-nav" aria-label="Apps">
       {navApps.map((app) => (
         <NavItem
           key={app.id}
@@ -233,7 +153,6 @@ export const ShellTopBarPrimaryNav = ({
           active={matchedId === app.id}
           badgeCount={badgeFor(app)}
           showHintDot={hintFor(app)}
-          registerRef={registerRef}
           onHintDismiss={() => {
             if (app.id === "apps") markAllUserAppsSeen();
           }}

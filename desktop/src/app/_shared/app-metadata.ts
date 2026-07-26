@@ -68,6 +68,4 @@ export type AppMetadata = {
    * `route` keeps the default `<Link>` navigation.
    */
   resolveClickRoute?: () => string;
-  /** When true, the nav never paints the active/selected row styling. */
-  suppressActiveState?: boolean;
 };
