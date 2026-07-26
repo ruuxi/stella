@@ -12,6 +12,20 @@
   display: none;
 }
 
+/* Full-window input shield, mounted only while a gesture is live. It sits
+   above every embedded frame so the drag's moves and the committing release
+   hit-test to THIS document — an iframe or webview under the cursor would
+   otherwise swallow them and leave the dial stranded open. One layer below
+   the dial, which never takes pointer events anyway. */
+.shell-radial-gesture-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 8999;
+  cursor: default;
+  /* Invisible but hit-testable. */
+  background: transparent;
+}
+
 .shell-radial-dial[data-visible="true"] {
   display: block;
 }

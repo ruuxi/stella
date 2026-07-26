@@ -71,6 +71,13 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   );
   context.state.processRuntime.registerCleanup(
     "will-quit",
+    "shell-radial-frame-press-service",
+    () => {
+      context.services.shellRadialFramePressService.stop();
+    },
+  );
+  context.state.processRuntime.registerCleanup(
+    "will-quit",
     "local-chat-history-service",
     () => {
       context.services.localChatHistoryService.close();

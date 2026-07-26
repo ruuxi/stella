@@ -511,6 +511,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>("radial:addIcon"),
   },
 
+  // The shell's right-button radial dial. The main process forwards presses
+  // that land inside embedded frames (artifact iframes, webview surfaces) —
+  // which the shell's own DOM listeners can never see — plus the global
+  // move/release stream for the rest of that gesture.
+  shellRadial: {
+    onPress: onIpcWithEvent<{ x: number; y: number }>("shell-radial:press"),
+    onMove: onIpcWithEvent<{ x: number; y: number }>("shell-radial:move"),
+    onUp: onIpcWithEvent<{ x: number; y: number }>("shell-radial:up"),
+    onCancel: onIpcSignal("shell-radial:cancel"),
+  },
+
   overlay: {
     setInteractive: (interactive: boolean) =>
       ipcRenderer.send("overlay:setInteractive", interactive),

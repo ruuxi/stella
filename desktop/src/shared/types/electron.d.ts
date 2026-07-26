@@ -365,6 +365,19 @@ export type ElectronRadialApi = {
   ) => () => void;
 };
 
+export type ElectronShellRadialApi = {
+  onPress: (
+    callback: (event: unknown, data: { x: number; y: number }) => void,
+  ) => () => void;
+  onMove: (
+    callback: (event: unknown, data: { x: number; y: number }) => void,
+  ) => () => void;
+  onUp: (
+    callback: (event: unknown, data: { x: number; y: number }) => void,
+  ) => () => void;
+  onCancel: (callback: () => void) => () => void;
+};
+
 export type ElectronOverlayApi = {
   setInteractive: (interactive: boolean) => void;
   showWindowHighlight: (payload: {
@@ -1917,6 +1930,7 @@ export type ElectronApi = {
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
+  shellRadial: ElectronShellRadialApi;
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;

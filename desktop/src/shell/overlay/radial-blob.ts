@@ -12,7 +12,7 @@ varying vec2 v_uv;
 void main() {
   v_uv = a_pos * 0.5 + 0.5;
   gl_Position = vec4(a_pos, 0.0, 1.0);
-}`
+}`;
 
 const FRAG = `
 precision highp float;
@@ -37,7 +37,13 @@ const float OUTER_R = 125.0 / 280.0;
 void main() {
     vec2 p = v_uv - 0.5;
     float dist = length(p);
-    float angle = atan(p.y, p.x);
+    // Negate y: v_uv is GL-oriented (y up) but wedge indices are defined in
+    // client space (y down, index 0 at 12 o'clock advancing clockwise) by
+    // radial-geometry's getWedgeIndexAt. Both drivers feed indices from that
+    // convention, so the shader must hit-test in it too — without the flip the
+    // highlighted sector is the vertical mirror of the committed wedge, which
+    // shows whenever the blob is the only visible layer (fast gestures).
+    float angle = atan(-p.y, p.x);
     float topAngle = mod(angle + PI * 0.5, TAU);
 
     int wi = int(floor(topAngle / WEDGE_ANG));
@@ -83,105 +89,116 @@ void main() {
     // Ring only — center stays transparent so the Stella animation shows through.
     gl_FragColor = vec4(ringColor, ring);
 }
-`
+`;
 
 // ---- Types ----
 
-type Vec3 = [number, number, number]
+type Vec3 = [number, number, number];
 
 export interface BlobColors {
-  fills: Vec3[]
-  selectedFill: Vec3
-  stroke: Vec3
+  fills: Vec3[];
+  selectedFill: Vec3;
+  stroke: Vec3;
 }
 
 interface BlobGL {
-  gl: WebGLRenderingContext
-  prog: WebGLProgram
-  locs: Record<string, WebGLUniformLocation | null>
+  gl: WebGLRenderingContext;
+  prog: WebGLProgram;
+  locs: Record<string, WebGLUniformLocation | null>;
 }
 
 // ---- Module state ----
 
-let blobGL: BlobGL | null = null
-let animFrame: number | null = null
+let blobGL: BlobGL | null = null;
+let animFrame: number | null = null;
 
 // ---- WebGL setup ----
 
-function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLShader | null {
-  const s = gl.createShader(type)
-  if (!s) return null
-  gl.shaderSource(s, src)
-  gl.compileShader(s)
+function compile(
+  gl: WebGLRenderingContext,
+  type: number,
+  src: string,
+): WebGLShader | null {
+  const s = gl.createShader(type);
+  if (!s) return null;
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    gl.deleteShader(s)
-    return null
+    gl.deleteShader(s);
+    return null;
   }
-  return s
+  return s;
 }
 
 export function initBlob(canvas: HTMLCanvasElement): boolean {
-  const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false })
-  if (!gl) return false
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    premultipliedAlpha: false,
+  });
+  if (!gl) return false;
 
-  const vs = compile(gl, gl.VERTEX_SHADER, VERT)
-  const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG)
-  if (!vs || !fs) return false
+  const vs = compile(gl, gl.VERTEX_SHADER, VERT);
+  const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
+  if (!vs || !fs) return false;
 
-  const prog = gl.createProgram()!
-  gl.attachShader(prog, vs)
-  gl.attachShader(prog, fs)
-  gl.linkProgram(prog)
+  const prog = gl.createProgram()!;
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    gl.deleteProgram(prog)
-    return false
+    gl.deleteProgram(prog);
+    return false;
   }
-  gl.deleteShader(vs)
-  gl.deleteShader(fs)
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
 
   // Fullscreen quad
-  const buf = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
-  const pos = gl.getAttribLocation(prog, 'a_pos')
-  gl.enableVertexAttribArray(pos)
-  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0)
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
+  const pos = gl.getAttribLocation(prog, "a_pos");
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
 
-  const loc = (name: string) => gl.getUniformLocation(prog, name)
+  const loc = (name: string) => gl.getUniformLocation(prog, name);
 
   blobGL = {
     gl,
     prog,
     locs: {
-      u_progress: loc('u_progress'),
-      u_leadP: loc('u_leadP'),
-      u_lagP: loc('u_lagP'),
-      u_morph: loc('u_morph'),
-      u_time: loc('u_time'),
-      u_fills: loc('u_fills'),
-      u_selFill: loc('u_selFill'),
-      u_stroke: loc('u_stroke'),
-      u_selIdx: loc('u_selIdx'),
+      u_progress: loc("u_progress"),
+      u_leadP: loc("u_leadP"),
+      u_lagP: loc("u_lagP"),
+      u_morph: loc("u_morph"),
+      u_time: loc("u_time"),
+      u_fills: loc("u_fills"),
+      u_selFill: loc("u_selFill"),
+      u_stroke: loc("u_stroke"),
+      u_selIdx: loc("u_selIdx"),
     },
-  }
+  };
 
-  gl.enable(gl.BLEND)
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-  return true
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  return true;
 }
 
 // ---- Spring physics ----
 
 function springEase(t: number): number {
-  if (t <= 0) return 0
-  const zeta = 0.58
-  const omega = 28
-  const omegaD = omega * Math.sqrt(1 - zeta * zeta)
+  if (t <= 0) return 0;
+  const zeta = 0.58;
+  const omega = 28;
+  const omegaD = omega * Math.sqrt(1 - zeta * zeta);
   return (
     1 -
     Math.exp(-zeta * omega * t) *
       (Math.cos(omegaD * t) + ((zeta * omega) / omegaD) * Math.sin(omegaD * t))
-  )
+  );
 }
 
 // ---- Render single frame ----
@@ -195,40 +212,40 @@ function draw(
   selIdx: number,
   colors: BlobColors,
 ) {
-  if (!blobGL) return
-  const { gl, prog, locs } = blobGL
+  if (!blobGL) return;
+  const { gl, prog, locs } = blobGL;
 
-  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-  gl.clearColor(0, 0, 0, 0)
-  gl.clear(gl.COLOR_BUFFER_BIT)
-  gl.useProgram(prog)
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(prog);
 
-  gl.uniform1f(locs.u_progress!, progress)
-  gl.uniform1f(locs.u_leadP!, leadP)
-  gl.uniform1f(locs.u_lagP!, lagP)
-  gl.uniform1f(locs.u_morph!, morph)
-  gl.uniform1f(locs.u_time!, time)
-  gl.uniform1f(locs.u_selIdx!, selIdx)
+  gl.uniform1f(locs.u_progress!, progress);
+  gl.uniform1f(locs.u_leadP!, leadP);
+  gl.uniform1f(locs.u_lagP!, lagP);
+  gl.uniform1f(locs.u_morph!, morph);
+  gl.uniform1f(locs.u_time!, time);
+  gl.uniform1f(locs.u_selIdx!, selIdx);
 
-  const flat = new Float32Array(12)
+  const flat = new Float32Array(12);
   for (let i = 0; i < 4; i++) {
-    const c = colors.fills[i] ?? [0, 0, 0]
-    flat[i * 3] = c[0]
-    flat[i * 3 + 1] = c[1]
-    flat[i * 3 + 2] = c[2]
+    const c = colors.fills[i] ?? [0, 0, 0];
+    flat[i * 3] = c[0];
+    flat[i * 3 + 1] = c[1];
+    flat[i * 3 + 2] = c[2];
   }
-  gl.uniform3fv(locs.u_fills!, flat)
-  gl.uniform3fv(locs.u_selFill!, new Float32Array(colors.selectedFill))
-  gl.uniform3fv(locs.u_stroke!, new Float32Array(colors.stroke))
+  gl.uniform3fv(locs.u_fills!, flat);
+  gl.uniform3fv(locs.u_selFill!, new Float32Array(colors.selectedFill));
+  gl.uniform3fv(locs.u_stroke!, new Float32Array(colors.stroke));
 
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
 // ---- Animation loops ----
 
-const OPEN_SETTLE = 340 // ms
-const CLOSE_DURATION = 180 // ms
-const OPEN_SPEED_MULTIPLIER = 1 / 0.85
+const OPEN_SETTLE = 340; // ms
+const CLOSE_DURATION = 180; // ms
+const OPEN_SPEED_MULTIPLIER = 1 / 0.85;
 
 export function startOpen(
   selIdxRef: { current: number },
@@ -236,36 +253,36 @@ export function startOpen(
   onComplete: () => void,
   onFadeIn?: () => void,
 ) {
-  if (animFrame !== null) cancelAnimationFrame(animFrame)
-  const start = performance.now()
-  let hasFadedIn = false
+  if (animFrame !== null) cancelAnimationFrame(animFrame);
+  const start = performance.now();
+  let hasFadedIn = false;
 
   const tick = (now: number) => {
-    const elapsedMs = now - start
-    const s = (elapsedMs / 1000) * OPEN_SPEED_MULTIPLIER
+    const elapsedMs = now - start;
+    const s = (elapsedMs / 1000) * OPEN_SPEED_MULTIPLIER;
 
     // Trigger fade-in halfway through the animation precisely on the rAF thread
     if (!hasFadedIn && elapsedMs >= 150) {
-      hasFadedIn = true
-      if (onFadeIn) onFadeIn()
+      hasFadedIn = true;
+      if (onFadeIn) onFadeIn();
     }
 
-    const progress = springEase(s)
-    const leadP = springEase(s + 0.035)
-    const lagP = springEase(s - 0.020)
-    const morphRaw = springEase(s - 0.06)
-    const morph = Math.pow(Math.max(0, morphRaw), 1.3)
+    const progress = springEase(s);
+    const leadP = springEase(s + 0.035);
+    const lagP = springEase(s - 0.02);
+    const morphRaw = springEase(s - 0.06);
+    const morph = Math.pow(Math.max(0, morphRaw), 1.3);
 
-    draw(progress, leadP, lagP, morph, s, selIdxRef.current, colorsRef.current)
+    draw(progress, leadP, lagP, morph, s, selIdxRef.current, colorsRef.current);
 
     if (elapsedMs < OPEN_SETTLE) {
-      animFrame = requestAnimationFrame(tick)
+      animFrame = requestAnimationFrame(tick);
     } else {
-      animFrame = null
-      onComplete()
+      animFrame = null;
+      onComplete();
     }
-  }
-  animFrame = requestAnimationFrame(tick)
+  };
+  animFrame = requestAnimationFrame(tick);
 }
 
 export function startClose(
@@ -273,58 +290,66 @@ export function startClose(
   colorsRef: { current: BlobColors },
   onComplete: () => void,
 ) {
-  if (animFrame !== null) cancelAnimationFrame(animFrame)
-  draw(1, 1, 1, 1, 0, selIdxRef.current, colorsRef.current)
+  if (animFrame !== null) cancelAnimationFrame(animFrame);
+  draw(1, 1, 1, 1, 0, selIdxRef.current, colorsRef.current);
 
-  const start = performance.now()
+  const start = performance.now();
 
   const tick = (now: number) => {
-    const elapsed = now - start
-    const t = Math.min(elapsed / CLOSE_DURATION, 1)
-    const eased = t * t
-    const progress = 1 - eased
-    const lagP = 1 - Math.pow(Math.min(t * 1.15, 1), 2)
-    const leadP = 1 - Math.pow(Math.max(0, t - 0.08), 2) / (0.92 * 0.92)
-    const morph = Math.max(0, progress - 0.15) / 0.85
+    const elapsed = now - start;
+    const t = Math.min(elapsed / CLOSE_DURATION, 1);
+    const eased = t * t;
+    const progress = 1 - eased;
+    const lagP = 1 - Math.pow(Math.min(t * 1.15, 1), 2);
+    const leadP = 1 - Math.pow(Math.max(0, t - 0.08), 2) / (0.92 * 0.92);
+    const morph = Math.max(0, progress - 0.15) / 0.85;
 
-    draw(progress, leadP, lagP, morph, t * 0.2, selIdxRef.current, colorsRef.current)
+    draw(
+      progress,
+      leadP,
+      lagP,
+      morph,
+      t * 0.2,
+      selIdxRef.current,
+      colorsRef.current,
+    );
 
     if (t < 1) {
-      animFrame = requestAnimationFrame(tick)
+      animFrame = requestAnimationFrame(tick);
     } else {
-      animFrame = null
-      clearCanvas()
-      onComplete()
+      animFrame = null;
+      clearCanvas();
+      onComplete();
     }
-  }
-  animFrame = requestAnimationFrame(tick)
+  };
+  animFrame = requestAnimationFrame(tick);
 }
 
 export function primeBlob(colors: BlobColors) {
-  draw(1, 1, 1, 1, 0, -1, colors)
-  clearCanvas()
+  draw(1, 1, 1, 1, 0, -1, colors);
+  clearCanvas();
 }
 
 export function cancelAnimation() {
   if (animFrame !== null) {
-    cancelAnimationFrame(animFrame)
-    animFrame = null
+    cancelAnimationFrame(animFrame);
+    animFrame = null;
   }
-  clearCanvas()
+  clearCanvas();
 }
 
 function clearCanvas() {
   if (blobGL) {
-    const { gl } = blobGL
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT)
+    const { gl } = blobGL;
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
   }
 }
 
 export function destroyBlob() {
-  cancelAnimation()
+  cancelAnimation();
   if (blobGL) {
-    blobGL.gl.deleteProgram(blobGL.prog)
-    blobGL = null
+    blobGL.gl.deleteProgram(blobGL.prog);
+    blobGL = null;
   }
 }

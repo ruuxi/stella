@@ -4,6 +4,7 @@ import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
+import { ShellRadialFramePressService } from "../services/shell-radial-frame-press.js";
 import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ConnectorCredentialService } from "../services/connector-credential-service.js";
@@ -303,11 +304,21 @@ export const createBootstrapServices = (options: {
     },
   });
 
+  // Starts immediately (not alongside radialGestureService in app-shell):
+  // its only standing cost is an app-level `web-contents-created` listener,
+  // and attaching before any window exists guarantees the full window's
+  // contents are covered.
+  const shellRadialFramePressService = new ShellRadialFramePressService({
+    getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
+  });
+  shellRadialFramePressService.start();
+
   return {
     authService,
     backupService,
     captureService,
     radialGestureService,
+    shellRadialFramePressService,
     credentialService,
     connectorCredentialService,
     connectorConnectService,
