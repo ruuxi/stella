@@ -1,7 +1,8 @@
 /**
  * Surface a "this model isn't available on your plan" toast when a user on
  * a restricted tier (anonymous / free / go) submits a chat with a saved
- * non-default model override.
+ * non-default Stella model override AND Stella's own runtime is the
+ * committed engine.
  *
  * The picker (`AgentModelPicker`) toasts at selection time, but a user
  * whose plan downgrades AFTER they picked a model would never see the
@@ -20,15 +21,16 @@ import { router } from "@/router";
 import {
   getModelRestrictionActionLabel,
   getModelRestrictionDescription,
-  isRestrictedAudienceAllowedStellaModelId,
   isRestrictedModelOverrideAudience,
   resolveBillingAudience,
   type ManagedModelAudience,
 } from "@/global/billing/audience";
 import { BYOK_TOAST_ACTION } from "@/global/billing/byok-action";
+import {
+  resolveTierRestrictedModelNotice,
+  type NoticeRuntimeEngine,
+} from "./tier-restricted-model-notice";
 import { showToast } from "@/ui/toast";
-
-const ORCHESTRATOR_AND_GENERAL = ["orchestrator", "general"] as const;
 
 type AuthSessionData =
   | {
@@ -56,6 +58,7 @@ type BillingStatusLite = {
 
 type LocalModelPreferences = {
   modelOverrides?: Record<string, string>;
+  agentRuntimeEngine?: NoticeRuntimeEngine;
 };
 
 const buildToastDedupeKey = (
@@ -63,18 +66,6 @@ const buildToastDedupeKey = (
   agent: string,
   model: string,
 ): string => `${audience}|${agent}|${model}`;
-
-const getModelToastLabel = (model: string): string => {
-  const withoutStellaPrefix = model.startsWith("stella/")
-    ? model.slice("stella/".length)
-    : model;
-  const lastSlash = withoutStellaPrefix.lastIndexOf("/");
-  const displayId =
-    lastSlash >= 0
-      ? withoutStellaPrefix.slice(lastSlash + 1)
-      : withoutStellaPrefix;
-  return displayId || "That model";
-};
 
 export function useTierRestrictedModelToast() {
   const session = useDesktopAuthSession();
@@ -114,45 +105,33 @@ export function useTierRestrictedModelToast() {
     } catch {
       return;
     }
-    const overrides = preferences?.modelOverrides ?? {};
+    const notice = resolveTierRestrictedModelNotice({
+      audience,
+      agentRuntimeEngine: preferences?.agentRuntimeEngine,
+      modelOverrides: preferences?.modelOverrides,
+    });
+    if (!notice) return;
 
-    for (const agent of ORCHESTRATOR_AND_GENERAL) {
-      const override = overrides[agent]?.trim();
-      if (!override) continue;
-      // Only Stella-provider picks are subject to tier restrictions —
-      // BYOK / OAuth providers (Anthropic, OpenAI, OpenRouter, local
-      // runtime, …) run on the user's own key and are unaffected by
-      // Stella plan limits, so don't toast on them.
-      if (!override.startsWith("stella/")) continue;
-      // The opaque default sentinel is never a restricted pick, and restricted
-      // tiers may still select the Standard / Light modes.
-      if (override === "stella/default") continue;
-      if (isRestrictedAudienceAllowedStellaModelId(override)) continue;
-      const dedupeKey = buildToastDedupeKey(audience, agent, override);
-      if (seenRef.current.has(dedupeKey)) continue;
-      seenRef.current.add(dedupeKey);
+    const dedupeKey = buildToastDedupeKey(audience, notice.agent, notice.model);
+    if (seenRef.current.has(dedupeKey)) return;
+    seenRef.current.add(dedupeKey);
 
-      const modelLabel = getModelToastLabel(override);
-      showToast({
-        title: "Model not available on your plan",
-        description: getModelRestrictionDescription({
-          audience,
-          modelLabel,
-          tense: "is",
-        }),
-        variant: "error",
-        duration: 8000,
-        action: {
-          label: getModelRestrictionActionLabel(audience),
-          onClick: () => {
-            void router.navigate({ to: "/billing" });
-          },
+    showToast({
+      title: "Model not available on your plan",
+      description: getModelRestrictionDescription({
+        audience,
+        modelLabel: notice.modelLabel,
+        tense: "is",
+      }),
+      variant: "error",
+      duration: 8000,
+      action: {
+        label: getModelRestrictionActionLabel(audience),
+        onClick: () => {
+          void router.navigate({ to: "/billing" });
         },
-        secondaryAction: BYOK_TOAST_ACTION,
-      });
-      // One toast per send is enough — don't stack two if both orchestrator
-      // and general have non-default overrides.
-      return;
-    }
+      },
+      secondaryAction: BYOK_TOAST_ACTION,
+    });
   }, []);
 }
