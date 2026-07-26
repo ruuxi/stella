@@ -45,9 +45,18 @@ import { RADIAL_SIZE } from "../layout-constants.js";
 import { calculateSelectedWedgeIndex } from "../radial-wedge.js";
 
 const LEFT_MOUSE_BUTTON = 1;
+/** libuiohook MOUSE_BUTTON2 — the right button on every platform it supports. */
 const RIGHT_MOUSE_BUTTON = 2;
 const ESCAPE_KEYCODE = 1;
 const MOVE_THROTTLE_MS = 8;
+/**
+ * How long the exemption query may go unanswered before the dial shows
+ * anyway. Failing OPEN is deliberate: the exempt case (composer, editable
+ * fields) is the rare one, a wrongly-shown dial is recoverable with a
+ * dead-zone release, and a silently-missing dial is not recoverable at all —
+ * a busy or hung renderer must not eat the gesture.
+ */
+const QUERY_FAIL_OPEN_MS = 120;
 
 type ShellRadialOverlayBridge = {
   showShellRadial: () => void;
@@ -61,6 +70,13 @@ type ShellRadialGestureDeps = {
   /** The chord dial's session; the two dials never run concurrently. */
   isSystemRadialActive: () => boolean;
   shouldEnable: () => boolean;
+  /**
+   * Whether the global input hook is actually delivering events. The
+   * renderer asks over `shell-radial:hook-live` so it can leave the native
+   * context menu alone (and surface the missing accessibility permission)
+   * instead of suppressing the menu for a dial that can never appear.
+   */
+  isHookRunning: () => boolean;
   overlay: ShellRadialOverlayBridge;
 };
 
@@ -77,6 +93,7 @@ export class ShellRadialGestureService {
   private queryToken = 0;
   private gestureWindow: BrowserWindow | null = null;
   private lastMoveAt = 0;
+  private queryDeadline: ReturnType<typeof setTimeout> | null = null;
 
   constructor(deps: ShellRadialGestureDeps) {
     this.deps = deps;
@@ -91,6 +108,7 @@ export class ShellRadialGestureService {
     uIOhook.on("mousedown", this.handleGlobalMousedown);
     uIOhook.on("mouseup", this.handleGlobalMouseup);
     ipcMain.on("shell-radial:press-response", this.handlePressResponse);
+    ipcMain.handle("shell-radial:hook-live", () => this.deps.isHookRunning());
   }
 
   stop() {
@@ -103,6 +121,7 @@ export class ShellRadialGestureService {
       "shell-radial:press-response",
       this.handlePressResponse,
     );
+    ipcMain.removeHandler("shell-radial:hook-live");
   }
 
   private readonly handleGlobalMousedown = (event: UiohookMouseEvent) => {
@@ -124,12 +143,17 @@ export class ShellRadialGestureService {
 
     // The renderer is the only side that can see what is under the press:
     // editable fields and the composer keep their native context menu, so
-    // the dial must not claim those. The dial shows only once it answers.
+    // the dial must not claim those. The dial shows once it answers — or
+    // once the fail-open deadline passes without an answer.
     this.phase = "querying";
     this.gestureWindow = win;
     this.queryToken += 1;
     win.on("blur", this.handleWindowBlur);
     uIOhook.on("keydown", this.handleGlobalKeydown);
+    this.queryDeadline = setTimeout(() => {
+      this.queryDeadline = null;
+      this.activateGesture();
+    }, QUERY_FAIL_OPEN_MS);
     win.webContents.send("shell-radial:query-press", {
       x,
       y,
@@ -146,16 +170,27 @@ export class ShellRadialGestureService {
     if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
     if (data?.token !== this.queryToken) return;
 
-    if (data.claim !== true) {
+    if (data.claim === false) {
+      // An explicit decline (exempt target) is the only fail-closed path.
       this.cancelGesture();
       return;
     }
 
+    this.activateGesture();
+  };
+
+  /** querying → active: show the dial and start streaming the highlight. */
+  private activateGesture() {
+    if (this.phase !== "querying") return;
+    if (this.queryDeadline) {
+      clearTimeout(this.queryDeadline);
+      this.queryDeadline = null;
+    }
     this.phase = "active";
     this.lastMoveAt = 0;
     uIOhook.on("mousemove", this.handleGlobalMousemove);
     this.deps.overlay.showShellRadial();
-  };
+  }
 
   private readonly handleGlobalMousemove = () => {
     if (this.phase !== "active") return;
@@ -217,6 +252,10 @@ export class ShellRadialGestureService {
     const win = this.gestureWindow;
     this.phase = null;
     this.gestureWindow = null;
+    if (this.queryDeadline) {
+      clearTimeout(this.queryDeadline);
+      this.queryDeadline = null;
+    }
     uIOhook.off("mousemove", this.handleGlobalMousemove);
     uIOhook.off("keydown", this.handleGlobalKeydown);
     if (win && !win.isDestroyed()) {

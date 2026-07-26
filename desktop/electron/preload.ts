@@ -524,6 +524,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     respondPress: (token: number, claim: boolean) =>
       ipcRenderer.send("shell-radial:press-response", { token, claim }),
     onCommit: onIpcWithEvent<{ index: number }>("shell-radial:commit"),
+    // Whether the global input hook is delivering events. When it is not
+    // (accessibility permission missing), the renderer leaves the native
+    // context menu alone and surfaces the permission problem instead of
+    // suppressing right-click for a dial that can never appear.
+    isGestureHookLive: (): Promise<boolean> =>
+      ipcRenderer.invoke("shell-radial:hook-live"),
   },
 
   overlay: {

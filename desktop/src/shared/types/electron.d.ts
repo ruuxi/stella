@@ -377,6 +377,7 @@ export type ElectronShellRadialApi = {
   onCommit: (
     callback: (event: unknown, data: { index: number }) => void,
   ) => () => void;
+  isGestureHookLive: () => Promise<boolean>;
 };
 
 export type ElectronOverlayApi = {

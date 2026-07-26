@@ -238,6 +238,8 @@ export const IPC_PAYLOAD_CONTRACT: Readonly<
   "selfmod:lastCommit": { kind: "none" },
   "selfmod:recentCommits": { kind: "object", fields: ["limit"] },
   "selfmod:revert": { kind: "object", fields: ["commitHash", "steps"] },
+  "shell-radial:hook-live": { kind: "none" },
+  "shell-radial:press-response": { kind: "object", fields: ["token", "claim"] },
   "shell:killByPort": { kind: "object", fields: ["port"] },
   "shell:listExternalOpeners": { kind: "object", fields: ["filePath"] },
   "shell:openExternal": { kind: "passthrough" },

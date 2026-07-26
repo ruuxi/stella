@@ -118,6 +118,16 @@ export class RadialGestureService {
     return this.mouseHook?.isRadialActive() ?? false;
   }
 
+  /**
+   * Whether the global input hook is delivering events at all. False until
+   * start() ran with accessibility granted; the shell dial surfaces this to
+   * the renderer so a right-click without a working hook is not silently
+   * swallowed.
+   */
+  isHookRunning(): boolean {
+    return this.mouseHook?.isHookRunning() ?? false;
+  }
+
   private selectionCommitted = false;
   private startedInCompactMode = false;
   private contextBeforeGesture: ChatContext | null = null;

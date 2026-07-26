@@ -314,6 +314,7 @@ export const createBootstrapServices = (options: {
   const shellRadialGestureService = new ShellRadialGestureService({
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     isSystemRadialActive: () => radialGestureService.isRadialActive(),
+    isHookRunning: () => radialGestureService.isHookRunning(),
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&
       (process.platform !== "darwin" ||

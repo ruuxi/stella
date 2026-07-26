@@ -335,6 +335,14 @@ export class MouseHookManager {
     return this.radialActive;
   }
 
+  /**
+   * Whether the underlying uiohook actually started delivering events —
+   * false when accessibility permission is missing or startup failed.
+   */
+  isHookRunning() {
+    return this.uiohookStarted;
+  }
+
   private matchesTriggerKey(): boolean {
     return isRadialTriggerPressed(
       this.radialTriggerKey,

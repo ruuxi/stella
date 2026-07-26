@@ -29,12 +29,13 @@
  * every press the dial would claim, and allowed through for exempt targets.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   sidebarSections,
   type SidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
 import { displayTabs } from "@/features/workspace-display/tab-store";
+import { showToast } from "@/ui/toast";
 import { isRadialGestureExempt } from "./radial-gesture-target";
 
 /**
@@ -50,17 +51,49 @@ const WEDGE_ACTIONS: readonly (SidebarSection | "close")[] = [
 ];
 
 export function ShellRadialBridge() {
+  // Whether the main process's global input hook is delivering events.
+  // `null` until the first answer arrives; refreshed on window focus because
+  // granting accessibility in System Settings and returning to the app is
+  // exactly the moment the answer flips.
+  const hookLiveRef = useRef<boolean | null>(null);
+  const permissionToastShownRef = useRef(false);
+
   useEffect(() => {
+    const shellRadial = window.electronAPI?.shellRadial;
+
+    const refreshHookLiveness = () => {
+      void shellRadial?.isGestureHookLive?.().then((live) => {
+        hookLiveRef.current = live;
+      });
+    };
+    refreshHookLiveness();
+    window.addEventListener("focus", refreshHookLiveness);
+
     // The dial claims the right button across the shell surface, so the
     // context menu the OS would raise on the same button is suppressed —
-    // except for the targets the dial declines (composer, editable fields).
+    // except for the targets the dial declines (composer, editable fields),
+    // and except when the global hook is not delivering at all (accessibility
+    // permission missing): suppressing then would make right-click do
+    // nothing anywhere, with no clue why. In that state the native menu is
+    // left alone and the permission problem is surfaced once.
     const onContextMenu = (event: MouseEvent) => {
       if (isRadialGestureExempt(event.target)) return;
+      if (hookLiveRef.current === false) {
+        if (!permissionToastShownRef.current) {
+          permissionToastShownRef.current = true;
+          showToast({
+            title: "The radial dial needs Accessibility permission",
+            description:
+              "Enable Stella under System Settings → Privacy & Security → Accessibility, then click back into the app.",
+            duration: 8000,
+          });
+        }
+        return;
+      }
       event.preventDefault();
     };
     window.addEventListener("contextmenu", onContextMenu, true);
 
-    const shellRadial = window.electronAPI?.shellRadial;
     const cleanups: Array<() => void> = [];
     if (shellRadial) {
       cleanups.push(
@@ -81,6 +114,7 @@ export function ShellRadialBridge() {
     }
 
     return () => {
+      window.removeEventListener("focus", refreshHookLiveness);
       window.removeEventListener("contextmenu", onContextMenu, true);
       for (const cleanup of cleanups) cleanup();
     };
