@@ -377,7 +377,12 @@ export type ElectronShellRadialApi = {
   onCommit: (
     callback: (event: unknown, data: { index: number }) => void,
   ) => () => void;
-  isGestureHookLive: () => Promise<boolean>;
+  beginDomGesture: () => void;
+  moveDomGesture: () => void;
+  endDomGesture: () => void;
+  cancelDomGesture: () => void;
+  onEnded: (callback: () => void) => () => void;
+  onSwallowedPress: (callback: () => void) => () => void;
 };
 
 export type ElectronOverlayApi = {

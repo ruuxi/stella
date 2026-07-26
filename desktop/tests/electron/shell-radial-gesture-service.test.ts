@@ -1,16 +1,17 @@
 /**
  * The shell radial dial's main-process gesture driver, exercised without an
  * app: uiohook and electron are mocked, and the tests drive the exact event
- * sequences a real gesture produces. The regression this guards against was
- * a silent no-op — a wrong button constant, a missing registration, or a
- * fail-closed exemption query all present as "right-click does nothing".
+ * sequences real gestures produce — from both sources. The regressions this
+ * guards against present as a silent no-op (wrong button constant, missing
+ * registration, fail-closed exemption query) or as double-fired gestures
+ * when the DOM and hook sources see the same press.
  */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hookEmitter = new EventEmitter();
+const appEmitter = new EventEmitter();
 const ipcListeners = new Map<string, (...args: never[]) => void>();
-const ipcHandlers = new Map<string, () => unknown>();
 const cursor = { x: 0, y: 0 };
 
 vi.mock("uiohook-napi", () => ({
@@ -25,18 +26,20 @@ vi.mock("uiohook-napi", () => ({
 }));
 
 vi.mock("electron", () => ({
+  app: {
+    on: (event: string, fn: (...args: never[]) => void) => {
+      appEmitter.on(event, fn as (...args: unknown[]) => void);
+    },
+    removeListener: (event: string, fn: (...args: never[]) => void) => {
+      appEmitter.off(event, fn as (...args: unknown[]) => void);
+    },
+  },
   ipcMain: {
     on: (channel: string, fn: (...args: never[]) => void) => {
       ipcListeners.set(channel, fn);
     },
     removeListener: (channel: string) => {
       ipcListeners.delete(channel);
-    },
-    handle: (channel: string, fn: () => unknown) => {
-      ipcHandlers.set(channel, fn);
-    },
-    removeHandler: (channel: string) => {
-      ipcHandlers.delete(channel);
     },
   },
   screen: {
@@ -47,8 +50,8 @@ vi.mock("electron", () => ({
 import { ShellRadialGestureService } from "../../electron/services/shell-radial-gesture-service.js";
 
 // libuiohook button numbering (uiohook.h): 1 left, 2 right, 3 middle. DOM
-// numbering differs (right is 2 there too, but middle is 1) — the service
-// must match uiohook's, and these constants pin that.
+// numbering differs — the service must match uiohook's, and these constants
+// pin that.
 const UIOHOOK_LEFT = 1;
 const UIOHOOK_RIGHT = 2;
 const UIOHOOK_MIDDLE = 3;
@@ -69,7 +72,7 @@ const makeWindow = () => {
     on: vi.fn(),
     removeListener: vi.fn(),
     webContents: {
-      send: (channel: string, payload: unknown) => {
+      send: (channel: string, payload?: unknown) => {
         sent.push({ channel, payload });
       },
     },
@@ -82,6 +85,7 @@ describe("shell radial gesture service", () => {
   let win: ReturnType<typeof makeWindow>["win"];
   let sent: SentMessage[];
   let radialBounds: { x: number; y: number } | null;
+  let hookRunning: boolean;
   let overlay: {
     showShellRadial: ReturnType<typeof vi.fn>;
     hideRadial: ReturnType<typeof vi.fn>;
@@ -103,6 +107,16 @@ describe("shell radial gesture service", () => {
     hookEmitter.emit("mouseup", { button });
   };
 
+  const domEvent = (channel: string) => {
+    ipcListeners.get(channel)?.({ sender: win.webContents } as never);
+  };
+
+  const domBeginAt = (clientX: number, clientY: number) => {
+    cursor.x = CONTENT_BOUNDS.x + clientX;
+    cursor.y = CONTENT_BOUNDS.y + clientY;
+    domEvent("shell-radial:dom-begin");
+  };
+
   const lastQuery = (): { x: number; y: number; token: number } | null => {
     const query = [...sent]
       .reverse()
@@ -119,10 +133,15 @@ describe("shell radial gesture service", () => {
     );
   };
 
+  const commits = () => sent.filter((m) => m.channel === "shell-radial:commit");
+  const endedSignals = () =>
+    sent.filter((m) => m.channel === "shell-radial:ended");
+
   beforeEach(() => {
     vi.useFakeTimers();
     ({ win, sent } = makeWindow());
     radialBounds = null;
+    hookRunning = true;
     overlay = {
       showShellRadial: vi.fn(() => {
         // Mirror the controller: the dial centers on the cursor at show time.
@@ -139,7 +158,7 @@ describe("shell radial gesture service", () => {
       getFullWindow: () => win as never,
       isSystemRadialActive: () => false,
       shouldEnable: () => true,
-      isHookRunning: () => true,
+      isHookRunning: () => hookRunning,
       overlay,
     });
     service.start();
@@ -149,102 +168,253 @@ describe("shell radial gesture service", () => {
     service.stop();
     vi.useRealTimers();
     hookEmitter.removeAllListeners();
+    appEmitter.removeAllListeners();
     ipcListeners.clear();
-    ipcHandlers.clear();
   });
 
-  it("registers the global listeners and the hook-liveness handler on start", () => {
-    expect(hookEmitter.listenerCount("mousedown")).toBe(1);
-    expect(hookEmitter.listenerCount("mouseup")).toBe(1);
-    expect(ipcListeners.has("shell-radial:press-response")).toBe(true);
-    expect(ipcHandlers.get("shell-radial:hook-live")?.()).toBe(true);
+  describe("hook source", () => {
+    it("registers the global listeners on start", () => {
+      expect(hookEmitter.listenerCount("mousedown")).toBe(1);
+      expect(hookEmitter.listenerCount("mouseup")).toBe(1);
+      expect(ipcListeners.has("shell-radial:press-response")).toBe(true);
+      expect(ipcListeners.has("shell-radial:dom-begin")).toBe(true);
+    });
+
+    it("queries the renderer with window-relative coordinates on a right press", () => {
+      pressAt(600, 400);
+      expect(lastQuery()).toEqual({ x: 600, y: 400, token: 1 });
+      expect(overlay.showShellRadial).not.toHaveBeenCalled();
+    });
+
+    it("ignores left and middle presses", () => {
+      pressAt(600, 400, UIOHOOK_LEFT);
+      pressAt(600, 400, UIOHOOK_MIDDLE);
+      expect(lastQuery()).toBeNull();
+    });
+
+    it("ignores presses outside the window's content bounds", () => {
+      cursor.x = CONTENT_BOUNDS.x - 10;
+      cursor.y = CONTENT_BOUNDS.y + 100;
+      hookEmitter.emit("mousedown", { button: UIOHOOK_RIGHT });
+      expect(lastQuery()).toBeNull();
+    });
+
+    it("shows the dial when the renderer claims the press", () => {
+      pressAt(600, 400);
+      respond(true);
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("declines exempt presses without showing, and recovers for the next press", () => {
+      pressAt(600, 400);
+      respond(false);
+      expect(overlay.showShellRadial).not.toHaveBeenCalled();
+
+      release();
+      pressAt(600, 400);
+      expect(lastQuery()?.token).toBe(2);
+      respond(true);
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails OPEN when the exemption query goes unanswered", () => {
+      pressAt(600, 400);
+      expect(overlay.showShellRadial).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(200);
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("commits the wedge under the release and hides", () => {
+      pressAt(600, 400);
+      respond(true);
+
+      // Drag up-right of the press point: the upper-right quadrant is index 0.
+      cursor.x += 60;
+      cursor.y -= 80;
+      release();
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()[0]?.payload).toEqual({ index: 0 });
+      expect(endedSignals().length).toBe(1);
+    });
+
+    it("a dead-zone release dismisses without committing", () => {
+      pressAt(600, 400);
+      respond(true);
+      release(); // cursor unchanged: exact center of the dial
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()).toHaveLength(0);
+      expect(endedSignals().length).toBe(1);
+    });
+
+    it("a left release mid-gesture does not end it", () => {
+      pressAt(600, 400);
+      respond(true);
+      release(UIOHOOK_LEFT);
+      expect(overlay.hideRadial).not.toHaveBeenCalled();
+    });
+
+    it("Escape cancels without committing", () => {
+      pressAt(600, 400);
+      respond(true);
+      hookEmitter.emit("keydown", { keycode: UIOHOOK_ESCAPE_KEYCODE });
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(endedSignals().length).toBe(1);
+      release();
+      expect(commits()).toHaveLength(0);
+    });
   });
 
-  it("queries the renderer with window-relative coordinates on a right press", () => {
-    pressAt(600, 400);
-    expect(lastQuery()).toEqual({ x: 600, y: 400, token: 1 });
-    expect(overlay.showShellRadial).not.toHaveBeenCalled();
+  describe("DOM source (permissionless)", () => {
+    it("shows the dial immediately on dom-begin, with no query round trip", () => {
+      domBeginAt(600, 400);
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+      expect(lastQuery()).toBeNull();
+    });
+
+    it("resolves a whole gesture from renderer events alone", () => {
+      domBeginAt(600, 400);
+      cursor.x += 60;
+      cursor.y -= 80;
+      domEvent("shell-radial:dom-move");
+      expect(overlay.updateRadialCursor).toHaveBeenCalled();
+      domEvent("shell-radial:dom-up");
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()[0]?.payload).toEqual({ index: 0 });
+      expect(endedSignals().length).toBe(1);
+    });
+
+    it("dom-cancel dismisses without committing", () => {
+      domBeginAt(600, 400);
+      domEvent("shell-radial:dom-cancel");
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()).toHaveLength(0);
+    });
+
+    it("the hook release resolves a DOM-begun gesture (drag into embedded content)", () => {
+      domBeginAt(600, 400);
+      // The DOM stream dies when the drag enters an iframe; the hook still
+      // sees the physical release.
+      cursor.x += 60;
+      cursor.y -= 80;
+      release();
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()[0]?.payload).toEqual({ index: 0 });
+    });
   });
 
-  it("ignores left and middle presses", () => {
-    pressAt(600, 400, UIOHOOK_LEFT);
-    pressAt(600, 400, UIOHOOK_MIDDLE);
-    expect(lastQuery()).toBeNull();
+  describe("source arbitration (no double-fire)", () => {
+    it("dom-begin during a hook press's query collapses into the claim", () => {
+      pressAt(600, 400);
+      expect(overlay.showShellRadial).not.toHaveBeenCalled();
+      domEvent("shell-radial:dom-begin");
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+      // The late explicit answer must not re-activate or re-show.
+      respond(true);
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("a hook press is ignored while a DOM gesture is live", () => {
+      domBeginAt(600, 400);
+      pressAt(650, 420);
+      expect(lastQuery()).toBeNull();
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("a second dom-begin is ignored while a gesture is live", () => {
+      domBeginAt(600, 400);
+      domEvent("shell-radial:dom-begin");
+      expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
+    });
+
+    it("the duplicate release from the second source is a no-op", () => {
+      domBeginAt(600, 400);
+      cursor.x += 60;
+      cursor.y -= 80;
+      domEvent("shell-radial:dom-up");
+      release(); // the hook sees the same physical release
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()).toHaveLength(1);
+    });
   });
 
-  it("ignores presses outside the window's content bounds", () => {
-    cursor.x = CONTENT_BOUNDS.x - 10;
-    cursor.y = CONTENT_BOUNDS.y + 100;
-    hookEmitter.emit("mousedown", { button: UIOHOOK_RIGHT });
-    expect(lastQuery()).toBeNull();
-  });
+  describe("swallowed-press surfacing (hook unavailable)", () => {
+    it("reports an embedded-content press when the hook is dead", () => {
+      const emitter = new EventEmitter();
+      Object.assign(win.webContents, {
+        mainFrame: { id: "main" },
+        on: emitter.on.bind(emitter),
+        emit: emitter.emit.bind(emitter),
+        getType: () => "window",
+        hostWebContents: null,
+      });
+      hookRunning = false;
+      appEmitter.emit("web-contents-created", {}, win.webContents);
+      emitter.emit(
+        "context-menu",
+        {},
+        {
+          isEditable: false,
+          frame: { id: "child" },
+        },
+      );
+      expect(
+        sent.some((m) => m.channel === "shell-radial:swallowed-press"),
+      ).toBe(true);
+    });
 
-  it("shows the dial when the renderer claims the press", () => {
-    pressAt(600, 400);
-    respond(true);
-    expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
-  });
+    it("stays quiet when the hook is running", () => {
+      const emitter = new EventEmitter();
+      Object.assign(win.webContents, {
+        mainFrame: { id: "main" },
+        on: emitter.on.bind(emitter),
+        emit: emitter.emit.bind(emitter),
+        getType: () => "window",
+        hostWebContents: null,
+      });
+      hookRunning = true;
+      appEmitter.emit("web-contents-created", {}, win.webContents);
+      emitter.emit(
+        "context-menu",
+        {},
+        {
+          isEditable: false,
+          frame: { id: "child" },
+        },
+      );
+      expect(
+        sent.some((m) => m.channel === "shell-radial:swallowed-press"),
+      ).toBe(false);
+    });
 
-  it("declines exempt presses without showing, and recovers for the next press", () => {
-    pressAt(600, 400);
-    respond(false);
-    expect(overlay.showShellRadial).not.toHaveBeenCalled();
-
-    release();
-    pressAt(600, 400);
-    expect(lastQuery()?.token).toBe(2);
-    respond(true);
-    expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
-  });
-
-  it("fails OPEN when the exemption query goes unanswered", () => {
-    pressAt(600, 400);
-    expect(overlay.showShellRadial).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(200);
-    expect(overlay.showShellRadial).toHaveBeenCalledTimes(1);
-  });
-
-  it("commits the wedge under the release and hides", () => {
-    pressAt(600, 400);
-    respond(true);
-
-    // Drag up-right of the press point: the upper-right quadrant is index 0.
-    cursor.x += 60;
-    cursor.y -= 80;
-    release();
-
-    expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
-    const commit = sent.find((m) => m.channel === "shell-radial:commit");
-    expect(commit?.payload).toEqual({ index: 0 });
-  });
-
-  it("a dead-zone release dismisses without committing", () => {
-    pressAt(600, 400);
-    respond(true);
-    release(); // cursor unchanged: exact center of the dial
-
-    expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
-    expect(
-      sent.find((m) => m.channel === "shell-radial:commit"),
-    ).toBeUndefined();
-  });
-
-  it("a left release mid-gesture does not end it", () => {
-    pressAt(600, 400);
-    respond(true);
-    release(UIOHOOK_LEFT);
-    expect(overlay.hideRadial).not.toHaveBeenCalled();
-  });
-
-  it("Escape cancels without committing", () => {
-    pressAt(600, 400);
-    respond(true);
-    hookEmitter.emit("keydown", { keycode: UIOHOOK_ESCAPE_KEYCODE });
-
-    expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
-    release();
-    expect(
-      sent.find((m) => m.channel === "shell-radial:commit"),
-    ).toBeUndefined();
+    it("stays quiet for main-frame presses (renderer path owns those)", () => {
+      const emitter = new EventEmitter();
+      const mainFrame = { id: "main" };
+      Object.assign(win.webContents, {
+        mainFrame,
+        on: emitter.on.bind(emitter),
+        emit: emitter.emit.bind(emitter),
+        getType: () => "window",
+        hostWebContents: null,
+      });
+      hookRunning = false;
+      appEmitter.emit("web-contents-created", {}, win.webContents);
+      emitter.emit(
+        "context-menu",
+        {},
+        {
+          isEditable: false,
+          frame: mainFrame,
+        },
+      );
+      expect(
+        sent.some((m) => m.channel === "shell-radial:swallowed-press"),
+      ).toBe(false);
+    });
   });
 });

@@ -1,35 +1,34 @@
 /**
  * The shell's end of the right-button radial dial.
  *
- * The dial itself no longer lives in this document. It is painted by the
- * always-on-top overlay window (the same one that hosts the system chord
- * dial) and the whole press-drag-release gesture is captured globally in the
- * main process by uiohook — see `shell-radial-gesture-service`. That
- * architecture is what makes the dial reliable over any content: earlier
- * in-renderer versions lost releases to embedded frames (which own
- * real-input routing once a press or drag involves them) and to window drag
- * regions (which consume events before the page sees them). An overlay
- * window driven by the global hook receives no DOM events and has nothing
- * to lose.
+ * The dial is painted by the always-on-top overlay window and the gesture is
+ * owned by the main process (`shell-radial-gesture-service`), which accepts
+ * two sources. This bridge is the permissionless one: a right-press that
+ * lands on ordinary shell DOM is announced over `shell-radial:dom-begin` and
+ * followed by throttled move ticks and the release, so a fresh install with
+ * no accessibility permission still has a working dial everywhere the
+ * renderer can see the press. Presses inside embedded content (artifact
+ * iframes, viewers, webviews) never reach this document; those ride the
+ * global input hook instead, and when that hook is not running the main
+ * process reports them over `shell-radial:swallowed-press` so the missing
+ * permission is surfaced exactly when it mattered.
  *
- * What must stay in the renderer are the two things only it can know or do:
+ * While a renderer-begun gesture is live a full-window shield keeps moves
+ * and the release hit-testing to this document (embedded frames and window
+ * drag regions would otherwise eat them — when the hook is running it
+ * backstops those, but the shield is what keeps the no-permission path
+ * whole). `shell-radial:ended` clears local state for gestures the main
+ * process resolved through the hook, whose closing events the DOM never saw.
  *
- * - `shell-radial:query-press` — whether the pressed point is exempt. The
- *   composer and editable fields keep their native context menu; only the
- *   DOM can see what is under the cursor. A point over an embedded frame
- *   hit-tests to the frame's element here, which is never exempt — exactly
- *   right, artifact and app surfaces are dial territory.
- * - `shell-radial:commit` — applying the selected wedge. Sections route
- *   through `sidebarSections.selectSection`, the same verb the tab rail
- *   uses, so the dial inherits open/switch/close and per-section memory.
- *   The Close wedge is not a section: it just closes the panel.
- *
- * The window-level `contextmenu` suppression also stays here: the dial owns
- * the right button on the shell surface, so the OS menu is suppressed for
- * every press the dial would claim, and allowed through for exempt targets.
+ * Also here: answering `shell-radial:query-press` for hook presses (only the
+ * DOM can see whether the target is exempt — composer and editable fields
+ * keep their native context menu), applying `shell-radial:commit` (sections
+ * route through `sidebarSections.selectSection`, the same verb the tab rail
+ * uses; the Close wedge just closes the panel), and suppressing the OS
+ * context menu for every press the dial claims.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   sidebarSections,
   type SidebarSection,
@@ -37,6 +36,7 @@ import {
 import { displayTabs } from "@/features/workspace-display/tab-store";
 import { showToast } from "@/ui/toast";
 import { isRadialGestureExempt } from "./radial-gesture-target";
+import "./shell-radial-bridge.css";
 
 /**
  * Wedge index → action, in the shared quadrant order (index 0 upper-right,
@@ -50,48 +50,74 @@ const WEDGE_ACTIONS: readonly (SidebarSection | "close")[] = [
   "apps",
 ];
 
+const DOM_MOVE_THROTTLE_MS = 8;
+
 export function ShellRadialBridge() {
-  // Whether the main process's global input hook is delivering events.
-  // `null` until the first answer arrives; refreshed on window focus because
-  // granting accessibility in System Settings and returning to the app is
-  // exactly the moment the answer flips.
-  const hookLiveRef = useRef<boolean | null>(null);
-  const permissionToastShownRef = useRef(false);
+  const [gestureLive, setGestureLive] = useState(false);
 
   useEffect(() => {
     const shellRadial = window.electronAPI?.shellRadial;
 
-    const refreshHookLiveness = () => {
-      void shellRadial?.isGestureHookLive?.().then((live) => {
-        hookLiveRef.current = live;
-      });
+    // Local mirror of "a renderer-begun gesture is in flight". Drives the
+    // shield and gates the move/up senders; cleared locally on release or
+    // cancel and remotely by `shell-radial:ended`.
+    let domGestureLive = false;
+    let lastMoveSentAt = 0;
+    let permissionToastShown = false;
+
+    const setLive = (live: boolean) => {
+      domGestureLive = live;
+      setGestureLive(live);
     };
-    refreshHookLiveness();
-    window.addEventListener("focus", refreshHookLiveness);
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 2 || !shellRadial) return;
+      if (domGestureLive) return;
+      if (isRadialGestureExempt(event.target)) return;
+      event.preventDefault();
+      setLive(true);
+      shellRadial.beginDomGesture();
+    };
+
+    const onPointerMove = () => {
+      if (!domGestureLive || !shellRadial) return;
+      const now = Date.now();
+      if (now - lastMoveSentAt < DOM_MOVE_THROTTLE_MS) return;
+      lastMoveSentAt = now;
+      shellRadial.moveDomGesture();
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (!domGestureLive || event.button !== 2 || !shellRadial) return;
+      event.preventDefault();
+      setLive(false);
+      shellRadial.endDomGesture();
+    };
+
+    const cancelDomGesture = () => {
+      if (!domGestureLive || !shellRadial) return;
+      setLive(false);
+      shellRadial.cancelDomGesture();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelDomGesture();
+    };
 
     // The dial claims the right button across the shell surface, so the
     // context menu the OS would raise on the same button is suppressed —
-    // except for the targets the dial declines (composer, editable fields),
-    // and except when the global hook is not delivering at all (accessibility
-    // permission missing): suppressing then would make right-click do
-    // nothing anywhere, with no clue why. In that state the native menu is
-    // left alone and the permission problem is surfaced once.
+    // except for the targets the dial declines (composer, editable fields).
     const onContextMenu = (event: MouseEvent) => {
       if (isRadialGestureExempt(event.target)) return;
-      if (hookLiveRef.current === false) {
-        if (!permissionToastShownRef.current) {
-          permissionToastShownRef.current = true;
-          showToast({
-            title: "The radial dial needs Accessibility permission",
-            description:
-              "Enable Stella under System Settings → Privacy & Security → Accessibility, then click back into the app.",
-            duration: 8000,
-          });
-        }
-        return;
-      }
       event.preventDefault();
     };
+
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", cancelDomGesture, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", cancelDomGesture);
     window.addEventListener("contextmenu", onContextMenu, true);
 
     const cleanups: Array<() => void> = [];
@@ -110,15 +136,37 @@ export function ShellRadialBridge() {
           }
           sidebarSections.selectSection(action);
         }),
+        shellRadial.onEnded(() => {
+          // The main process resolved the gesture (possibly via the global
+          // hook, whose closing events this document never saw).
+          setLive(false);
+        }),
+        shellRadial.onSwallowedPress(() => {
+          if (permissionToastShown) return;
+          permissionToastShown = true;
+          showToast({
+            title: "Grant Accessibility to use the dial over content",
+            description:
+              "Right-click works everywhere else, but presses on files and apps need Stella enabled under System Settings → Privacy & Security → Accessibility.",
+            duration: 8000,
+          });
+        }),
       );
     }
 
     return () => {
-      window.removeEventListener("focus", refreshHookLiveness);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", cancelDomGesture, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", cancelDomGesture);
       window.removeEventListener("contextmenu", onContextMenu, true);
       for (const cleanup of cleanups) cleanup();
     };
   }, []);
 
-  return null;
+  return gestureLive ? (
+    <div className="shell-radial-gesture-shield" aria-hidden="true" />
+  ) : null;
 }
