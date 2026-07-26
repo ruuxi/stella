@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { displayTabs } from "../../../src/features/workspace-display/tab-store";
 import {
+  LEGACY_SIDEBAR_SECTION_IDS,
+  resolveSidebarSection,
   sidebarSections,
   SIDEBAR_SECTIONS,
 } from "../../../src/features/workspace-display/sidebar-sections";
@@ -103,7 +105,55 @@ describe("per-section memory", () => {
     sidebarSections.clearLocation("files");
     expect(locations().files).toBeNull();
   });
+});
 
+describe("retired section ids", () => {
+  it("resolves the ids the rename left behind to home", () => {
+    expect([...LEGACY_SIDEBAR_SECTION_IDS].sort()).toEqual(["search", "tasks"]);
+    for (const legacy of LEGACY_SIDEBAR_SECTION_IDS) {
+      expect(resolveSidebarSection(legacy)).toBe("home");
+    }
+  });
+
+  it("resolves anything unrecognizable to home rather than passing it on", () => {
+    for (const value of [null, undefined, "", "notes", 7, {}, "__proto__"]) {
+      expect(resolveSidebarSection(value)).toBe("home");
+    }
+  });
+
+  it("keeps live ids untouched", () => {
+    for (const section of SIDEBAR_SECTIONS) {
+      expect(resolveSidebarSection(section)).toBe(section);
+    }
+  });
+
+  // The store is the boundary: whatever a caller hands it — an IPC wedge, a
+  // rehydrated value, a call site the rename missed — `activeSection` only
+  // ever holds an id that has a section behind it.
+  it("never seats a retired id as the active section", () => {
+    sidebarSections.setActiveSection("tasks" as unknown as "home");
+    expect(sidebarSections.getSnapshot().activeSection).toBe("home");
+
+    sidebarSections.setActiveSection("search" as unknown as "home");
+    expect(sidebarSections.getSnapshot().activeSection).toBe("home");
+  });
+
+  it("routes selectSection's open/switch/close rule through the live id", () => {
+    sidebarSections.selectSection("tasks" as unknown as "home");
+    expect(activeSection()).toBe("home");
+    expect(panelOpen()).toBe(true);
+
+    // Selecting the same section again closes — and `tasks` *is* the same
+    // section as `home`, so this must close rather than switch.
+    sidebarSections.selectSection("tasks" as unknown as "home");
+    expect(panelOpen()).toBe(false);
+  });
+
+  it("files a retired id's sub-location under its successor", () => {
+    sidebarSections.setLocation("tasks" as unknown as "home", "thread:42");
+    expect(locations().home).toBe("thread:42");
+    expect(locations()).not.toHaveProperty("tasks");
+  });
 });
 
 describe("openLocation", () => {

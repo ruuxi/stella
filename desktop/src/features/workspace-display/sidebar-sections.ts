@@ -32,12 +32,31 @@ export const isSidebarSection = (value: unknown): value is SidebarSection =>
 /**
  * Older builds persisted section ids that no longer exist: `tasks` was
  * renamed to `home`, and `search` was folded into it as an in-view control.
- * Both degrade to `home` rather than resetting the user's spot to a default.
  */
-const migrateLegacySection = (value: unknown): SidebarSection | null => {
+const LEGACY_SECTION_ALIASES: Readonly<Record<string, SidebarSection>> = {
+  tasks: "home",
+  search: "home",
+};
+
+export const LEGACY_SIDEBAR_SECTION_IDS = Object.keys(
+  LEGACY_SECTION_ALIASES,
+) as readonly string[];
+
+/**
+ * Every id the sidebar can be pointed at, resolved to one that exists.
+ *
+ * Total by construction: a retired id degrades to its successor and anything
+ * unrecognizable degrades to `home`, so no caller can leave `activeSection`
+ * holding a section with nothing behind it. That matters more than it looks —
+ * a section id without a component renders `undefined`, and React treats that
+ * as an invalid element type and tears down the whole shell rather than just
+ * the panel. Degrading to Home keeps the user's spot instead of resetting it.
+ */
+export const resolveSidebarSection = (value: unknown): SidebarSection => {
   if (isSidebarSection(value)) return value;
-  if (value === "tasks" || value === "search") return "home";
-  return null;
+  if (typeof value === "string" && Object.hasOwn(LEGACY_SECTION_ALIASES, value))
+    return LEGACY_SECTION_ALIASES[value];
+  return "home";
 };
 
 /**
@@ -73,7 +92,12 @@ const DEFAULT_LOCATIONS: SidebarSectionLocations = {
 const readPersistedSection = (): SidebarSection => {
   if (typeof window === "undefined") return "home";
   const raw = uiState.getItem(STORAGE_KEY_SECTION);
-  return migrateLegacySection(raw) ?? "home";
+  const section = resolveSidebarSection(raw);
+  // Rewrite the migrated id rather than re-migrating it every launch, so a
+  // retired value cannot outlive the build that retired it.
+  if (raw !== null && raw !== section)
+    uiState.setItem(STORAGE_KEY_SECTION, section);
+  return section;
 };
 
 /**
@@ -151,9 +175,10 @@ export const sidebarSections = {
    * Files, say).
    */
   setActiveSection(section: SidebarSection): void {
-    if (snapshot.activeSection === section) return;
-    persistSection(section);
-    emit({ ...snapshot, activeSection: section });
+    const resolved = resolveSidebarSection(section);
+    if (snapshot.activeSection === resolved) return;
+    persistSection(resolved);
+    emit({ ...snapshot, activeSection: resolved });
   },
 
   /**
@@ -166,7 +191,8 @@ export const sidebarSections = {
    * Neither branch touches per-section memory, so a close/reopen round trip
    * lands back on whatever sub-location the section was showing.
    */
-  selectSection(section: SidebarSection): void {
+  selectSection(rawSection: SidebarSection): void {
+    const section = resolveSidebarSection(rawSection);
     const { panelOpen } = displayTabs.getLayoutSnapshot();
 
     if (!panelOpen) {
@@ -186,7 +212,8 @@ export const sidebarSections = {
   /**
    * Record where a section is. Passing `null` returns it to its list view.
    */
-  setLocation(section: SidebarSection, location: string | null): void {
+  setLocation(rawSection: SidebarSection, location: string | null): void {
+    const section = resolveSidebarSection(rawSection);
     if (snapshot.locations[section] === location) return;
     const locations = { ...snapshot.locations, [section]: location };
     persistLocations(locations);
@@ -232,9 +259,11 @@ export const useActiveSidebarSection = (): SidebarSection =>
 /** The sub-location for one section, or `null` for its list view. */
 export const useSidebarSectionLocation = (
   section: SidebarSection,
-): string | null =>
-  useSyncExternalStore(
+): string | null => {
+  const resolved = resolveSidebarSection(section);
+  return useSyncExternalStore(
     sidebarSections.subscribe,
-    () => sidebarSections.getSnapshot().locations[section],
-    () => sidebarSections.getSnapshot().locations[section],
+    () => sidebarSections.getSnapshot().locations[resolved],
+    () => sidebarSections.getSnapshot().locations[resolved],
   );
+};
