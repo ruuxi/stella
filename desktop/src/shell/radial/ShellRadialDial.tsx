@@ -88,6 +88,10 @@ export function ShellRadialDial() {
     setSelectedId(null);
     hideRef.current();
 
+    // The main process may still be watching the OS-level release for this
+    // gesture; a resolved gesture has no more use for it.
+    window.electronAPI?.shellRadial?.endGestureTracking?.();
+
     if (commit && selected) {
       sidebarSections.selectSection(selected);
     }
@@ -153,6 +157,12 @@ export function ShellRadialDial() {
 
       event.preventDefault();
       beginGesture(event.clientX, event.clientY);
+      // Hand the release to the OS-level hook as well. DOM delivery is not
+      // guaranteed from here on: the drag can wander into an embedded frame
+      // (whose widget then owns real-input routing) or a window drag region,
+      // and either can eat the pointerup. Whichever of the DOM release or
+      // the hook's release arrives first resolves; the other no-ops.
+      window.electronAPI?.shellRadial?.trackGesture?.();
     };
 
     const onPointerMove = (event: PointerEvent) => {

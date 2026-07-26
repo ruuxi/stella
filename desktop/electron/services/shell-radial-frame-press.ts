@@ -23,13 +23,29 @@
  * if it is not delivering, the dial still opens and Escape in the renderer
  * still cancels, because the press handler re-focuses the shell document.
  *
- * macOS only: `context-menu` fires at right-press time there, which is what
- * a press-drag-release gesture needs. On Windows/Linux the event fires at
- * release — too late to start a hold gesture — so those keep DOM-only
- * coverage.
+ * The same OS-level closer also backs renderer-initiated gestures: the shell
+ * announces every DOM-begun gesture over `shell-radial:track`, because DOM
+ * delivery of the release is best-effort — a drag that enters an embedded
+ * frame hands real-input routing to that frame's widget, and a release inside
+ * a `-webkit-app-region: drag` strip is consumed by window-dragging before
+ * the page sees it. The hook's release is authoritative; whichever of the DOM
+ * or hook release arrives first resolves the gesture and the other no-ops.
+ *
+ * The frame-press trigger is macOS-only: `context-menu` fires at right-press
+ * time there, which is what a press-drag-release gesture needs. On
+ * Windows/Linux the event fires at release — too late to start a hold
+ * gesture — so those keep DOM-only press coverage (release tracking still
+ * applies).
  */
 
-import { app, screen, type BrowserWindow, type WebContents } from "electron";
+import {
+  app,
+  ipcMain,
+  screen,
+  type BrowserWindow,
+  type IpcMainEvent,
+  type WebContents,
+} from "electron";
 import {
   uIOhook,
   type UiohookKeyboardEvent,
@@ -57,9 +73,15 @@ export class ShellRadialFramePressService {
 
   start() {
     if (this.started) return;
-    if (process.platform !== "darwin") return;
     this.started = true;
-    app.on("web-contents-created", this.handleWebContentsCreated);
+    // The frame-press trigger is macOS-only (context-menu fires at press time
+    // there); OS-level release tracking for renderer-initiated gestures is
+    // wanted everywhere the hook runs.
+    if (process.platform === "darwin") {
+      app.on("web-contents-created", this.handleWebContentsCreated);
+    }
+    ipcMain.on("shell-radial:track", this.handleTrackRequest);
+    ipcMain.on("shell-radial:untrack", this.handleUntrackRequest);
   }
 
   stop() {
@@ -67,7 +89,28 @@ export class ShellRadialFramePressService {
     this.started = false;
     this.endTracking(false);
     app.removeListener("web-contents-created", this.handleWebContentsCreated);
+    ipcMain.removeListener("shell-radial:track", this.handleTrackRequest);
+    ipcMain.removeListener("shell-radial:untrack", this.handleUntrackRequest);
   }
+
+  /**
+   * A DOM-initiated gesture just began in the shell. DOM delivery of its
+   * release is not guaranteed — embedded frames own real-input routing once
+   * the drag enters them, and window drag regions swallow events entirely —
+   * so the OS-level hook watches the release for these gestures too.
+   */
+  private readonly handleTrackRequest = (event: IpcMainEvent) => {
+    const win = this.deps.getFullWindow();
+    if (!win || win.isDestroyed()) return;
+    if (event.sender !== win.webContents) return;
+    this.beginTracking(win);
+  };
+
+  private readonly handleUntrackRequest = (event: IpcMainEvent) => {
+    const win = this.deps.getFullWindow();
+    if (win && !win.isDestroyed() && event.sender !== win.webContents) return;
+    this.endTracking(false);
+  };
 
   private readonly handleWebContentsCreated = (
     _event: unknown,

@@ -376,6 +376,8 @@ export type ElectronShellRadialApi = {
     callback: (event: unknown, data: { x: number; y: number }) => void,
   ) => () => void;
   onCancel: (callback: () => void) => () => void;
+  trackGesture: () => void;
+  endGestureTracking: () => void;
 };
 
 export type ElectronOverlayApi = {

@@ -24,6 +24,12 @@
   cursor: default;
   /* Invisible but hit-testable. */
   background: transparent;
+  /* Drag regions are computed from layout, not stacking: a plain overlay does
+     NOT shadow the top bar's and panel chrome's `-webkit-app-region: drag`
+     strips, and a release inside one is swallowed by system window-dragging
+     before the DOM ever sees it. Declaring no-drag here subtracts the whole
+     window from the draggable region for the gesture's duration. */
+  -webkit-app-region: no-drag;
 }
 
 .shell-radial-dial[data-visible="true"] {

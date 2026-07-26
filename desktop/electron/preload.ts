@@ -520,6 +520,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onMove: onIpcWithEvent<{ x: number; y: number }>("shell-radial:move"),
     onUp: onIpcWithEvent<{ x: number; y: number }>("shell-radial:up"),
     onCancel: onIpcSignal("shell-radial:cancel"),
+    // The renderer announces DOM-initiated gestures so the main process can
+    // track the release at the OS level too. DOM delivery of the release is
+    // not guaranteed — embedded frames and window drag regions can both eat
+    // it — so the global hook is the authoritative closer for every gesture.
+    trackGesture: () => ipcRenderer.send("shell-radial:track"),
+    endGestureTracking: () => ipcRenderer.send("shell-radial:untrack"),
   },
 
   overlay: {
