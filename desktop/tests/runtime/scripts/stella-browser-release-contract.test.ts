@@ -19,11 +19,14 @@ describe("Stella Browser release contract", () => {
     expect(workflow).toContain("stella-browser/${source_sha}/manifest.json");
     expect(workflow).toContain("name: release-pin-stella-browser");
     expect(workflow).toContain(
-      '--expected-source-sha "${{ needs.resolve-stella-browser.outputs.source-sha }}"',
+      '"${{ needs.resolve-stella-browser.outputs.source-sha }}"',
+    );
+    expect(workflow).toContain(
+      "stellaBrowserManifest.sourceSha !== expectedBrowserSourceSha",
     );
     expect(
       workflow.match(/stella-browser-manifest\.json/g)?.length,
-    ).toBeGreaterThan(5);
+    ).toBe(4);
   });
 
   it("cannot label manually-dispatched browser bytes with an arbitrary SHA", async () => {

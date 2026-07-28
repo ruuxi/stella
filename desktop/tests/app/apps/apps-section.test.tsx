@@ -18,6 +18,16 @@ const userApp = vi.hoisted(() => ({
     }),
 }));
 
+const olderUserApp = vi.hoisted(() => ({
+  slug: "notes",
+  meta: { label: "Notes", createdAt: "2025-01-01T00:00:00.000Z" },
+  load: () =>
+    Promise.resolve({
+      default: () => null,
+      meta: { label: "Notes", createdAt: "2025-01-01T00:00:00.000Z" },
+    }),
+}));
+
 // One stable array identity: `useSyncExternalStore` treats a fresh snapshot
 // object on every read as a change and re-renders forever.
 const registrySnapshot = vi.hoisted(() => [] as unknown[]);
@@ -28,7 +38,7 @@ vi.mock("@/app/_user/user-apps-registry", () => ({
   getUserApp: (slug: string) => (slug === userApp.slug ? userApp : undefined),
 }));
 
-registrySnapshot.push(userApp);
+registrySnapshot.push(olderUserApp, userApp);
 
 const { AppsSection } = await import("@/shell/sidebar-sections/AppsSection");
 const { sidebarSections } = await import(
@@ -85,13 +95,16 @@ describe("AppsSection", () => {
     expect(container.querySelector(".apps-section__card")).not.toBeNull();
   });
 
-  it("uses Stella's shared picker instead of a native select", () => {
+  it("lists apps recent-first without duplicate local sort controls", () => {
     render();
 
     expect(container.querySelector("select")).toBeNull();
+    expect(container.querySelector('[data-slot="select-trigger"]')).toBeNull();
     expect(
-      container.querySelector('[data-slot="select-trigger"]')?.textContent,
-    ).toContain("Recent");
+      Array.from(container.querySelectorAll(".apps-section__card-label")).map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Ledger", "Notes"]);
   });
 
   // The whole reason the host is a fixed sibling of the library rather than a
