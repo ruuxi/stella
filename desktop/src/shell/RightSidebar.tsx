@@ -190,11 +190,8 @@ export const RightSidebar = forwardRef<
     };
 
     const scheduleWidthVarSync = () => {
-      // While the panel is closed nothing consumes the var, so re-measuring
-      // the shell + left sidebar on every ResizeObserver tick (a forced
-      // layout per animation frame during the left sidebar's width slide)
-      // is wasted work. `syncOnLayoutChange` below refreshes the var the
-      // moment the panel opens, so it can never go stale for an open panel.
+      // While the panel is closed nothing visible consumes the var, so avoid
+      // re-measuring until opening makes the panel/header visible again.
       if (!displayTabs.getLayoutSnapshot().panelOpen) return;
       if (frame !== 0) return;
       frame = requestAnimationFrame(syncWidthVarNow);

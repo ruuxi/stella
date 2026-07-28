@@ -5,17 +5,29 @@
  * an agent-thread drill-down, or `null` for the thread list.
  */
 
-import { useDeferredValue, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   displaySearchStore,
+  useDisplaySearchFocusRequest,
+  useDisplaySearchOpen,
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
 import {
   sidebarSections,
+  useActiveSidebarSection,
   useSidebarSectionLocation,
 } from "@/features/workspace-display/sidebar-sections";
 import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
-import { useDisplayTabList } from "@/features/workspace-display/tab-store";
+import {
+  useDisplayPanelOpen,
+  useDisplayTabList,
+} from "@/features/workspace-display/tab-store";
 import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import {
   engineOverlay,
@@ -33,44 +45,79 @@ export const shouldHoldSearchLayout = (
 
 function HomeOverview() {
   const query = useDisplaySearchQuery();
+  const searchOpen = useDisplaySearchOpen();
+  const focusRequest = useDisplaySearchFocusRequest();
+  const panelOpen = useDisplayPanelOpen();
+  const activeSection = useActiveSidebarSection();
   const modelsPickerOpen = useEngineOverlayOpen();
   const [inputValue, setInputValue] = useState(query);
   const deferredQuery = useDeferredValue(query);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!searchOpen) {
+      setInputValue("");
+      return;
+    }
     const timer = window.setTimeout(() => {
       displaySearchStore.setQuery(inputValue);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [inputValue]);
+  }, [inputValue, searchOpen]);
 
-  const searching = shouldHoldSearchLayout(inputValue, deferredQuery);
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequest, searchOpen]);
+
+  useEffect(() => {
+    if (searchOpen && (!panelOpen || activeSection !== "home")) {
+      displaySearchStore.close();
+    }
+  }, [activeSection, panelOpen, searchOpen]);
+
+  const searching =
+    searchOpen && shouldHoldSearchLayout(inputValue, deferredQuery);
+  const renderEmpty = useCallback(
+    () => (
+      <div className="sidebar-section__empty">
+        {deferredQuery.trim()
+          ? "Nothing matches that search."
+          : "Activity will show up here as Stella works."}
+      </div>
+    ),
+    [deferredQuery],
+  );
 
   return (
     <div className="sidebar-search" data-searching={searching || undefined}>
-      <div className="sidebar-search__field">
-        <Search size={15} strokeWidth={1.75} aria-hidden="true" />
-        <input
-          type="text"
-          className="sidebar-search__input"
-          value={inputValue}
-          placeholder="Search activity, files, and more"
-          onChange={(event) => setInputValue(event.currentTarget.value)}
-          aria-label="Search activity, files, and more"
-        />
-      </div>
+      {searchOpen ? (
+        <div className="sidebar-search__field">
+          <Search size={15} strokeWidth={1.75} aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="text"
+            className="sidebar-search__input"
+            value={inputValue}
+            placeholder="Search activity, files, and more"
+            onChange={(event) => setInputValue(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") displaySearchStore.close();
+            }}
+            aria-label="Search activity, files, and more"
+          />
+        </div>
+      ) : null}
       <div className="sidebar-search__body">
         <WorkspaceSections
-          query={deferredQuery}
+          query={searchOpen ? deferredQuery : ""}
           variant="overview"
+          searchMode="quick"
           includeUserApps
-          renderEmpty={() => (
-            <div className="sidebar-section__empty">
-              {deferredQuery.trim()
-                ? "Nothing matches that search."
-                : "Activity will show up here as Stella works."}
-            </div>
-          )}
+          renderEmpty={renderEmpty}
         />
       </div>
       <div className="sidebar-home-footer">

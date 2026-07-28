@@ -252,7 +252,8 @@
 }
 
 .shell-topbar-account-settings:hover,
-.shell-topbar-account-settings:focus-visible {
+.shell-topbar-account-settings:focus-visible,
+.shell-topbar-account-settings[data-active="true"] {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   color: var(--text-strong);
   outline: none;

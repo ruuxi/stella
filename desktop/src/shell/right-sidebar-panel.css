@@ -16,12 +16,7 @@
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   height: 100%;
   margin: 0;
-  /* Same tint-only glass surface as the composer / chat sidebar — a
-     semi-transparent theme wash over the shell's shifting gradient —
-     lifted lighter with a white tint in light mode. */
-  background:
-    linear-gradient(rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.12)),
-    var(--panel-surface-bg-gradient);
+  background: transparent;
   border: none;
   overflow: hidden;
   contain: layout paint;
@@ -34,35 +29,10 @@
   container-name: display-panel;
 }
 
-/* Dark themes keep the subtle foreground tint instead of the white lift. */
-.dark
-  .right-sidebar.right-sidebar-panel
-  .right-sidebar-inner.right-sidebar-panel__frame {
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--foreground) 4%, transparent),
-      color-mix(in oklch, var(--foreground) 4%, transparent)
-    ),
-    var(--panel-surface-bg-gradient);
-}
-
 :root[data-shell-panel-chrome="true"]
   .right-sidebar.right-sidebar-panel
   .right-sidebar-inner.right-sidebar-panel__frame {
   padding-top: 0;
-}
-
-/* Flat Default theme: there is no gradient behind the panel, so the
-   translucent wash reads milky rather than glassy. Use the clean solid
-   inset surface instead — slightly darker than the content in light
-   mode, slightly lighter in dark. */
-:root[data-theme="default"]
-  .right-sidebar.right-sidebar-panel
-  .right-sidebar-inner.right-sidebar-panel__frame,
-:root[data-base-theme="default"]
-  .right-sidebar.right-sidebar-panel
-  .right-sidebar-inner.right-sidebar-panel__frame {
-  background: var(--surface-inset);
 }
 
 @media (prefers-reduced-motion: reduce) {

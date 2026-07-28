@@ -178,29 +178,34 @@ const useActivityRowMotionProps = (orderIndex: number) => {
 function WorkspaceSection({
   title,
   sectionId,
+  hideHeader = false,
   children,
 }: {
   title: string;
   /** Stable id for persisted collapse state. */
   sectionId: string;
+  hideHeader?: boolean;
   children?: ReactNode;
 }) {
   const collapsed = useSectionCollapsed(sectionId);
+  const sectionCollapsed = hideHeader ? false : collapsed;
   return (
     <section className="chat-workspace-strip__section">
-      <header className="chat-workspace-strip__section-header">
-        <button
-          type="button"
-          className="chat-workspace-strip__section-toggle"
-          onClick={() => sectionCollapseStore.toggle(sectionId)}
-          aria-expanded={!collapsed}
-        >
-          {title}
-        </button>
-      </header>
+      {!hideHeader ? (
+        <header className="chat-workspace-strip__section-header">
+          <button
+            type="button"
+            className="chat-workspace-strip__section-toggle"
+            onClick={() => sectionCollapseStore.toggle(sectionId)}
+            aria-expanded={!sectionCollapsed}
+          >
+            {title}
+          </button>
+        </header>
+      ) : null}
       <div
         className="chat-workspace-strip__section-collapse"
-        data-collapsed={collapsed ? "true" : undefined}
+        data-collapsed={sectionCollapsed ? "true" : undefined}
       >
         <div className="chat-workspace-strip__section-body">{children}</div>
       </div>
@@ -1089,7 +1094,11 @@ export const WorkspaceSections = memo(function WorkspaceSections({
     <>
       <div className="chat-workspace-strip__panel">
         {hasActivity && (
-          <WorkspaceSection title="Activity" sectionId="activity">
+          <WorkspaceSection
+            title="Activity"
+            sectionId="activity"
+            hideHeader
+          >
             <TasksList
               rows={visibleActivityRows}
               isTaskExpanded={isTaskExpanded}

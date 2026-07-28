@@ -566,13 +566,11 @@ function RootChrome() {
           >
             <Outlet />
           </div>
-          {/* Inside `.content-area`, not the window, so the bar spans the
-              center column only. The display panel owns its own top strip, and
-              anchoring here means the account cluster tracks the column
-              boundary through the panel's open/close animation and live
-              resizing without having to mirror the panel's width.
+          {/* Inside `.content-area`, not the window, so the main nav and
+              account span the center column and follow its panel transition.
 
-              Rendered last so its `no-drag` carves are applied after the
+              Rendered last within the column so its `no-drag` carves are
+              applied after the
               content area's top `-webkit-app-region: drag` strip — draggable
               regions resolve in DOM order, not z-index, so a control painted
               above but declared earlier still reads as draggable and swallows
@@ -581,13 +579,12 @@ function RootChrome() {
             <ShellTopBarFull onSignIn={showAuthDialog} />
           ) : null}
         </div>
+        {isFullWindow ? <DisplayPanelTopBar /> : null}
+
+        <Suspense fallback={null}>
+          <RightSidebar ref={rightSidebarRef} />
+        </Suspense>
       </StellaContextMenu>
-
-      {isFullWindow ? <DisplayPanelTopBar /> : null}
-
-      <Suspense fallback={null}>
-        <RightSidebar ref={rightSidebarRef} />
-      </Suspense>
 
       <ComposerAreaSelectOverlay
         active={chat.annotation.active}

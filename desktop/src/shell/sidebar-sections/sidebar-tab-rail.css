@@ -1,8 +1,9 @@
 /* Section rail in the outer topbar above the display panel — see
    `SidebarTabRail.tsx`.
 
-   Sized to sit inside the 38px topbar strip alongside the Settings and Close
-   controls. The three primary destinations always retain icon + name. */
+   Sized to sit inside the 38px topbar strip alongside Settings and the
+   persistent panel toggle. The three primary destinations always retain
+   icon + name. */
 
 .sidebar-tab-rail {
   display: flex;
@@ -18,7 +19,7 @@
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 9px;
+  padding: 0 7px;
   border: none;
   border-radius: var(--radius-sm, 6px);
   background: transparent;
@@ -31,7 +32,8 @@
   -webkit-app-region: no-drag;
   transition:
     background 0.12s ease,
-    color 0.12s ease;
+    color 0.12s ease,
+    font-weight 0.12s ease;
 }
 
 .sidebar-tab-rail__tab:hover {
@@ -46,7 +48,12 @@
 
 .sidebar-tab-rail__tab[data-active="true"] {
   color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: transparent;
+  font-weight: var(--weight-semibold);
+}
+
+.sidebar-tab-rail__tab[data-active="true"] .sidebar-tab-rail__icon svg {
+  stroke-width: 2.25;
 }
 
 .sidebar-tab-rail__icon {

@@ -257,7 +257,7 @@ html[data-stella-window="mini"] .right-sidebar__resize-handle {
   position: absolute;
   top: 0;
   left: 0;
-  width: 8px;
+  width: 12px;
   height: 100%;
   z-index: 3;
   cursor: col-resize;
@@ -276,8 +276,8 @@ html[data-stella-window="mini"] .right-sidebar__resize-handle {
   top: 0;
   bottom: var(--right-sidebar-bottom-left-radius);
   left: 0;
-  width: 1px;
-  background: var(--border);
+  width: 2px;
+  background: var(--border-strong);
 }
 
 .right-sidebar__resize-handle::after {

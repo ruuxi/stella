@@ -3,7 +3,7 @@
  * sits in the context chip row above the composer.
  *
  * It stays visible whatever the right sidebar is doing, so search is always
- * one click away from the composer. While the sidebar is open on Tasks, that
+ * one click away from the composer. While the sidebar is open on Home, that
  * section owns live progress and the pill stays in its Search state.
  *
  * The pill does double duty:
@@ -41,6 +41,10 @@ import {
   sidebarSections,
   useActiveSidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
+import {
+  displaySearchStore,
+  useDisplaySearchOpen,
+} from "@/features/workspace-display/display-search-store";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import "./composer-activity-pill.css";
 
@@ -215,7 +219,10 @@ const ActivityPillBody = memo(function ActivityPillBody({
       className="composer-activity-pill"
       data-state={state}
       data-open={open || undefined}
-      onClick={() => sidebarSections.openLocation("home", null)}
+      onClick={() => {
+        sidebarSections.openLocation("home", null);
+        displaySearchStore.open();
+      }}
       aria-label={state === "idle" ? "Search" : `${label} — open search`}
     >
       <span className="composer-activity-pill__glyph" aria-hidden="true">
@@ -229,6 +236,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
 export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const panelOpen = useDisplayPanelOpen();
   const activeSection = useActiveSidebarSection();
+  const searchOpen = useDisplaySearchOpen();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
   const tasks = chat.conversation.tasks;
@@ -251,7 +259,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={panelOpen && activeSection === "home"}
+        open={searchOpen && panelOpen && activeSection === "home"}
       />
     </motion.div>
   );

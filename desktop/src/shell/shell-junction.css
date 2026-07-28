@@ -33,11 +33,11 @@
   .right-sidebar.right-sidebar-panel.right-sidebar--shell-visible {
   height: auto;
   align-self: stretch;
-  margin: var(--shell-topbar-height, 38px) 6px 6px 4px;
-  border: 1px solid var(--shell-junction-border);
-  border-radius: var(--display-panel-window-radius);
+  margin: var(--shell-topbar-height, 38px) 6px 0 4px;
+  border: none;
+  border-radius: 0;
   box-sizing: border-box;
-  box-shadow: var(--panel-surface-highlight);
+  box-shadow: none;
 }
 
 /* ── Right viewer panel ────────────────────────────────────────────── */
@@ -54,8 +54,6 @@
   height: 100%;
   max-height: none;
   margin: 0;
-  /* Background intentionally not reset here — the frame's own surface
-     (the tinted composer-style wash in right-sidebar-panel.css) applies. */
   border: none;
   border-radius: 0;
   box-shadow: none;
@@ -80,7 +78,8 @@
 :root[data-shell-panel-chrome="true"]
   .right-sidebar.right-sidebar-panel.right-sidebar--expanded {
   margin: 0;
-  border-radius: var(--display-panel-window-radius);
+  border-left: none;
+  border-radius: 0;
 }
 
 :root[data-shell-panel-chrome="true"]
@@ -103,7 +102,8 @@
   height: auto;
   flex: none;
   margin: var(--shell-topbar-height, 38px) 6px 6px;
-  border-radius: var(--display-panel-window-radius);
+  border-left: none;
+  border-radius: 0;
   transition: none;
 }
 

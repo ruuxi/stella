@@ -1,6 +1,8 @@
 import { X } from "@/ui/icons";
 import { displayTabs } from "@/features/workspace-display/tab-store";
 
+/** Compact/mini-window close control. The full shell uses its persistent
+ * PanelRight toggle instead. */
 export const DisplayPanelControls = () => {
   return (
     <div className="shell-topbar-display-controls">

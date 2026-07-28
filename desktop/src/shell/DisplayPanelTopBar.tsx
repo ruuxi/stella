@@ -1,16 +1,18 @@
 import {
+  displayTabs,
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
+import { displaySearchStore } from "@/features/workspace-display/display-search-store";
 import { getPlatform } from "@/platform/electron/platform";
-import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { SidebarTabRail } from "@/shell/sidebar-sections/SidebarTabRail";
 import {
   sidebarSections,
   useActiveSidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
+import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
 import { WindowControls } from "@/shell/WindowControls";
-import { Settings } from "@/ui/icons";
+import { PanelRight, Settings } from "@/ui/icons";
 
 export function DisplayPanelTopBar() {
   const panelOpen = useDisplayPanelOpen();
@@ -19,6 +21,7 @@ export function DisplayPanelTopBar() {
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
   const activeSection = useActiveSidebarSection();
+  const connectHint = usePostOnboardingHint("connect");
 
   return (
     <header
@@ -34,19 +37,37 @@ export function DisplayPanelTopBar() {
       </div>
       <button
         type="button"
-        className="shell-topbar-icon-btn"
-        data-active={activeSection === "settings" ? "true" : undefined}
-        onClick={() => sidebarSections.openLocation("settings", null)}
+        className="shell-topbar-account-settings"
+        data-active={
+          panelOpen && activeSection === "settings" ? "true" : undefined
+        }
+        onClick={() => {
+          displaySearchStore.close();
+          sidebarSections.openLocation("settings", null);
+        }}
         aria-label="Settings"
-        aria-pressed={activeSection === "settings"}
+        aria-pressed={panelOpen && activeSection === "settings"}
         title="Settings"
       >
-        <Settings size={16} strokeWidth={1.75} />
+        <Settings size={14} strokeWidth={1.75} />
+        {connectHint.active ? (
+          <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
+        ) : null}
       </button>
-      <DisplayPanelControls />
-      {isWin && panelExpanded ? (
-        <WindowControls useWindowsIcons hidden={false} />
-      ) : null}
+      <button
+        type="button"
+        className="shell-topbar-icon-btn"
+        onClick={() => {
+          if (panelOpen) displaySearchStore.close();
+          displayTabs.setPanelOpen(!panelOpen);
+        }}
+        aria-label={panelOpen ? "Close panel" : "Open panel"}
+        aria-expanded={panelOpen}
+        title={panelOpen ? "Close panel" : "Open panel"}
+      >
+        <PanelRight size={16} strokeWidth={1.75} />
+      </button>
+      {isWin ? <WindowControls useWindowsIcons hidden={false} /> : null}
     </header>
   );
 }

@@ -13,8 +13,10 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  padding: 10px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  min-height: 32px;
+  margin: 8px 12px 0;
+  padding: 0 10px;
+  background: transparent;
   color: var(--text-weak);
 }
 
@@ -41,7 +43,7 @@
 .sidebar-search__body {
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 8px 10px;
+  padding: 0 8px 10px;
 }
 
 .sidebar-home-footer {
@@ -52,10 +54,11 @@
   padding: 10px 12px 12px;
 }
 
-.sidebar-home-models-button {
+.pill-btn.sidebar-home-models-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  border: none;
 }
 
 /* While searching, the results region is pinned to a resolved height — the

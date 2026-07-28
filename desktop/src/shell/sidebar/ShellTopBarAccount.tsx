@@ -1,20 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LogOut, Settings as SettingsIcon } from "@/ui/icons";
+import { LogOut } from "@/ui/icons";
 import { useT } from "@/shared/i18n";
-import {
-  preloadAuthDialog,
-  preloadNavSurfaceRoute,
-} from "@/shell/topbar/nav-surface-preloads";
+import { preloadAuthDialog } from "@/shell/topbar/nav-surface-preloads";
 import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import { api } from "@/convex/api";
-import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { useNickname } from "@/global/auth/hooks/use-nickname";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
-import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -73,17 +68,10 @@ export const ShellTopBarAccount = ({
   const { user: convexUser, hasConnectedAccount } = useCurrentUser();
   const { cacheScope, user: sessionUser } = useAuthSessionState();
   const { nickname } = useNickname();
-  const panelOpen = useDisplayPanelOpen();
   const user = {
     email: convexUser?.email ?? sessionUser?.email ?? undefined,
     name: convexUser?.name ?? sessionUser?.name ?? undefined,
   };
-
-  const connectHint = usePostOnboardingHint("connect");
-  const handleOpenSettings = useCallback(() => {
-    preloadNavSurfaceRoute("settings");
-    sidebarSections.openLocation("settings", null);
-  }, []);
 
   const {
     shouldPrompt: shouldAutoPromptFeedback,
@@ -171,19 +159,6 @@ export const ShellTopBarAccount = ({
             {t("sidebar.signIn")}
           </span>
         </button>
-        {!panelOpen ? (
-          <button
-            type="button"
-            className="shell-topbar-account-settings"
-            onClick={handleOpenSettings}
-            onFocus={() => preloadNavSurfaceRoute("settings")}
-            onMouseEnter={() => preloadNavSurfaceRoute("settings")}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <SettingsIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        ) : null}
       </div>
     );
   }
@@ -249,22 +224,6 @@ export const ShellTopBarAccount = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {!panelOpen ? (
-        <button
-          type="button"
-          className="shell-topbar-account-settings"
-          onClick={handleOpenSettings}
-          onFocus={() => preloadNavSurfaceRoute("settings")}
-          onMouseEnter={() => preloadNavSurfaceRoute("settings")}
-          title="Settings"
-          aria-label="Settings"
-        >
-          <SettingsIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-          {connectHint.active ? (
-            <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
-          ) : null}
-        </button>
-      ) : null}
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
         <DialogContent
           fit

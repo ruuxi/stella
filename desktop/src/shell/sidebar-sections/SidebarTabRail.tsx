@@ -10,6 +10,8 @@ import {
   useActiveSidebarSection,
   type SidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
+import { displaySearchStore } from "@/features/workspace-display/display-search-store";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
   AppWindowMac,
   Folder,
@@ -34,12 +36,13 @@ export const SIDEBAR_SECTION_META: Record<
 
 export function SidebarTabRail() {
   const activeSection = useActiveSidebarSection();
+  const panelOpen = useDisplayPanelOpen();
 
   return (
     <div className="sidebar-tab-rail" role="tablist" aria-label="Sidebar">
       {PRIMARY_SIDEBAR_SECTIONS.map((section) => {
         const { label, Icon } = SIDEBAR_SECTION_META[section];
-        const active = section === activeSection;
+        const active = panelOpen && section === activeSection;
         return (
           <button
             key={section}
@@ -50,7 +53,10 @@ export function SidebarTabRail() {
             aria-selected={active}
             aria-label={label}
             title={label}
-            onClick={() => sidebarSections.selectSection(section)}
+            onClick={() => {
+              displaySearchStore.close();
+              sidebarSections.selectSection(section);
+            }}
           >
             <span className="sidebar-tab-rail__icon" aria-hidden="true">
               <Icon size={15} strokeWidth={1.75} />
