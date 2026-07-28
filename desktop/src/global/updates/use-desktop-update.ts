@@ -11,7 +11,7 @@ import type {
  *
  * - `installManifest` is the parsed `stella-install.json` written by the
  *   launcher (contains `desktopReleaseCommit` — the upstream GitHub SHA
- *   the tarball was built from).
+ *   cloned for the installation).
  * - `currentRelease` is the latest published release for this platform,
  *   pushed reactively over Convex by the CI publish job.
  * - `updateAvailable` is true when the published commit differs from the
@@ -54,9 +54,6 @@ type DesktopUpdateState = {
     platform: string;
     tag: string;
     commit: string;
-    archiveUrl: string;
-    archiveSha256: string;
-    archiveSize: number;
     sourcePackUrl?: string;
     sourcePackSha256?: string;
     sourcePackSize?: number;
