@@ -15,6 +15,12 @@
   isolation: isolate;
 }
 
+.radial-dial-scale {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
 .radial-blob-canvas {
   position: absolute;
   top: 0;

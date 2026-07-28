@@ -530,6 +530,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     moveDomGesture: () => ipcRenderer.send("shell-radial:dom-move"),
     endDomGesture: () => ipcRenderer.send("shell-radial:dom-up"),
     cancelDomGesture: () => ipcRenderer.send("shell-radial:dom-cancel"),
+    // A renderer leave can be caused by the transparent overlay window
+    // appearing. Main compares the physical cursor with the app bounds before
+    // deciding whether this is a real exit.
+    leaveDomGesture: () => ipcRenderer.send("shell-radial:dom-leave"),
     // Fired whenever the gesture resolves in main (commit, dismiss, cancel),
     // so the renderer can drop its own gesture state even when the closing
     // event never reached the DOM.

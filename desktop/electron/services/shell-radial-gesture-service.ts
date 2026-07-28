@@ -55,7 +55,7 @@ import {
   type UiohookKeyboardEvent,
   type UiohookMouseEvent,
 } from "uiohook-napi";
-import { RADIAL_SIZE } from "../layout-constants.js";
+import { RADIAL_SIZE, SHELL_RADIAL_SCALE } from "../layout-constants.js";
 import { calculateSelectedWedgeIndex } from "../radial-wedge.js";
 
 const LEFT_MOUSE_BUTTON = 1;
@@ -122,6 +122,7 @@ export class ShellRadialGestureService {
     ipcMain.on("shell-radial:dom-move", this.handleDomMove);
     ipcMain.on("shell-radial:dom-up", this.handleDomUp);
     ipcMain.on("shell-radial:dom-cancel", this.handleDomCancel);
+    ipcMain.on("shell-radial:dom-leave", this.handleDomLeave);
     app.on("web-contents-created", this.handleWebContentsCreated);
   }
 
@@ -139,6 +140,7 @@ export class ShellRadialGestureService {
     ipcMain.removeListener("shell-radial:dom-move", this.handleDomMove);
     ipcMain.removeListener("shell-radial:dom-up", this.handleDomUp);
     ipcMain.removeListener("shell-radial:dom-cancel", this.handleDomCancel);
+    ipcMain.removeListener("shell-radial:dom-leave", this.handleDomLeave);
     app.removeListener("web-contents-created", this.handleWebContentsCreated);
   }
 
@@ -183,6 +185,14 @@ export class ShellRadialGestureService {
   private readonly handleDomCancel = (event: IpcMainEvent) => {
     if (!this.senderIsFullWindow(event.sender)) return;
     this.cancelGesture();
+  };
+
+  private readonly handleDomLeave = (event: IpcMainEvent) => {
+    if (!this.senderIsFullWindow(event.sender)) return;
+    // Showing the transparent overlay BrowserWindow can make the renderer
+    // report a leave while the physical cursor is still inside Stella.
+    // Electron's screen coordinates are the source of truth.
+    if (!this.cursorIsInsideGestureWindow()) this.cancelGesture();
   };
 
   // ---- Hook source --------------------------------------------------------
@@ -239,6 +249,10 @@ export class ShellRadialGestureService {
   };
 
   private readonly handleGlobalMousemove = () => {
+    if (!this.cursorIsInsideGestureWindow()) {
+      this.cancelGesture();
+      return;
+    }
     this.streamMove();
   };
 
@@ -250,6 +264,11 @@ export class ShellRadialGestureService {
     if (this.phase === "querying") {
       // Released before the renderer answered — a fast click. The dial never
       // showed; there is nothing to commit.
+      this.cancelGesture();
+      return;
+    }
+
+    if (!this.cursorIsInsideGestureWindow()) {
       this.cancelGesture();
       return;
     }
@@ -344,11 +363,12 @@ export class ShellRadialGestureService {
     win.webContents.send("shell-radial:ended");
     if (!radialBounds) return;
     const cursor = screen.getCursorScreenPoint();
+    const center = RADIAL_SIZE / 2;
     const index = calculateSelectedWedgeIndex(
-      cursor.x - radialBounds.x,
-      cursor.y - radialBounds.y,
-      RADIAL_SIZE / 2,
-      RADIAL_SIZE / 2,
+      center + (cursor.x - radialBounds.x - center) / SHELL_RADIAL_SCALE,
+      center + (cursor.y - radialBounds.y - center) / SHELL_RADIAL_SCALE,
+      center,
+      center,
     );
     // A dead-zone release dismisses without acting.
     if (index === null) return;
@@ -358,6 +378,19 @@ export class ShellRadialGestureService {
   private readonly handleWindowBlur = () => {
     this.cancelGesture();
   };
+
+  private cursorIsInsideGestureWindow(): boolean {
+    const win = this.gestureWindow;
+    if (!win || win.isDestroyed()) return false;
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = win.getContentBounds();
+    return (
+      cursor.x >= bounds.x &&
+      cursor.y >= bounds.y &&
+      cursor.x <= bounds.x + bounds.width &&
+      cursor.y <= bounds.y + bounds.height
+    );
+  }
 
   /** Ends the gesture without committing, hiding the dial if it was up. */
   private cancelGesture() {

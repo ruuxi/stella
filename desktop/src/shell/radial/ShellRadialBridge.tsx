@@ -104,6 +104,13 @@ export function ShellRadialBridge() {
       if (event.key === "Escape") cancelDomGesture();
     };
 
+    const onRendererMouseLeave = () => {
+      if (!domGestureLive || !shellRadial) return;
+      // The overlay window itself can trigger this signal. Main owns the real
+      // app bounds and only cancels when the physical cursor is outside them.
+      shellRadial.leaveDomGesture();
+    };
+
     // The dial claims the right button across the shell surface, so the
     // context menu the OS would raise on the same button is suppressed —
     // except for the targets the dial declines (composer, editable fields).
@@ -116,6 +123,14 @@ export function ShellRadialBridge() {
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("pointercancel", cancelDomGesture, true);
+    // Unlike a bubbling `pointerout`, the root's own `mouseleave` is not
+    // emitted when the gesture shield mounts under the cursor. It only fires
+    // when the pointer actually exits the renderer, which is the cancellation
+    // boundary this gesture needs.
+    document.documentElement.addEventListener(
+      "mouseleave",
+      onRendererMouseLeave,
+    );
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", cancelDomGesture);
     window.addEventListener("contextmenu", onContextMenu, true);
@@ -159,6 +174,10 @@ export function ShellRadialBridge() {
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", cancelDomGesture, true);
+      document.documentElement.removeEventListener(
+        "mouseleave",
+        onRendererMouseLeave,
+      );
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", cancelDomGesture);
       window.removeEventListener("contextmenu", onContextMenu, true);

@@ -381,6 +381,7 @@ export type ElectronShellRadialApi = {
   moveDomGesture: () => void;
   endDomGesture: () => void;
   cancelDomGesture: () => void;
+  leaveDomGesture: () => void;
   onEnded: (callback: () => void) => () => void;
   onSwallowedPress: (callback: () => void) => () => void;
 };

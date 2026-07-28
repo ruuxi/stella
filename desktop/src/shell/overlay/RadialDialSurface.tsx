@@ -50,6 +50,8 @@ type RadialDialSurfaceProps = {
   contentVisible: boolean;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   reducedMotion: boolean;
+  /** Visual scale around the fixed overlay-window center. */
+  scale?: number;
 };
 
 export function RadialDialSurface({
@@ -59,6 +61,7 @@ export function RadialDialSurface({
   contentVisible,
   canvasRef,
   reducedMotion,
+  scale = 1,
 }: RadialDialSurfaceProps) {
   const { colors } = useTheme();
 
@@ -97,112 +100,119 @@ export function RadialDialSurface({
 
   return (
     <div className="radial-dial-container">
-      <canvas
-        ref={canvasRef}
-        className="radial-blob-canvas"
-        style={{
-          width: RADIAL_DIAL_SIZE,
-          height: RADIAL_DIAL_SIZE,
-          opacity: phase !== "hidden" ? 1 : 0,
-          pointerEvents: "none",
-        }}
-      />
-
       <div
-        className="radial-center-stella-animation"
+        className="radial-dial-scale"
         style={{
-          opacity: contentVisible ? 1 : 0,
-          transition: fadeTransition,
+          transform: `scale(${scale})`,
         }}
       >
-        <StellaAnimation
-          width={20}
-          height={20}
-          initialBirthProgress={1}
-          maxDpr={1}
-          frameSkip={1}
-          paused={!contentVisible}
+        <canvas
+          ref={canvasRef}
+          className="radial-blob-canvas"
+          style={{
+            width: RADIAL_DIAL_SIZE,
+            height: RADIAL_DIAL_SIZE,
+            opacity: phase !== "hidden" ? 1 : 0,
+            pointerEvents: "none",
+          }}
         />
-      </div>
 
-      <div
-        className="radial-dial-frame"
-        style={{
-          opacity: contentVisible ? 1 : 0,
-          willChange: "opacity, transform",
-          transition: fadeTransition,
-          pointerEvents: "none",
-        }}
-      >
-        <svg
-          width={RADIAL_DIAL_SIZE}
-          height={RADIAL_DIAL_SIZE}
-          viewBox={`0 0 ${RADIAL_DIAL_SIZE} ${RADIAL_DIAL_SIZE}`}
-          className="radial-dial"
+        <div
+          className="radial-center-stella-animation"
+          style={{
+            opacity: contentVisible ? 1 : 0,
+            transition: fadeTransition,
+          }}
         >
+          <StellaAnimation
+            width={20}
+            height={20}
+            initialBirthProgress={1}
+            maxDpr={1}
+            frameSkip={1}
+            paused={!contentVisible}
+          />
+        </div>
+
+        <div
+          className="radial-dial-frame"
+          style={{
+            opacity: contentVisible ? 1 : 0,
+            willChange: "opacity, transform",
+            transition: fadeTransition,
+            pointerEvents: "none",
+          }}
+        >
+          <svg
+            width={RADIAL_DIAL_SIZE}
+            height={RADIAL_DIAL_SIZE}
+            viewBox={`0 0 ${RADIAL_DIAL_SIZE} ${RADIAL_DIAL_SIZE}`}
+            className="radial-dial"
+          >
+            {wedgeLayout.map((wedge) => {
+              const isSelected = selectedId === wedge.id;
+              return (
+                <path
+                  key={wedge.id}
+                  d={wedge.path}
+                  fill={isSelected ? palette.interactive : palette.card}
+                  stroke={
+                    isSelected ? palette.interactiveStroke : palette.border
+                  }
+                  strokeWidth={1.5}
+                  className="wedge-path"
+                  style={{ transition: paintTransition, cursor: "default" }}
+                />
+              );
+            })}
+          </svg>
+
           {wedgeLayout.map((wedge) => {
+            const Icon = wedge.icon;
             const isSelected = selectedId === wedge.id;
+            const appIcon = wedge.iconDataUrl ?? null;
+
             return (
-              <path
-                key={wedge.id}
-                d={wedge.path}
-                fill={isSelected ? palette.interactive : palette.card}
-                stroke={
-                  isSelected ? palette.interactiveStroke : palette.border
-                }
-                strokeWidth={1.5}
-                className="wedge-path"
-                style={{ transition: paintTransition, cursor: "default" }}
-              />
+              <div
+                key={`${wedge.id}-content`}
+                className="radial-wedge-content"
+                style={{
+                  left: wedge.contentPos.x,
+                  top: wedge.contentPos.y,
+                  color: isSelected
+                    ? colors.primaryForeground
+                    : colors.mutedForeground,
+                }}
+              >
+                {appIcon ? (
+                  <img
+                    key={appIcon}
+                    className="radial-wedge-app-icon"
+                    src={appIcon}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                  />
+                ) : Icon ? (
+                  <Icon
+                    aria-hidden="true"
+                    width={16}
+                    height={16}
+                    style={{ transition: colorTransition }}
+                  />
+                ) : null}
+                {wedge.label ? (
+                  <span
+                    className="radial-wedge-label"
+                    style={{ transition: colorTransition }}
+                  >
+                    {wedge.label}
+                  </span>
+                ) : null}
+              </div>
             );
           })}
-        </svg>
-
-        {wedgeLayout.map((wedge) => {
-          const Icon = wedge.icon;
-          const isSelected = selectedId === wedge.id;
-          const appIcon = wedge.iconDataUrl ?? null;
-
-          return (
-            <div
-              key={`${wedge.id}-content`}
-              className="radial-wedge-content"
-              style={{
-                left: wedge.contentPos.x,
-                top: wedge.contentPos.y,
-                color: isSelected
-                  ? colors.primaryForeground
-                  : colors.mutedForeground,
-              }}
-            >
-              {appIcon ? (
-                <img
-                  key={appIcon}
-                  className="radial-wedge-app-icon"
-                  src={appIcon}
-                  alt=""
-                  aria-hidden="true"
-                  draggable={false}
-                />
-              ) : Icon ? (
-                <Icon
-                  aria-hidden="true"
-                  width={16}
-                  height={16}
-                  style={{ transition: colorTransition }}
-                />
-              ) : null}
-              {wedge.label ? (
-                <span
-                  className="radial-wedge-label"
-                  style={{ transition: colorTransition }}
-                >
-                  {wedge.label}
-                </span>
-              ) : null}
-            </div>
-          );
-        })}
+        </div>
       </div>
     </div>
   );

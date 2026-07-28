@@ -240,6 +240,7 @@ export const IPC_PAYLOAD_CONTRACT: Readonly<
   "selfmod:revert": { kind: "object", fields: ["commitHash", "steps"] },
   "shell-radial:dom-begin": { kind: "none" },
   "shell-radial:dom-cancel": { kind: "none" },
+  "shell-radial:dom-leave": { kind: "none" },
   "shell-radial:dom-move": { kind: "none" },
   "shell-radial:dom-up": { kind: "none" },
   "shell-radial:press-response": { kind: "object", fields: ["token", "claim"] },

@@ -33,6 +33,7 @@ import {
 } from "@/ui/icons";
 import { getElectronApi } from "@/platform/electron/electron";
 import { getWedgeIndexAt } from "@/shared/lib/radial-geometry";
+import { SHELL_RADIAL_SCALE } from "@/shared/lib/layout";
 import { useTheme } from "@/context/theme-context";
 import type { RadialWedge } from "@/shared/types/electron";
 import { RadialDialSurface, type RadialDialWedge } from "./RadialDialSurface";
@@ -120,7 +121,14 @@ export function RadialDial({
       centerX: number,
       centerY: number,
     ): string | null => {
-      const index = getWedgeIndexAt(x, y, centerX, centerY);
+      const scale =
+        variantRef.current === "shell" ? SHELL_RADIAL_SCALE : 1;
+      const index = getWedgeIndexAt(
+        centerX + (x - centerX) / scale,
+        centerY + (y - centerY) / scale,
+        centerX,
+        centerY,
+      );
       if (index === null) return null;
       const set = variantRef.current === "shell" ? SHELL_WEDGES : BASE_WEDGES;
       return set[index]?.id ?? null;
@@ -190,6 +198,7 @@ export function RadialDial({
       contentVisible={animation.contentVisible}
       canvasRef={animation.canvasRef}
       reducedMotion={animation.reducedMotion}
+      scale={variant === "shell" ? SHELL_RADIAL_SCALE : 1}
     />
   );
 }

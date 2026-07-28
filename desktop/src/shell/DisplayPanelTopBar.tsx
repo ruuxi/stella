@@ -14,13 +14,14 @@ export function DisplayPanelTopBar() {
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
 
-  if (!panelOpen) return null;
-
   return (
     <header
       className="display-panel-topbar"
       data-platform={isMac ? "mac" : isWin ? "win" : "other"}
+      data-display-open={panelOpen ? "true" : "false"}
       data-display-expanded={panelExpanded ? "true" : "false"}
+      aria-hidden={!panelOpen}
+      inert={!panelOpen}
     >
       <div className="display-panel-topbar__tabs">
         <SidebarTabRail />

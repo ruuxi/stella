@@ -48,6 +48,10 @@ vi.mock("electron", () => ({
 }));
 
 import { ShellRadialGestureService } from "../../electron/services/shell-radial-gesture-service.js";
+import {
+  RADIAL_SIZE,
+  SHELL_RADIAL_SCALE,
+} from "../../electron/layout-constants.js";
 
 // libuiohook button numbering (uiohook.h): 1 left, 2 right, 3 middle. DOM
 // numbering differs — the service must match uiohook's, and these constants
@@ -58,7 +62,6 @@ const UIOHOOK_MIDDLE = 3;
 const UIOHOOK_ESCAPE_KEYCODE = 1;
 
 const CONTENT_BOUNDS = { x: 100, y: 50, width: 1200, height: 800 };
-const RADIAL_SIZE = 280;
 
 type SentMessage = { channel: string; payload: unknown };
 
@@ -178,6 +181,7 @@ describe("shell radial gesture service", () => {
       expect(hookEmitter.listenerCount("mouseup")).toBe(1);
       expect(ipcListeners.has("shell-radial:press-response")).toBe(true);
       expect(ipcListeners.has("shell-radial:dom-begin")).toBe(true);
+      expect(ipcListeners.has("shell-radial:dom-leave")).toBe(true);
     });
 
     it("queries the renderer with window-relative coordinates on a right press", () => {
@@ -265,6 +269,19 @@ describe("shell radial gesture service", () => {
       release();
       expect(commits()).toHaveLength(0);
     });
+
+    it("cancels without committing when the pointer leaves the app", () => {
+      pressAt(600, 400);
+      respond(true);
+
+      cursor.x = CONTENT_BOUNDS.x + CONTENT_BOUNDS.width + 1;
+      hookEmitter.emit("mousemove", {});
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(endedSignals()).toHaveLength(1);
+      release();
+      expect(commits()).toHaveLength(0);
+    });
   });
 
   describe("DOM source (permissionless)", () => {
@@ -276,8 +293,8 @@ describe("shell radial gesture service", () => {
 
     it("resolves a whole gesture from renderer events alone", () => {
       domBeginAt(600, 400);
-      cursor.x += 60;
-      cursor.y -= 80;
+      cursor.x += 60 * SHELL_RADIAL_SCALE;
+      cursor.y -= 80 * SHELL_RADIAL_SCALE;
       domEvent("shell-radial:dom-move");
       expect(overlay.updateRadialCursor).toHaveBeenCalled();
       domEvent("shell-radial:dom-up");
@@ -291,6 +308,28 @@ describe("shell radial gesture service", () => {
       domBeginAt(600, 400);
       domEvent("shell-radial:dom-cancel");
       expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(commits()).toHaveLength(0);
+    });
+
+    it("ignores a renderer leave while the physical cursor is still inside", () => {
+      domBeginAt(600, 400);
+      domEvent("shell-radial:dom-leave");
+
+      expect(overlay.hideRadial).not.toHaveBeenCalled();
+
+      cursor.x += 60 * SHELL_RADIAL_SCALE;
+      cursor.y -= 80 * SHELL_RADIAL_SCALE;
+      domEvent("shell-radial:dom-up");
+      expect(commits()).toHaveLength(1);
+    });
+
+    it("cancels a renderer leave when the physical cursor is outside", () => {
+      domBeginAt(600, 400);
+      cursor.x = CONTENT_BOUNDS.x + CONTENT_BOUNDS.width + 1;
+      domEvent("shell-radial:dom-leave");
+
+      expect(overlay.hideRadial).toHaveBeenCalledTimes(1);
+      expect(endedSignals()).toHaveLength(1);
       expect(commits()).toHaveLength(0);
     });
 
