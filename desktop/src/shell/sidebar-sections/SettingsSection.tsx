@@ -11,6 +11,7 @@ import {
   useActiveSidebarSection,
   useSidebarSections,
 } from "@/features/workspace-display/sidebar-sections";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
@@ -18,6 +19,7 @@ import { useFeedbackPrompt } from "@/shell/sidebar/use-feedback-prompt";
 import {
   ArrowLeft,
   ChevronRight,
+  CreditCard,
   MessageSquare,
   Palette,
   Settings,
@@ -44,10 +46,17 @@ const FeedbackPanel = lazy(() =>
   })),
 );
 
+const BillingPanel = lazy(() =>
+  import("@/global/billing/BillingScreen").then((module) => ({
+    default: module.BillingPanel,
+  })),
+);
+
 const SETTINGS_LOCATIONS = [
   "settings",
   "theme",
   "connect",
+  "billing",
   "feedback",
 ] as const;
 
@@ -62,6 +71,7 @@ const SETTINGS_HOME_ITEMS: readonly {
   label: string;
   description: string;
   Icon: ComponentType<IconProps>;
+  signedInOnly?: boolean;
 }[] = [
   {
     id: "settings",
@@ -82,6 +92,13 @@ const SETTINGS_HOME_ITEMS: readonly {
     Icon: Device,
   },
   {
+    id: "billing",
+    label: "Plan & billing",
+    description: "Upgrade or manage your Stella plan",
+    Icon: CreditCard,
+    signedInOnly: true,
+  },
+  {
     id: "feedback",
     label: "Send feedback",
     description: "Tell us what is working and what could be better",
@@ -92,6 +109,7 @@ const SETTINGS_HOME_ITEMS: readonly {
 export function SettingsSection() {
   const active = useActiveSidebarSection() === "settings";
   const location = useSidebarSections().locations.settings;
+  const { hasConnectedAccount } = useAuthSessionState();
   const [hasOpened, setHasOpened] = useState(active);
   const connectHint = usePostOnboardingHint("connect");
   const { acknowledge: acknowledgeFeedbackPrompt } = useFeedbackPrompt();
@@ -105,6 +123,12 @@ export function SettingsSection() {
       sidebarSections.clearLocation("settings");
     }
   }, [location]);
+
+  useEffect(() => {
+    if (!hasConnectedAccount && location === "billing") {
+      sidebarSections.clearLocation("settings");
+    }
+  }, [hasConnectedAccount, location]);
 
   const handleSignOut = useCallback(() => {
     void secureSignOut();
@@ -124,7 +148,14 @@ export function SettingsSection() {
 
   if (!hasOpened && !active) return null;
 
-  const resolvedLocation = isSettingsLocation(location) ? location : null;
+  const resolvedLocation =
+    isSettingsLocation(location) &&
+    (hasConnectedAccount || location !== "billing")
+      ? location
+      : null;
+  const visibleHomeItems = SETTINGS_HOME_ITEMS.filter(
+    (item) => !item.signedInOnly || hasConnectedAccount,
+  );
   const detailTitle = SETTINGS_HOME_ITEMS.find(
     (item) => item.id === resolvedLocation,
   )?.label;
@@ -135,7 +166,7 @@ export function SettingsSection() {
         <div className="settings-section-home">
           <div className="settings-section-home__title">Settings</div>
           <div className="settings-section-home__list">
-            {SETTINGS_HOME_ITEMS.map(({ id, label, description, Icon }) => (
+            {visibleHomeItems.map(({ id, label, description, Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -185,6 +216,8 @@ export function SettingsSection() {
                 <ThemePicker inline />
               ) : resolvedLocation === "connect" ? (
                 <ConnectPanel />
+              ) : resolvedLocation === "billing" ? (
+                <BillingPanel />
               ) : (
                 <FeedbackPanel
                   onDone={handleBack}

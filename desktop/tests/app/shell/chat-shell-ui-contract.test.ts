@@ -176,8 +176,15 @@ describe("chat shell UI contracts", () => {
     expect(settingsSection).toContain("<SettingsScreen embedded");
     expect(settingsSection).toContain("<ThemePicker inline");
     expect(settingsSection).toContain("<ConnectPanel");
+    expect(settingsSection).toContain("<BillingPanel");
     expect(settingsSection).toContain("<FeedbackPanel");
-    expect(account).not.toContain("<DropdownMenu");
+    expect(settingsSection).toContain('label: "Plan & billing"');
+    expect(settingsSection).toContain("signedInOnly: true");
+    expect(account).toContain("<DropdownMenu");
+    expect(account).toContain('data-variant="destructive"');
+    expect(account).toContain("sidebar-signout-dialog");
+    expect(account).toContain("useDisplayPanelOpen");
+    expect(account).toContain("!panelOpen");
     expect(account).not.toContain("<ThemePicker");
     expect(account).not.toContain("<FeedbackDialog");
   });
