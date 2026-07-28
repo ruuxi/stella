@@ -64,10 +64,14 @@ export function ModelsPicker({
   hideTrigger = false,
 }: ModelsPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = useCallback(
     (nextOpen: boolean) => {
-      if (nextOpen) preloadModelsPicker();
+      if (nextOpen) {
+        setHasOpened(true);
+        preloadModelsPicker();
+      }
       (controlledOnOpenChange ?? setInternalOpen)(nextOpen);
     },
     [controlledOnOpenChange],
@@ -106,25 +110,28 @@ export function ModelsPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{triggerElement}</PopoverTrigger>
       <PopoverContent
+        forceMount
         side={side}
         align={align}
         collisionPadding={8}
         data-models-picker="true"
       >
         <PopoverBody>
-          <Suspense
-            fallback={
-              <div
-                className="models-picker-loading"
-                aria-busy="true"
-                aria-live="polite"
-              >
-                Loading…
-              </div>
-            }
-          >
-            <AgentModelPicker />
-          </Suspense>
+          {hasOpened ? (
+            <Suspense
+              fallback={
+                <div
+                  className="models-picker-loading"
+                  aria-busy="true"
+                  aria-live="polite"
+                >
+                  Loading…
+                </div>
+              }
+            >
+              <AgentModelPicker active={open} />
+            </Suspense>
+          ) : null}
         </PopoverBody>
       </PopoverContent>
     </Popover>

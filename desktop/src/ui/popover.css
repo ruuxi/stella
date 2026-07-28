@@ -12,7 +12,9 @@
   box-shadow: var(--shadow-overlay);
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
   [data-component="popover-content"] {
     background: var(--popover, var(--background));
   }
@@ -28,6 +30,10 @@
 
 [data-component="popover-content"][data-state="closed"] {
   animation: popover-close 0.15s ease-out;
+}
+
+[data-models-picker="true"][data-state="closed"] {
+  display: none;
 }
 
 [data-component="popover-content"] [data-slot="popover-body"] {

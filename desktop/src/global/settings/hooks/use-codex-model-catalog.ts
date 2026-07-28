@@ -1,33 +1,34 @@
-import { useCallback, useEffect, useState } from "react";
 import type { LiveCodexModel } from "@/global/settings/lib/engine-model-routing";
+import {
+  createResourceStore,
+  useResourceStore,
+} from "@/shared/lib/resource-cache";
 
-export function useCodexModelCatalog() {
-  const [models, setModels] = useState<LiveCodexModel[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const ENGINE_MODEL_CATALOG_STALE_MS = 60 * 60 * 1000;
+const CODEX_CATALOG_KEY = "default" as const;
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await window.electronAPI?.system?.listCodexModels?.();
-      if (!result) throw new Error("Codex model discovery is unavailable.");
-      setModels(result.models.filter((model) => !model.hidden));
-    } catch (caught) {
-      setModels(null);
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "ChatGPT models could not be verified.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+const codexCatalogStore = createResourceStore<
+  typeof CODEX_CATALOG_KEY,
+  LiveCodexModel[]
+>({
+  staleMs: ENGINE_MODEL_CATALOG_STALE_MS,
+  fetcher: async () => {
+    const result = await window.electronAPI?.system?.listCodexModels?.();
+    if (!result) throw new Error("Codex model discovery is unavailable.");
+    return result.models.filter((model) => !model.hidden);
+  },
+});
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+export function useCodexModelCatalog(enabled = true) {
+  const { data, error, isLoading, isFetching, refresh } = useResourceStore(
+    codexCatalogStore,
+    enabled ? CODEX_CATALOG_KEY : null,
+  );
 
-  return { models, loading, error, refresh };
+  return {
+    models: data ?? null,
+    loading: enabled && (isLoading || isFetching),
+    error: error?.message ?? null,
+    refresh,
+  };
 }

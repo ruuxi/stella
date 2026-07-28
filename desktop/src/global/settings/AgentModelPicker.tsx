@@ -19,6 +19,7 @@ import {
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
+import { useClaudeCodeModelCatalog } from "@/global/settings/hooks/use-claude-code-model-catalog";
 import { BrandIcon } from "@/ui/brand-icon";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import {
@@ -269,6 +270,8 @@ function getModelPickerDisplayLabel(
 }
 
 interface AgentModelPickerProps {
+  /** Whether the surrounding surface is currently visible. */
+  active?: boolean;
   /**
    * Called whenever the user finishes a real selection (model picked or
    * default chosen). Lets the sidebar popover close itself; the inline
@@ -295,6 +298,7 @@ interface AgentModelPickerProps {
  * without a wrapper.
  */
 export function AgentModelPicker({
+  active = true,
   onSelected,
   className,
   surface = "sidebar",
@@ -313,14 +317,10 @@ export function AgentModelPicker({
     useState<LocalModelPreferences | null>(() => cachedLocalPreferences);
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [claudeCodeModels, setClaudeCodeModels] = useState<
-    EngineScopedModelOption[] | null
-  >(null);
-  const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
   const credentials = useLlmCredentials();
   const cancelOAuth = credentials.cancelOAuth;
   const validateOAuth = credentials.validateOAuth;
-  const codexCatalog = useCodexModelCatalog();
+  const codexCatalog = useCodexModelCatalog(active);
   const [chatGptConnection, setChatGptConnection] = useState<
     "checking" | "connected" | "disconnected" | "needs-reauth"
   >("checking");
@@ -400,33 +400,6 @@ export function AgentModelPicker({
       );
     };
   }, [setPreferences]);
-
-  const loadClaudeCodeModels = useCallback(async () => {
-    if (claudeCodeModelsLoading) return;
-    setClaudeCodeModelsLoading(true);
-    try {
-      const result = await window.electronAPI?.system?.listClaudeCodeModels?.();
-      setClaudeCodeModels(
-        (result?.models ?? []).map((model) => ({
-          id: model.id,
-          label: model.displayName || model.id,
-          description: model.description,
-        })),
-      );
-    } catch (caught) {
-      setClaudeCodeModels([]);
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Failed to load Claude Code models.",
-      );
-    } finally {
-      setClaudeCodeModelsLoading(false);
-    }
-  }, [claudeCodeModelsLoading]);
-
-  // (The Claude Code model-list load is triggered below, once the active
-  // brand/source panel is derived.)
 
   const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
     if (!preferences) return undefined;
@@ -703,28 +676,27 @@ export function AgentModelPicker({
     !activeProviderSetting &&
     activeBrand === "anthropic" &&
     anthropicSource === "app";
-
-  useEffect(() => {
-    if (
-      (showClaudeCodePanel || committedEngine === "claude_code_local") &&
-      claudeCodeModels === null &&
-      !claudeCodeModelsLoading
-    ) {
-      void loadClaudeCodeModels();
-    }
-  }, [
-    claudeCodeModels,
-    claudeCodeModelsLoading,
-    committedEngine,
-    loadClaudeCodeModels,
-    showClaudeCodePanel,
-  ]);
+  const claudeCodeCatalog = useClaudeCodeModelCatalog(
+    active && (showClaudeCodePanel || committedEngine === "claude_code_local"),
+  );
+  const claudeCodeModels = useMemo<EngineScopedModelOption[] | null>(
+    () =>
+      claudeCodeCatalog.models?.map((model) => ({
+        id: model.id,
+        label: model.displayName || model.id,
+        description: model.description,
+      })) ?? null,
+    [claudeCodeCatalog.models],
+  );
+  const claudeCodeModelsLoading = claudeCodeCatalog.loading;
 
   // Check the ChatGPT OAuth session whenever its panel is on screen (so the
   // connect notice is accurate before any commit), and always while the
   // committed engine is ChatGPT (the auto-migration effect depends on it).
   useEffect(() => {
-    if (!showChatGptPanel && committedEngine !== "codex_cli") return;
+    if (!active || (!showChatGptPanel && committedEngine !== "codex_cli")) {
+      return;
+    }
     let cancelled = false;
     void validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
       if (!cancelled) {
@@ -740,7 +712,7 @@ export function AgentModelPicker({
     return () => {
       cancelled = true;
     };
-  }, [committedEngine, showChatGptPanel, validateOAuth]);
+  }, [active, committedEngine, showChatGptPanel, validateOAuth]);
 
   /**
    * The sidebar Assistant tab writes to both orchestrator and general (and
@@ -1455,7 +1427,7 @@ export function AgentModelPicker({
           className="agent-model-picker-refresh"
           onClick={() => {
             if (showClaudeCodePanel) {
-              void loadClaudeCodeModels();
+              void claudeCodeCatalog.refresh();
             } else if (showChatGptPanel) {
               migrationAttemptedRef.current = null;
               void Promise.all([codexCatalog.refresh(), refresh()]);
@@ -1489,9 +1461,9 @@ export function AgentModelPicker({
       </div>
 
       <div className="agent-model-picker-body">
-        {error ?? catalogError ? (
+        {(error ?? claudeCodeCatalog.error ?? catalogError) ? (
           <p className="agent-model-picker-error" role="alert">
-            {error ?? catalogError}
+            {error ?? claudeCodeCatalog.error ?? catalogError}
           </p>
         ) : null}
         {pendingAgent === ENGINE_PENDING_TARGET && oauthPendingRef.current ? (

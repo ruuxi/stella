@@ -8,27 +8,38 @@ const PopoverTrigger = PopoverPrimitive.Trigger;
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, sideOffset = 4, children, style, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
-    <PopoverPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      data-component="popover-content"
-      className={cn(className)}
-      style={{ ...style, zIndex: 9999 }}
-      {...props}
-    >
-      {children}
-    </PopoverPrimitive.Content>
-  </PopoverPrimitive.Portal>
-));
+>(
+  (
+    { className, sideOffset = 4, children, style, forceMount, ...props },
+    ref,
+  ) => (
+    <PopoverPrimitive.Portal forceMount={forceMount}>
+      <PopoverPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        forceMount={forceMount}
+        data-component="popover-content"
+        className={cn(className)}
+        style={{ ...style, zIndex: 9999 }}
+        {...props}
+      >
+        {children}
+      </PopoverPrimitive.Content>
+    </PopoverPrimitive.Portal>
+  ),
+);
 PopoverContent.displayName = "PopoverContent";
 
 const PopoverBody = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} data-slot="popover-body" className={cn(className)} {...props} />
+  <div
+    ref={ref}
+    data-slot="popover-body"
+    className={cn(className)}
+    {...props}
+  />
 ));
 PopoverBody.displayName = "PopoverBody";
 
@@ -38,8 +49,4 @@ export const Popover = Object.assign(PopoverRoot, {
   Body: PopoverBody,
 });
 
-export {
-  PopoverTrigger,
-  PopoverContent,
-  PopoverBody,
-};
+export { PopoverTrigger, PopoverContent, PopoverBody };
