@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeModelCatalogSnapshot } from "../../../../runtime/protocol/index";
 
+const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }));
+
+vi.mock("@/ui/toast", () => ({ showToast }));
+
 vi.mock("@/global/auth/services/auth-session", () => ({
   useDesktopAuthSession: () => ({ isPending: false, data: null }),
   getAuthSessionSnapshot: () => ({ isPending: false, data: null }),
@@ -158,6 +162,7 @@ describe("AgentModelPicker catalog recovery", () => {
 
   beforeEach(() => {
     vi.resetModules();
+    showToast.mockClear();
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -230,9 +235,14 @@ describe("AgentModelPicker catalog recovery", () => {
     });
     await settle();
 
-    expect(container.textContent).toContain(
+    expect(container.textContent).not.toContain(
       "Stella runtime model catalog is not ready.",
     );
+    expect(showToast).toHaveBeenCalledWith({
+      title: "Couldn't refresh models",
+      description: "Stella runtime model catalog is not ready.",
+      variant: "error",
+    });
     expect(listLlmModels).toHaveBeenCalledTimes(1);
 
     expect(availabilityListener).toBeTypeOf("function");
@@ -335,7 +345,12 @@ describe("AgentModelPicker catalog recovery", () => {
     act(() => availabilityListener?.({ connected: false, ready: false }));
     await act(async () => refresh?.click());
     await settle();
-    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).not.toContain(notReady().message);
+    expect(showToast).toHaveBeenLastCalledWith({
+      title: "Couldn't refresh models",
+      description: notReady().message,
+      variant: "error",
+    });
     expect(container.textContent).toContain("GPT-5.6 Sol");
 
     await act(async () => root.unmount());
@@ -345,7 +360,7 @@ describe("AgentModelPicker catalog recovery", () => {
     });
     await settle();
     expect(listLlmModels).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).not.toContain(notReady().message);
     expect(container.textContent).toContain("GPT-5.6 Sol");
 
     act(() => availabilityListener?.({ connected: true, ready: true }));
@@ -360,12 +375,12 @@ describe("AgentModelPicker catalog recovery", () => {
     act(() => availabilityListener?.({ connected: false, ready: false }));
     await act(async () => refresh?.click());
     await settle();
-    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).not.toContain(notReady().message);
 
     act(() => availabilityListener?.({ connected: true, ready: true }));
     await settle();
     expect(listLlmModels).toHaveBeenCalledTimes(5);
-    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).not.toContain(notReady().message);
     expect(container.textContent).toContain("GPT-5.6 Sol");
     expect(container.textContent).not.toContain("GPT Lower Stale");
   });

@@ -44,6 +44,7 @@ import {
 import { router } from "@/router";
 import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import { useLlmCredentials } from "@/global/settings/hooks/use-llm-credentials";
+import { showToast } from "@/ui/toast";
 import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
@@ -689,6 +690,31 @@ export function AgentModelPicker({
     [claudeCodeCatalog.models],
   );
   const claudeCodeModelsLoading = claudeCodeCatalog.loading;
+  const visiblePickerError =
+    error ??
+    claudeCodeCatalog.error ??
+    catalogError ??
+    (showChatGptPanel && codexCatalog.error
+      ? `ChatGPT models could not be verified: ${codexCatalog.error}`
+      : null);
+  const visiblePickerErrorTitle = error
+    ? "Couldn't update model settings"
+    : "Couldn't refresh models";
+  const lastToastedErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!visiblePickerError) {
+      lastToastedErrorRef.current = null;
+      return;
+    }
+    if (!active || lastToastedErrorRef.current === visiblePickerError) return;
+    lastToastedErrorRef.current = visiblePickerError;
+    showToast({
+      title: visiblePickerErrorTitle,
+      description: visiblePickerError,
+      variant: "error",
+    });
+  }, [active, visiblePickerError, visiblePickerErrorTitle]);
 
   // Check the ChatGPT OAuth session whenever its panel is on screen (so the
   // connect notice is accurate before any commit), and always while the
@@ -1461,11 +1487,6 @@ export function AgentModelPicker({
       </div>
 
       <div className="agent-model-picker-body">
-        {(error ?? claudeCodeCatalog.error ?? catalogError) ? (
-          <p className="agent-model-picker-error" role="alert">
-            {error ?? claudeCodeCatalog.error ?? catalogError}
-          </p>
-        ) : null}
         {pendingAgent === ENGINE_PENDING_TARGET && oauthPendingRef.current ? (
           <p className="agent-model-picker-connection" role="status">
             Waiting for ChatGPT…{" "}
@@ -1617,11 +1638,7 @@ export function AgentModelPicker({
                     </button>
                   </p>
                 ) : null}
-                {codexCatalog.error ? (
-                  <p className="agent-model-picker-error" role="alert">
-                    ChatGPT models could not be verified: {codexCatalog.error}
-                  </p>
-                ) : codexCatalog.loading ? (
+                {codexCatalog.loading ? (
                   <p className="agent-model-picker-connection" role="status">
                     Verifying ChatGPT models…
                   </p>

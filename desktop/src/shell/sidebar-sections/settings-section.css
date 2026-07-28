@@ -63,9 +63,8 @@
   flex-shrink: 0;
   width: 30px;
   height: 30px;
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-weak);
+  background: transparent;
+  color: var(--text-base);
 }
 
 .settings-section-home__item-copy {
@@ -80,7 +79,7 @@
   overflow: hidden;
   color: var(--text-strong);
   font-size: var(--font-size-md);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
