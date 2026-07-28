@@ -196,6 +196,12 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const blobsRef = useRef<Blob[]>([]);
   const prevKeyRef = useRef("");
+  // Whether renderGradient has actually painted at a non-zero size. A fresh
+  // canvas reports the 300x150 default for width/height, so the dimensions
+  // alone can't tell "painted" from "never painted" — and a gradient mounted
+  // inside a display:none host (e.g. the right sidebar before the shell is
+  // visible) measures 0x0 on the first settings pass.
+  const paintedRef = useRef(false);
 
   const getPalette = useCallback((): RGB[] => {
     const isDark = resolvedColorMode === "dark";
@@ -287,6 +293,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     const h = rect?.height ?? window.innerHeight;
 
     renderGradient(ctx, w, h, bg, blobs, 0.25);
+    paintedRef.current = w > 0 && h > 0;
 
   }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors, flat]);
 
@@ -307,17 +314,20 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     if (lightweight) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (canvas.width > 0 && canvas.height > 0) return;
+    if (paintedRef.current) return;
 
     const renderOnce = () => {
       const ctx = ctxRef.current;
-      if (!ctx || blobsRef.current.length === 0) return false;
+      // prevKeyRef doubles as "the settings effect has run": blobsRef alone
+      // can't gate this because flat themes intentionally paint zero blobs.
+      if (!ctx || prevKeyRef.current === "") return false;
       const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
       const rect = canvas.parentElement?.getBoundingClientRect();
       const w = rect?.width ?? 0;
       const h = rect?.height ?? 0;
       if (w === 0 || h === 0) return false;
       renderGradient(ctx, w, h, bg, blobsRef.current, 0.25);
+      paintedRef.current = true;
       return true;
     };
 

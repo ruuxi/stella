@@ -54,7 +54,8 @@
   height: 100%;
   max-height: none;
   margin: 0;
-  background: transparent;
+  /* Background intentionally not reset here — the frame's own surface
+     (the tinted composer-style wash in right-sidebar-panel.css) applies. */
   border: none;
   border-radius: 0;
   box-shadow: none;
