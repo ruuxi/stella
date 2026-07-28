@@ -14,10 +14,6 @@ const MAX_FETCH_BODY_CHARS = 80_000;
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_FETCH_REDIRECTS = 5;
 
-const safeUrlOptions = () => ({
-  skipResolvedAddressCheck: process.env.NODE_ENV === "development",
-});
-
 // WebFetch
 
 /**
@@ -54,7 +50,7 @@ export const localWebFetch = async (args: {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    let targetUrl = await normalizeSafeExternalUrl(args.url, safeUrlOptions());
+    let targetUrl = await normalizeSafeExternalUrl(args.url);
 
     let response: Response | null = null;
     for (
@@ -76,7 +72,6 @@ export const localWebFetch = async (args: {
       if (response.status >= 300 && response.status < 400 && location) {
         targetUrl = await normalizeSafeExternalUrl(
           new URL(location, targetUrl).toString(),
-          safeUrlOptions(),
         );
         continue;
       }
