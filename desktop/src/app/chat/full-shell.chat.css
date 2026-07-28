@@ -381,12 +381,14 @@
 }
 
 .event-item.user {
-  /* Solid send-button fill so the user bubble reads as "mine" at a glance.
-     Text flips to the primary foreground to stay legible on the saturated
-     background. */
-  background: var(--primary);
-  --chat-text-color: var(--primary-foreground);
-  color: var(--primary-foreground);
+  /* Solid accent-derived fill so the user bubble reads as "mine" at a
+     glance. Fill and text both come from the `--chat-user-bubble-*` pair
+     (index.css), which guarantees their contrast for any theme — never
+     use `--primary-foreground` here; it's paired against raw `--primary`,
+     not this derived fill. */
+  background: var(--chat-user-bubble-fill);
+  --chat-text-color: var(--chat-user-bubble-text);
+  color: var(--chat-user-bubble-text);
   border-color: transparent;
   margin-left: auto;
   max-width: 85%;

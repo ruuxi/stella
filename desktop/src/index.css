@@ -309,6 +309,40 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --select-text: var(--text-strong);
   --select-chip-shadow: var(--shadow-sm);
 
+  /* ── User chat bubble ─────────────────────────────────────────────────
+     Derived from `--primary` so the bubble always carries the theme's
+     accent, but with legibility guaranteed by construction rather than by
+     trusting each theme's hand-paired `--primary-foreground` (several
+     themes pair a mid-lightness primary with white, which lands well below
+     readable contrast — and a derived fill can drift from what the pair
+     was authored against).
+
+     How: a lightness gate decides whether the fill is a "dark bubble"
+     (white text) or a "light bubble" (near-black text). Fills whose
+     primary sits in the ambiguous mid band (oklch L 0.56–0.70, where
+     NEITHER black nor white text reads well) are snapped to the nearest
+     edge of the band: L ≤ 0.65 clamps down to 0.55, L > 0.65 clamps up
+     to 0.70. The text token then flips off the same 0.65 threshold, so
+     fill and text can never disagree. Worst-case contrast ≈ 4.6:1
+     (L 0.55 fill + white text); every other theme lands higher. */
+  --chat-user-bubble-fill: oklch(
+    from var(--primary)
+    calc(
+      (1 - clamp(0, (l - 0.65) * 10000, 1)) * min(l, 0.55)
+      + clamp(0, (l - 0.65) * 10000, 1) * max(l, 0.70)
+    )
+    calc(c * 0.75)
+    h
+  );
+  /* Near-white on dark fills, near-black on light fills; keeps a whisper
+     of the fill's hue so the text doesn't read as foreign. */
+  --chat-user-bubble-text: oklch(
+    from var(--chat-user-bubble-fill)
+    calc(0.985 - clamp(0, (l - 0.65) * 10000, 1) * 0.835)
+    calc(c * 0.12)
+    h
+  );
+
   /* ── Type scale (fixed px — native, never viewport-scaled). ── */
   --font-size-2xs: 10px; /* micro labels, badge counts, mono timestamps */
   --font-size-xs: 11px; /* secondary metadata, captions, chip sub-labels */
