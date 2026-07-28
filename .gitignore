@@ -19,6 +19,13 @@ DEV-CONTEXT.md
 /node_modules/
 /runtime/node_modules/
 /.stella-runtime-reload-state.json
+# Live handshake flags between the dev runner and the Electron app: the quit
+# flag tells the watcher a Cmd+Q was deliberate so it skips the auto-restart,
+# and the restart flag requests the opposite. Both are per-run state that
+# `startApp` deletes on launch — committing one would make a fresh clone
+# start out claiming the user had already quit.
+/.stella-dev-user-quit-request
+/.stella-dev-restart-request
 /desktop/.low-resource-build-cache.json
 /desktop/.dev-electron-bundle-fingerprint.json
 /desktop/.electron-dev-app.pid
