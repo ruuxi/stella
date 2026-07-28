@@ -20,11 +20,7 @@ import {
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
-import { getPlatform } from "@/platform/electron/platform";
-import { useWindowType } from "@/shared/hooks/use-window-type";
-import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { SidebarSectionBody } from "@/shell/sidebar-sections/SidebarSectionBody";
-import { SidebarTabRail } from "@/shell/sidebar-sections/SidebarTabRail";
 import "./right-sidebar.css";
 import "./right-sidebar-panel.css";
 import "./shell-junction.css";
@@ -113,7 +109,6 @@ const clearDisplayPanelWidthCssVar = (): void => {
   root.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
 };
 
-
 /**
  * workspace panel shell.
  *
@@ -130,10 +125,6 @@ export const RightSidebar = forwardRef<
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const asideRef = useRef<HTMLElement | null>(null);
-  const platform = getPlatform();
-  const isMac = platform === "darwin";
-  const isWin = platform === "win32";
-  const isMiniWindow = useWindowType() === "mini";
 
   // The panel carries the shell's whole index now that the left sidebar is
   // gone — Tasks, Files, Search and Apps all live here — so it takes up width
@@ -424,17 +415,6 @@ export const RightSidebar = forwardRef<
         />
       ) : null}
       <div className="right-sidebar-inner right-sidebar-panel__frame">
-        {panelOpen && !isMiniWindow ? (
-          <div
-            className="right-sidebar-panel__chrome"
-            data-platform={isMac ? "mac" : isWin ? "win" : "other"}
-          >
-            <div className="right-sidebar-panel__chrome-tabs-slot">
-              <SidebarTabRail />
-            </div>
-            <DisplayPanelControls />
-          </div>
-        ) : null}
         {/* All four sections stay mounted; only the active one displays, and
             the host itself survives the panel closing. Files' canvas iframes
             and Apps' running user apps both lose their state to an unmount,

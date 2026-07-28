@@ -22,71 +22,52 @@
 .apps-section__toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex-shrink: 0;
-  padding: 8px 10px 4px;
 }
 
 .apps-section__search {
-  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-}
-
-.apps-section__search-icon {
-  position: absolute;
-  left: 10px;
-  color: var(--text-weak);
-  pointer-events: none;
+  gap: 8px;
 }
 
 .apps-section__search-input {
-  width: 100%;
-  height: 28px;
-  padding: 0 10px 0 28px;
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-inset);
-  color: var(--foreground);
-  font: inherit;
-  font-size: var(--font-size-base);
-  letter-spacing: -0.01em;
-  outline: none;
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
-}
-
-.apps-section__search-input::placeholder {
-  color: var(--text-weaker);
-}
-
-.apps-section__search-input:focus-visible {
-  border-color: var(--border-strong, var(--border));
-  box-shadow: var(--focus-ring);
+  width: auto;
 }
 
 .apps-section__sort {
   flex: 0 0 auto;
-  height: 28px;
   max-width: 40%;
-  padding: 0 6px;
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-inset);
-  color: var(--text-weak);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  letter-spacing: -0.01em;
-  cursor: default;
-  outline: none;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-weak);
 }
 
-.apps-section__sort:focus-visible {
+.apps-section__sort [data-component="select"] {
+  width: auto;
+}
+
+[data-slot="select-trigger"].apps-section__sort-trigger {
+  width: auto;
+  height: 24px;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-weak);
+  font-size: var(--font-size-sm);
+}
+
+[data-slot="select-trigger"].apps-section__sort-trigger:hover:not(:disabled),
+[data-slot="select-trigger"].apps-section__sort-trigger[data-state="open"] {
+  background: transparent;
+  color: var(--text-strong);
+}
+
+[data-slot="select-trigger"].apps-section__sort-trigger:focus-visible {
+  border-radius: var(--radius-sm, 6px);
   box-shadow: var(--focus-ring);
 }
 

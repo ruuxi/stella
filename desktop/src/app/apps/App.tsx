@@ -15,6 +15,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Search } from "@/ui/icons";
+import { Select } from "@/ui/select";
 import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import {
   getSnapshot,
@@ -24,7 +25,6 @@ import {
 import { AppCreationIllustration } from "./AppCreationIllustration";
 import {
   formatUserAppCreatedAt,
-  isUserAppSort,
   listUserApps,
   USER_APP_SORT_LABELS,
   useRequestUserApp,
@@ -79,23 +79,18 @@ export function AppsApp() {
             </label>
             <div className="apps-screen__sort">
               <span className="apps-screen__sort-label">Sort</span>
-              <select
-                className="apps-screen__sort-select"
+              <Select<UserAppSort>
+                className="apps-screen__sort-trigger"
                 value={sort}
-                onChange={(event) => {
-                  const next = event.currentTarget.value;
-                  if (isUserAppSort(next)) setSort(next);
-                }}
+                onValueChange={setSort}
+                options={(
+                  Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]
+                ).map((option) => ({
+                  value: option,
+                  label: USER_APP_SORT_LABELS[option],
+                }))}
                 aria-label="Sort"
-              >
-                {(Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]).map(
-                  (option) => (
-                    <option key={option} value={option}>
-                      {USER_APP_SORT_LABELS[option]}
-                    </option>
-                  ),
-                )}
-              </select>
+              />
             </div>
             <button
               type="button"

@@ -74,6 +74,60 @@
   max-width: min(240px, 32vw);
 }
 
+/* Display navigation is a sibling of the edge-to-edge panel, not a row inside
+   it. This keeps the panel's own content single-header while preserving the
+   original shell geometry. */
+.display-panel-topbar {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  z-index: 81;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+  height: var(--shell-topbar-height, 38px);
+  padding: 0 10px 0 12px;
+  box-sizing: border-box;
+  container-type: inline-size;
+  container-name: display-panel;
+  -webkit-app-region: drag;
+  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
+}
+
+.display-panel-topbar__tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.display-panel-topbar .shell-topbar-display-controls,
+.display-panel-topbar .shell-topbar-icon-btn,
+.display-panel-topbar .shell-topbar-window-controls {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+body[data-display-resizing="true"] .display-panel-topbar,
+body[data-display-expanding="true"] .display-panel-topbar,
+:root[data-shell-window-resizing="true"] .display-panel-topbar {
+  transition: none;
+}
+
+.display-panel-topbar[data-display-expanded="true"] {
+  left: 6px;
+  width: auto;
+}
+
+.display-panel-topbar[data-display-expanded="true"][data-platform="mac"] {
+  padding-left: 84px;
+}
+
 /* Tooltips on right-cluster controls anchor to their right edge so they never
    spill past the window corner — mirrors `.shell-topbar-right`. */
 .shell-topbar-full__right .shell-topbar-icon-btn::after,

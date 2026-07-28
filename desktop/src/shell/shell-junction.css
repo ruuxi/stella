@@ -1,13 +1,12 @@
-/* Two-column shell junction — center column plus the full-height display
-   panel, visible borders. Left edge: the center column rounds outward against
-   the window. Right seam: flat — the display panel butts straight against the
-   center column with no curve.
+/* The main column keeps the original shell geometry. The display panel alone
+   is presented as an inset window below its external topbar.
 
    This was a three-column junction until the left sidebar was removed; the
    left-seam gradient scoop it needed went with it. */
 
 :root[data-shell-panel-chrome="true"] {
   --shell-junction-radius: 16px;
+  --display-panel-window-radius: 8px;
   --shell-window-radius: 12px;
   --shell-junction-border: var(--border-base);
 }
@@ -16,6 +15,7 @@
 
 :root[data-shell-panel-chrome="true"] .content-area {
   border: 1px solid var(--shell-junction-border);
+  border-right: none;
   /* Round only the left edge — right edge stays square for inward panel scoops. */
   border-radius: var(--shell-junction-radius) 0 0 var(--shell-junction-radius);
   overflow: clip;
@@ -25,6 +25,19 @@
 
 :root[data-shell-panel-chrome="true"] .right-sidebar.right-sidebar-panel {
   z-index: 1;
+}
+
+/* ── Inset right viewer window ─────────────────────────────────────── */
+
+:root[data-shell-panel-chrome="true"]
+  .right-sidebar.right-sidebar-panel.right-sidebar--shell-visible {
+  height: auto;
+  align-self: stretch;
+  margin: var(--shell-topbar-height, 38px) 6px 6px 4px;
+  border: 1px solid var(--shell-junction-border);
+  border-radius: var(--display-panel-window-radius);
+  box-sizing: border-box;
+  box-shadow: var(--panel-surface-highlight);
 }
 
 /* ── Right viewer panel ────────────────────────────────────────────── */
@@ -61,6 +74,12 @@
   width: 100%;
   border: none;
   border-radius: 0;
+}
+
+:root[data-shell-panel-chrome="true"]
+  .right-sidebar.right-sidebar-panel.right-sidebar--expanded {
+  margin: 0;
+  border-radius: var(--display-panel-window-radius);
 }
 
 :root[data-shell-panel-chrome="true"]

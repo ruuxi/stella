@@ -17,7 +17,6 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { PersistentUserAppsHost } from "@/app/apps/PersistentUserAppsHost";
 import {
   formatUserAppCreatedAt,
-  isUserAppSort,
   listUserApps,
   USER_APP_SORT_LABELS,
   useRequestUserApp,
@@ -36,6 +35,8 @@ import {
 } from "@/features/workspace-display/sidebar-sections";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { ChevronLeft, Search } from "@/ui/icons";
+import { Select } from "@/ui/select";
+import "./home-search.css";
 import "./apps-section.css";
 
 export function AppsSection() {
@@ -111,34 +112,32 @@ function AppsLibrary({ apps }: { apps: readonly UserApp[] }) {
 
   return (
     <div className="apps-section__library">
-      <div className="apps-section__toolbar">
+      <div className="apps-section__toolbar sidebar-search__field">
         <label className="apps-section__search">
-          <Search size={13} className="apps-section__search-icon" aria-hidden />
+          <Search size={15} strokeWidth={1.75} aria-hidden="true" />
           <input
-            type="search"
+            type="text"
             placeholder="Search apps"
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            className="apps-section__search-input"
+            className="sidebar-search__input apps-section__search-input"
+            aria-label="Search apps"
           />
         </label>
-        <select
-          className="apps-section__sort"
-          value={sort}
-          onChange={(event) => {
-            const next = event.currentTarget.value;
-            if (isUserAppSort(next)) setSort(next);
-          }}
-          aria-label="Sort"
-        >
-          {(Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]).map(
-            (option) => (
-              <option key={option} value={option}>
-                {USER_APP_SORT_LABELS[option]}
-              </option>
-            ),
-          )}
-        </select>
+        <div className="apps-section__sort">
+          <Select<UserAppSort>
+            className="apps-section__sort-trigger"
+            value={sort}
+            onValueChange={setSort}
+            options={(Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]).map(
+              (option) => ({
+                value: option,
+                label: USER_APP_SORT_LABELS[option],
+              }),
+            )}
+            aria-label="Sort"
+          />
+        </div>
       </div>
 
       {visible.length === 0 ? (

@@ -63,6 +63,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
 );
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
+import { DisplayPanelTopBar } from "@/shell/DisplayPanelTopBar";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -570,6 +571,8 @@ function RootChrome() {
             />
           ) : null}
         </div>
+
+      {isFullWindow ? <DisplayPanelTopBar /> : null}
 
       <Suspense fallback={null}>
         <RightSidebar ref={rightSidebarRef} />

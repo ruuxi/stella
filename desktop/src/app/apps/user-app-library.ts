@@ -16,7 +16,7 @@ import type { UserApp } from "@/app/_user/user-apps-registry";
 export type UserAppSort = "recent" | "name";
 
 export const USER_APP_SORT_LABELS: Record<UserAppSort, string> = {
-  recent: "Most recent",
+  recent: "Recent",
   name: "Name",
 };
 

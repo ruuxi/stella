@@ -42,10 +42,7 @@ type ShellTopBarFullProps = {
   onConnect?: () => void;
 };
 
-export function ShellTopBarFull({
-  onSignIn,
-  onConnect,
-}: ShellTopBarFullProps) {
+export function ShellTopBarFull({ onSignIn, onConnect }: ShellTopBarFullProps) {
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
@@ -64,9 +61,10 @@ export function ShellTopBarFull({
       <div className="shell-topbar-full__spacer" aria-hidden="true" />
 
       <div className="shell-topbar-full__right">
-        {/* The panel has no persistent affordance while open — its own chrome
-            owns close/expand — so this only offers the "summon" direction. The
-            radial dial is the primary way in; this is the discoverable one. */}
+        {/* The panel has no persistent affordance while open — the display
+            topbar owns close/expand — so this only offers the "summon"
+            direction. The radial dial is the primary way in; this is the
+            discoverable one. */}
         {!panelOpen ? (
           <button
             type="button"

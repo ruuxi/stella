@@ -2,8 +2,8 @@
  * Top-bar display-tab switcher. A standalone Home icon returns to the home
  * launcher, and a separate chip shows the active non-home surface (Chat,
  * Store, an open file, …); clicking the chip opens a menu listing the other
- * open surfaces. Lives in the panel chrome (full window) and the mini
- * window's top bar.
+ * open surfaces. Used by the mini window's top bar; the full window uses the
+ * fixed Home / Files / Apps section rail instead.
  */
 
 import { useState } from "react";

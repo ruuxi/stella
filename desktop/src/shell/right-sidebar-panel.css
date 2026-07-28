@@ -21,12 +21,10 @@
   overflow: hidden;
   contain: layout paint;
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
-  /* Container context for the whole panel. It sits on the frame rather than
-     the body so it covers the chrome too — the tab rail sheds its labels
-     against this, and it is a sibling of the body, not a descendant. User apps
-     rendered in the Apps section size against it as well: they are authored as
-     full pages with `vw` units and viewport media queries, which would
-     otherwise read the whole window and overflow a narrow panel. */
+  /* Container context for the panel body. User apps rendered in the Apps
+     section size against it: they are authored as full pages with `vw` units
+     and viewport media queries, which would otherwise read the whole window
+     and overflow a narrow panel. */
   container-type: inline-size;
   container-name: display-panel;
 }
@@ -86,48 +84,6 @@ body[data-display-expanding="true"]
   overflow: hidden;
 }
 
-/* Top chrome inside the right viewer panel (back/forward/expand/close). */
-.right-sidebar-panel__chrome {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--shell-topbar-height, 38px);
-  padding: 0 10px 0 12px;
-  border-bottom: 1px solid var(--border-base);
-  -webkit-app-region: drag;
-}
-
-.right-sidebar-panel__chrome[data-platform="mac"] {
-  transform: translateY(2px);
-}
-
-/* An expanded panel used to reach the window's top-left corner and had to
-   inset its chrome past the macOS traffic lights and the floating sidebar
-   toggle. It now starts below `ShellTopBarFull`, which owns that strip, so the
-   chrome needs no special inset on any platform. */
-.right-sidebar.right-sidebar-panel.right-sidebar--expanded
-  .right-sidebar-panel__chrome {
-  padding-left: 12px;
-}
-
-.right-sidebar-panel__chrome-tabs-slot {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 4px;
-  height: 100%;
-  padding: 0 4px;
-  -webkit-app-region: drag;
-}
-
-.right-sidebar-panel__chrome .shell-topbar-display-controls,
-.right-sidebar-panel__chrome .shell-topbar-icon-btn {
-  -webkit-app-region: no-drag;
-}
-
 .right-sidebar-panel__body .right-sidebar__active {
   flex: 1 1 auto;
   min-height: 0;
@@ -160,16 +116,15 @@ body[data-display-expanding="true"]
 
 /* Expanded takes over the content area. The absolute overlay must win the
    width over the fixed open-width rule above (equal-ish specificity), so this
-   selector carries an extra class. The top inset keeps `ShellTopBarFull`
-   clear — nav, the account control and the traffic lights stay reachable with
-   the panel expanded. */
+   selector carries an extra class. The top inset keeps the display topbar
+   clear and reachable while the panel is expanded. */
 .right-sidebar.right-sidebar-panel.right-sidebar--open.right-sidebar--expanded.right-sidebar--shell-visible {
   position: absolute;
-  inset: var(--shell-topbar-height, 38px) 0 0 0;
+  inset: var(--shell-topbar-height, 38px) 6px 6px;
   z-index: 60;
   width: auto;
   flex: none;
-  margin-left: 0;
+  margin: 0;
 }
 
 .right-sidebar.right-sidebar-panel:not(.right-sidebar--shell-visible) {

@@ -1,7 +1,8 @@
-/* Four-tab rail in the display panel's chrome — see `SidebarTabRail.tsx`.
+/* Section rail in the outer topbar above the display panel — see
+   `SidebarTabRail.tsx`.
 
-   Sized to sit inside the 38px chrome strip alongside `DisplayPanelControls`.
-   Labels hide below a narrow panel width so four tabs never crowd out the
+   Sized to sit inside the 38px topbar strip alongside `DisplayPanelControls`.
+   Labels hide below a narrow panel width so the tabs never crowd out the
    controls; the icons and tooltips carry the meaning from there. */
 
 .sidebar-tab-rail {

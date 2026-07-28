@@ -85,6 +85,15 @@ describe("AppsSection", () => {
     expect(container.querySelector(".apps-section__card")).not.toBeNull();
   });
 
+  it("uses Stella's shared picker instead of a native select", () => {
+    render();
+
+    expect(container.querySelector("select")).toBeNull();
+    expect(
+      container.querySelector('[data-slot="select-trigger"]')?.textContent,
+    ).toContain("Recent");
+  });
+
   // The whole reason the host is a fixed sibling of the library rather than a
   // child of the open-app branch: a surface that is moved or remounted loses
   // iframe browsing contexts, media state and scroll position.
