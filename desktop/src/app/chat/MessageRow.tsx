@@ -653,9 +653,10 @@ export const AssistantMessageRow = memo(
           {row.customSlot ? row.customSlot : null}
           {hasText && (
             // Mounted while streaming too (held invisible + inert via the
-            // `streaming` flag) so its reserved height is present from the
-            // first line and finalizing the message adds no box — no layout
-            // jump. It only becomes hover/focus-revealable once settled.
+            // `streaming` flag). The strip is a constant zero-height overlay
+            // (see message-actions.css), so finalizing the message adds no
+            // box — no layout jump. It only becomes hover/focus-revealable
+            // once settled.
             <MessageActions
               text={text}
               messageKey={row.id}
