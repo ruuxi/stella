@@ -35,7 +35,7 @@
  * Accessibility so the dial also works over content" toast.
  *
  * Wedge indices are the shared quadrant order (0 at the upper-right,
- * clockwise): Home, Files, Close, Apps. `calculateSelectedWedgeIndex` is the
+ * clockwise): Home, Files, Search, Apps. `calculateSelectedWedgeIndex` is the
  * same function the chord dial commits through, and the overlay renderer
  * highlights through the same geometry, so highlight and commit agree.
  * Commit resolves from the physical cursor (`screen.getCursorScreenPoint`)

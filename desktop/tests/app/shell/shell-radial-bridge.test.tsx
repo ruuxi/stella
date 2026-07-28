@@ -4,11 +4,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShellRadialBridge } from "@/shell/radial/ShellRadialBridge";
+import { radialSearchStore } from "@/shell/radial/radial-search-store";
 
 describe("ShellRadialBridge", () => {
   let container: HTMLDivElement;
   let root: Root;
   let originalElectronApi: PropertyDescriptor | undefined;
+  let commitHandler:
+    | ((_event: unknown, data: { index: number }) => void)
+    | undefined;
 
   const shellRadial = {
     beginDomGesture: vi.fn(),
@@ -18,7 +22,12 @@ describe("ShellRadialBridge", () => {
     leaveDomGesture: vi.fn(),
     respondPress: vi.fn(),
     onQueryPress: vi.fn(() => () => {}),
-    onCommit: vi.fn(() => () => {}),
+    onCommit: vi.fn(
+      (handler: (_event: unknown, data: { index: number }) => void) => {
+        commitHandler = handler;
+        return () => {};
+      },
+    ),
     onEnded: vi.fn(() => () => {}),
     onSwallowedPress: vi.fn(() => () => {}),
   };
@@ -28,7 +37,12 @@ describe("ShellRadialBridge", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
-    originalElectronApi = Object.getOwnPropertyDescriptor(window, "electronAPI");
+    commitHandler = undefined;
+    radialSearchStore.close();
+    originalElectronApi = Object.getOwnPropertyDescriptor(
+      window,
+      "electronAPI",
+    );
     Object.defineProperty(window, "electronAPI", {
       configurable: true,
       value: { shellRadial },
@@ -41,6 +55,7 @@ describe("ShellRadialBridge", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    radialSearchStore.close();
     container.remove();
     if (originalElectronApi) {
       Object.defineProperty(window, "electronAPI", originalElectronApi);
@@ -79,5 +94,16 @@ describe("ShellRadialBridge", () => {
     });
     expect(shellRadial.leaveDomGesture).toHaveBeenCalledTimes(1);
     expect(shellRadial.cancelDomGesture).not.toHaveBeenCalled();
+  });
+
+  it("opens workspace search from the former Close wedge", () => {
+    expect(commitHandler).toBeTypeOf("function");
+    expect(radialSearchStore.getOpen()).toBe(false);
+
+    act(() => {
+      commitHandler?.({}, { index: 2 });
+    });
+
+    expect(radialSearchStore.getOpen()).toBe(true);
   });
 });

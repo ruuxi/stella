@@ -16,8 +16,7 @@
  *     state before quietly reverting to "Search" — a minimum dwell so a quick
  *     task doesn't just flash its progress.
  *
- * Clicking it (in any state) opens the sidebar's Search section, which owns
- * the query field and the searchable overview.
+ * Clicking it (in any state) opens the radial search overlay.
  */
 import {
   memo,
@@ -38,11 +37,12 @@ import {
   deriveTopLevelActivityWorkUnits,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
-import {
-  sidebarSections,
-  useActiveSidebarSection,
-} from "@/features/workspace-display/sidebar-sections";
+import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
+import {
+  radialSearchStore,
+  useRadialSearchOpen,
+} from "@/shell/radial/radial-search-store";
 import "./composer-activity-pill.css";
 
 export type PillState = "idle" | "running" | "done" | "error" | "canceled";
@@ -193,7 +193,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
 }: {
   state: PillState;
   runningCount: number;
-  /** Whether the sidebar is already showing the Search section. */
+  /** Whether radial search is already open. */
   open: boolean;
 }) {
   const label = getActivityPillLabel(state, runningCount);
@@ -216,11 +216,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
       className="composer-activity-pill"
       data-state={state}
       data-open={open || undefined}
-      // `openLocation` rather than `selectSection`: the pill is an entry
-      // point, so clicking it while Home is already showing must reveal the
-      // list (where the search field lives) again, not close the panel out
-      // from under a live query.
-      onClick={() => sidebarSections.openLocation("home", null)}
+      onClick={() => radialSearchStore.open()}
       aria-label={state === "idle" ? "Search" : `${label} — open search`}
     >
       <span className="composer-activity-pill__glyph" aria-hidden="true">
@@ -234,6 +230,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
 export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const panelOpen = useDisplayPanelOpen();
   const activeSection = useActiveSidebarSection();
+  const searchOpen = useRadialSearchOpen();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
   const tasks = chat.conversation.tasks;
@@ -256,7 +253,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={panelOpen && activeSection === "home"}
+        open={searchOpen}
       />
     </motion.div>
   );

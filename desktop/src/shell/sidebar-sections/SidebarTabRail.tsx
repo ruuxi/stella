@@ -4,7 +4,7 @@
  * Clicking a tab goes through the same `selectSection` verb the radial dial
  * uses, so both entry points share one open/switch/close rule — including the
  * "select the active tab again to close" behavior, which is why these are
- * buttons rather than a radio group. (The dial has a fourth wedge, Close,
+ * buttons rather than a radio group. (The dial has a fourth wedge, Search,
  * which is not a section and so has no tab here.)
  */
 

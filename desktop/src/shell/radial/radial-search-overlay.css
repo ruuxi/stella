@@ -1,0 +1,61 @@
+/* Centered search summoned from the in-app radial dial. The results engine is
+   shared with Home; only this transient host and its focused field are new. */
+
+[data-component="dialog"]:has(.radial-search-dialog) {
+  align-items: flex-start;
+  padding-top: clamp(64px, 12vh, 112px);
+  box-sizing: border-box;
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].radial-search-dialog {
+  width: min(680px, calc(100vw - 32px));
+  min-height: 0;
+  max-height: min(630px, calc(100vh - 112px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.radial-search-dialog__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  color: var(--text-weak);
+}
+
+.radial-search-dialog__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: var(--font-size-lg);
+  line-height: 1.4;
+}
+
+.radial-search-dialog__input::placeholder {
+  color: var(--text-weaker);
+}
+
+.radial-search-dialog__results {
+  width: 100%;
+  min-height: 0;
+  max-height: min(500px, calc(100vh - 174px));
+  padding: 6px 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  box-sizing: border-box;
+  overflow-y: auto;
+  contain: layout paint;
+}
+
+.radial-search-dialog__empty {
+  padding: 18px 10px;
+  color: var(--text-weak);
+  font-size: var(--font-size-base);
+}

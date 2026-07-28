@@ -6,7 +6,7 @@ import {
   useState,
   type Dispatch,
 } from "react";
-import { RadialDial } from "./RadialDial";
+import { RadialDial, type RadialDialVariant } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
 import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
@@ -38,6 +38,7 @@ type RegionCaptureMode = "capture" | "window-attach";
 type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
+  radialVariant: RadialDialVariant;
   radialCompactFocused: boolean;
   radialMiniAlwaysOnTop: boolean;
   windowHighlightBounds: WindowBounds | null;
@@ -53,6 +54,7 @@ type OverlayAction =
   | {
       type: "radial:show";
       position?: { x: number; y: number };
+      variant?: RadialDialVariant;
       compactFocused?: boolean;
       miniAlwaysOnTop?: boolean;
     }
@@ -78,6 +80,7 @@ function isSamePosition(
 const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
+  radialVariant: "system",
   radialCompactFocused: false,
   radialMiniAlwaysOnTop: false,
   windowHighlightBounds: null,
@@ -96,9 +99,15 @@ function overlayReducer(
   switch (action.type) {
     case "radial:show": {
       const nextPosition = action.position ?? state.radialPosition;
+      const nextVariant = action.variant ?? "system";
+      const nextCompactFocused = action.compactFocused ?? false;
+      const nextMiniAlwaysOnTop = action.miniAlwaysOnTop ?? false;
       if (
         state.radialVisible &&
-        isSamePosition(state.radialPosition, nextPosition)
+        isSamePosition(state.radialPosition, nextPosition) &&
+        state.radialVariant === nextVariant &&
+        state.radialCompactFocused === nextCompactFocused &&
+        state.radialMiniAlwaysOnTop === nextMiniAlwaysOnTop
       ) {
         return state;
       }
@@ -106,8 +115,9 @@ function overlayReducer(
         ...state,
         radialVisible: true,
         radialPosition: nextPosition,
-        radialCompactFocused: action.compactFocused ?? false,
-        radialMiniAlwaysOnTop: action.miniAlwaysOnTop ?? false,
+        radialVariant: nextVariant,
+        radialCompactFocused: nextCompactFocused,
+        radialMiniAlwaysOnTop: nextMiniAlwaysOnTop,
       };
     }
     case "radial:hide":
@@ -115,6 +125,7 @@ function overlayReducer(
         ? {
             ...state,
             radialVisible: false,
+            radialVariant: "system",
             radialCompactFocused: false,
             radialMiniAlwaysOnTop: false,
           }
@@ -206,6 +217,7 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
           y?: number;
           screenX?: number;
           screenY?: number;
+          variant?: RadialDialVariant;
           compactFocused?: boolean;
           miniAlwaysOnTop?: boolean;
         },
@@ -221,12 +233,14 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
           dispatch({
             type: "radial:show",
             position: { x: data.screenX, y: data.screenY },
+            variant: data.variant,
             compactFocused: data.compactFocused,
             miniAlwaysOnTop: data.miniAlwaysOnTop,
           });
         } else {
           dispatch({
             type: "radial:show",
+            variant: data.variant,
             compactFocused: data.compactFocused,
             miniAlwaysOnTop: data.miniAlwaysOnTop,
           });
@@ -702,6 +716,7 @@ export function OverlayRoot() {
         }}
       >
         <RadialDial
+          variant={state.radialVariant}
           closeChatWedge={
             state.radialCompactFocused || state.radialMiniAlwaysOnTop
           }

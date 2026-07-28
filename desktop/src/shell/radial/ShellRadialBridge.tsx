@@ -24,7 +24,8 @@
  * DOM can see whether the target is exempt — composer and editable fields
  * keep their native context menu), applying `shell-radial:commit` (sections
  * route through `sidebarSections.selectSection`, the same verb the tab rail
- * uses; the Close wedge just closes the panel), and suppressing the OS
+ * uses; the Search wedge summons the centered workspace search), and
+ * suppressing the OS
  * context menu for every press the dial claims.
  */
 
@@ -33,9 +34,9 @@ import {
   sidebarSections,
   type SidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
-import { displayTabs } from "@/features/workspace-display/tab-store";
 import { showToast } from "@/ui/toast";
 import { isRadialGestureExempt } from "./radial-gesture-target";
+import { radialSearchStore } from "./radial-search-store";
 import "./shell-radial-bridge.css";
 
 /**
@@ -43,10 +44,10 @@ import "./shell-radial-bridge.css";
  * clockwise). Must match `SHELL_WEDGES` in the overlay's RadialDial — the
  * main process commits by index against that same order.
  */
-const WEDGE_ACTIONS: readonly (SidebarSection | "close")[] = [
+const WEDGE_ACTIONS: readonly (SidebarSection | "search")[] = [
   "home",
   "files",
-  "close",
+  "search",
   "apps",
 ];
 
@@ -145,8 +146,8 @@ export function ShellRadialBridge() {
         shellRadial.onCommit((_event, data) => {
           const action = WEDGE_ACTIONS[data.index];
           if (!action) return;
-          if (action === "close") {
-            displayTabs.setPanelOpen(false);
+          if (action === "search") {
+            radialSearchStore.open();
             return;
           }
           sidebarSections.selectSection(action);

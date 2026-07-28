@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Mic,
   Plus,
+  Search,
   X,
 } from "@/ui/icons";
 import { getElectronApi } from "@/platform/electron/electron";
@@ -49,14 +50,14 @@ const BASE_WEDGES: readonly RadialDialWedge[] = [
 /**
  * The shell variant's wedges, in the shared quadrant order (index 0 at the
  * upper-right, clockwise). Home/Files/Apps mirror the sidebar's tab rail;
- * Close is dial-only — it closes the sidebar rather than selecting a section.
+ * Search is dial-only — it summons the centered workspace search overlay.
  * The main process commits by index; the shell maps indices through this same
  * order (see ShellRadialBridge), so the two must not drift.
  */
 const SHELL_WEDGES: readonly RadialDialWedge[] = [
   { id: "home", label: "Home", icon: LayoutList },
   { id: "files", label: "Files", icon: Folder },
-  { id: "close", label: "Close", icon: X },
+  { id: "search", label: "Search", icon: Search },
   { id: "apps", label: "Apps", icon: AppWindowMac },
 ];
 
@@ -64,12 +65,13 @@ export type RadialDialVariant = "system" | "shell";
 
 export function RadialDial({
   closeChatWedge = false,
+  variant = "system",
 }: {
   closeChatWedge?: boolean;
+  variant?: RadialDialVariant;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addIconDataUrl, setAddIconDataUrl] = useState<string | null>(null);
-  const [variant, setVariant] = useState<RadialDialVariant>("system");
   const { colors } = useTheme();
 
   const wedges = useMemo<readonly RadialDialWedge[]>(() => {
@@ -148,7 +150,6 @@ export function RadialDial({
         const nextVariant: RadialDialVariant =
           data.variant === "shell" ? "shell" : "system";
         variantRef.current = nextVariant;
-        setVariant(nextVariant);
         // Reset to the Plus glyph; the icon of the app under the dial arrives
         // asynchronously via radial:addIcon once the window lookup settles.
         setAddIconDataUrl(null);

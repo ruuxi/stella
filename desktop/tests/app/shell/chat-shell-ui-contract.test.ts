@@ -9,7 +9,6 @@ import {
   getDisplayedActivityPillState,
 } from "@/app/chat/ComposerActivityPill";
 import { isRadialGestureExempt } from "@/shell/radial/radial-gesture-target";
-import { shouldHoldSearchLayout } from "@/shell/sidebar-sections/HomeSection";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
 const SOURCE_ROOT = path.resolve(
@@ -113,82 +112,29 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
     );
-    const home = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
+    const radialSearch = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/radial/RadialSearchOverlay.tsx"),
       "utf8",
     );
 
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
-    // The pill is the entry point; the field itself lives at the top of the
-    // Home section's list view. `openLocation` rather than `selectSection`,
-    // so a second click can never close the panel on a live query.
-    expect(activityPill).toContain('sidebarSections.openLocation("home", null)');
-    expect(home).toContain('placeholder="Search activity, files, and more"');
+    expect(activityPill).toContain("radialSearchStore.open()");
+    expect(radialSearch).toContain(
+      'placeholder="Search activity, files, and more"',
+    );
   });
 
-  it("hosts search inside Home without stealing the composer's caret", () => {
+  it("keeps search out of Home and includes apps in radial results", () => {
     const home = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
-
-    // Home is the one surface that threads the shared query through: the old
-    // Search tab folded into it as a control over the same overview.
-    expect(home).toContain("useDisplaySearchQuery");
-    expect(home).toContain("query={deferredQuery}");
-    // Home is the default section; auto-focusing its search field would take
-    // the caret from the composer on every panel open. The old Search tab
-    // focused on activation — Home must not.
-    expect(home).not.toMatch(/\.focus\(\)/);
-  });
-
-  it("holds the search layout through engage and a single-settle clear", () => {
-    // Engages on the very first keystroke, before the deferred results
-    // reconcile (immediate input drives it on).
-    expect(shouldHoldSearchLayout("a", "")).toBe(true);
-    // Steady state while searching: both the input and the rendered query set.
-    expect(shouldHoldSearchLayout("map", "map")).toBe(true);
-    // Two-stage-drop regression: after the field is cleared the results still
-    // render the previous query for ~150ms. The layout MUST stay held so the
-    // box collapses once (when results reconcile), not twice. A naive
-    // input-only predicate returns false here and fails this assertion.
-    expect(shouldHoldSearchLayout("", "map")).toBe(true);
-    // Only once both the field and the deferred results have cleared does the
-    // section release its fixed layout back to the natural overview height.
-    expect(shouldHoldSearchLayout("", "")).toBe(false);
-    // Whitespace-only input is not a search.
-    expect(shouldHoldSearchLayout("   ", "")).toBe(false);
-  });
-
-  it("bounds the searching results box to a resolved height with internal scroll", () => {
-    const home = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
+    const radialSearch = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/radial/RadialSearchOverlay.tsx"),
       "utf8",
     );
-    const css = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/sidebar-sections/home-search.css"),
-      "utf8",
-    );
-
-    // The component drives the searching layout off the hold predicate (not a
-    // bare input check) and marks the section for CSS.
-    expect(home).toContain("shouldHoldSearchLayout(inputValue, deferredQuery)");
-    expect(home).toContain("data-searching={searching || undefined}");
-
-    // The base body scrolls its overflow internally.
-    expect(css).toMatch(/\.sidebar-search__body\s*\{[^}]*overflow-y:\s*auto/);
-
-    // While searching the body is pinned to a RESOLVED height (a zero
-    // flex-basis filling what the field leaves) so it can't grow/shrink with
-    // the match count. A `min-height` floor leaves the region content-driven
-    // above the floor and does NOT satisfy this.
-    const searchingBody = css.match(
-      /\.sidebar-search\[data-searching\]\s+\.sidebar-search__body\s*\{([^}]*)\}/,
-    );
-    expect(searchingBody).not.toBeNull();
-    const decls = searchingBody?.[1] ?? "";
-    expect(decls).toMatch(/(^|[;{\s])flex:\s*1\s+1\s+0\s*;/);
-    expect(decls).not.toMatch(/min-height:/);
+    expect(home).not.toContain("sidebar-search__field");
+    expect(radialSearch).toContain("includeUserApps");
   });
 });

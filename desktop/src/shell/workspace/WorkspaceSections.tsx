@@ -15,11 +15,20 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Eye } from "@/ui/icons";
+import { AppWindowMac, Eye } from "@/ui/icons";
+import {
+  getSnapshot as getUserAppsSnapshot,
+  subscribe as subscribeToUserApps,
+} from "@/app/_user/user-apps-registry";
+import {
+  formatUserAppCreatedAt,
+  listUserApps,
+} from "@/app/apps/user-app-library";
 import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -94,6 +103,7 @@ const SECTION_CAPS = {
 // Search still scans every loaded record, but rendering an unbounded match
 // set made a common query mount hundreds of rows at once.
 const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
+const QUICK_SEARCH_CAPS = { activity: 8, files: 8, schedule: 4, store: 4 };
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 const EMPTY_UPDATES: ReadonlyArray<string> = [];
 /** Agent-authored messages shown under an expanded RUNNING agent. */
@@ -645,6 +655,8 @@ const scheduleEntryToAffectedRef = (
 export const WorkspaceSections = memo(function WorkspaceSections({
   query = "",
   variant = "strip",
+  searchMode = "complete",
+  includeUserApps = false,
   renderEmpty,
   onNavigate,
 }: {
@@ -652,6 +664,11 @@ export const WorkspaceSections = memo(function WorkspaceSections({
   query?: string;
   /** Default cap set: compact strip vs. roomier group overview. */
   variant?: "strip" | "overview";
+  /** Quick search stays within already-loaded data and renders a small result
+   *  preview. Complete search pages through the full available history. */
+  searchMode?: "complete" | "quick";
+  /** Include user-created apps as search results. */
+  includeUserApps?: boolean;
   /** Rendered when nothing matches; strip mode omits it and renders null. */
   renderEmpty?: () => ReactNode;
   /** Fired after a section item is opened/selected — lets a host surface
@@ -677,30 +694,53 @@ export const WorkspaceSections = memo(function WorkspaceSections({
   } = filesFeed;
   const schedules = useConversationSchedules(conversationId);
   const storeState = useStoreSidePanelState();
+  const userApps = useSyncExternalStore(
+    subscribeToUserApps,
+    getUserAppsSnapshot,
+    getUserAppsSnapshot,
+  );
 
   const normalizedQuery = query.trim().toLowerCase();
   const searching = normalizedQuery.length > 0;
-  const caps = searching ? SEARCH_CAPS : SECTION_CAPS[variant];
+  const quickSearch = searching && searchMode === "quick";
+  const caps = searching
+    ? quickSearch
+      ? QUICK_SEARCH_CAPS
+      : SEARCH_CAPS
+    : SECTION_CAPS[variant];
 
   useEffect(() => {
+    if (searchMode === "quick") return;
     void refreshFeatureSnapshot();
-  }, []);
+  }, [searchMode]);
 
   // While searching, page in the full dataset so the query matches every
   // item, not just what's already loaded. Each loader call updates
   // hasOlder/loading, which re-runs the effect until the feed is drained.
   useEffect(() => {
-    if (!searching) return;
+    if (!searching || quickSearch) return;
     if (activityHasOlder && !activityIsLoadingOlder) loadOlderActivity();
-  }, [searching, activityHasOlder, activityIsLoadingOlder, loadOlderActivity]);
+  }, [
+    searching,
+    quickSearch,
+    activityHasOlder,
+    activityIsLoadingOlder,
+    loadOlderActivity,
+  ]);
 
   useEffect(() => {
-    if (!searching) return;
+    if (!searching || quickSearch) return;
     if (filesHaveOlder && !filesAreLoadingOlder) loadOlderFiles();
-  }, [searching, filesHaveOlder, filesAreLoadingOlder, loadOlderFiles]);
+  }, [
+    searching,
+    quickSearch,
+    filesHaveOlder,
+    filesAreLoadingOlder,
+    loadOlderFiles,
+  ]);
 
   useEffect(() => {
-    if (!searching) return;
+    if (!searching || quickSearch) return;
     const total = storeState.rosterTotal;
     if (total == null || storeState.olderLoading) return;
     const loaded =
@@ -708,6 +748,7 @@ export const WorkspaceSections = memo(function WorkspaceSections({
     if (loaded < total) void loadOlderFeatureEntries();
   }, [
     searching,
+    quickSearch,
     storeState.rosterTotal,
     storeState.olderLoading,
     storeState.snapshot,
@@ -923,15 +964,18 @@ export const WorkspaceSections = memo(function WorkspaceSections({
 
   // Files list under the agent that produced them rather than in a standalone
   // section, but a flat file index is still essential as a global search
-  // result. Derive once per file-feed update; query changes only scan the
-  // cheap normalized path index.
+  // result. Use the same merged live + completion-rollup source as the agent
+  // rows above: some engines report a file only on `agent-completed`, so
+  // indexing `filesFeed.files` alone can find the containing thread while
+  // missing the file itself. Query changes only scan the normalized path
+  // index built here.
   const searchableFiles = useMemo(
     () =>
-      deriveConversationFiles(filesFeed.files).map((entry) => ({
+      deriveConversationFiles(agentFileEvents).map((entry) => ({
         entry,
         searchText: entry.path.toLowerCase(),
       })),
-    [filesFeed.files],
+    [agentFileEvents],
   );
   const filteredFiles = useMemo(() => {
     if (!searching) return EMPTY_FILES;
@@ -949,10 +993,26 @@ export const WorkspaceSections = memo(function WorkspaceSections({
     const base = storeState.snapshot?.items ?? [];
     // Search reaches older roster entries too (paged in by the effect above);
     // the default view only lists the newest snapshot window.
-    const source = searching ? [...base, ...storeState.olderEntries] : base;
+    const source =
+      searching && !quickSearch
+        ? [...base, ...storeState.olderEntries]
+        : base;
     if (!query) return source;
     return source.filter((item) => matchesQuery(item.name, query));
-  }, [storeState.snapshot, storeState.olderEntries, searching, query]);
+  }, [
+    storeState.snapshot,
+    storeState.olderEntries,
+    searching,
+    quickSearch,
+    query,
+  ]);
+  const visibleUserApps = useMemo(
+    () =>
+      includeUserApps && searching
+        ? listUserApps(userApps, query, "recent").slice(0, 8)
+        : [],
+    [includeUserApps, query, searching, userApps],
+  );
 
   const nowMs = Date.now();
 
@@ -961,8 +1021,11 @@ export const WorkspaceSections = memo(function WorkspaceSections({
     [doneRows, caps.activity, runningRows.length],
   );
   const visibleActivityRows = useMemo(
-    () => [...runningRows, ...visibleDoneRows],
-    [runningRows, visibleDoneRows],
+    () => {
+      const rows = [...runningRows, ...visibleDoneRows];
+      return quickSearch ? rows.slice(0, caps.activity) : rows;
+    },
+    [caps.activity, quickSearch, runningRows, visibleDoneRows],
   );
   const visibleFiles = useMemo(
     () => filteredFiles.slice(0, caps.files),
@@ -979,6 +1042,7 @@ export const WorkspaceSections = memo(function WorkspaceSections({
   const hasSchedule = upNext.length > 0;
   // Store is no longer listed by default — it only surfaces while searching.
   const hasStore = searching && storePreview.length > 0;
+  const hasUserApps = visibleUserApps.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
@@ -1010,7 +1074,13 @@ export const WorkspaceSections = memo(function WorkspaceSections({
     [conversationId, onNavigate],
   );
 
-  if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
+  if (
+    !hasActivity &&
+    !hasFiles &&
+    !hasSchedule &&
+    !hasStore &&
+    !hasUserApps
+  ) {
     return renderEmpty ? <>{renderEmpty()}</> : null;
   }
 
@@ -1072,7 +1142,6 @@ export const WorkspaceSections = memo(function WorkspaceSections({
                     className="chat-workspace-strip__file-button"
                     onClick={() => {
                       setOpenScheduleEntry(entry);
-                      onNavigate?.();
                     }}
                   >
                     <span className="chat-workspace-strip__row-label">
@@ -1080,6 +1149,33 @@ export const WorkspaceSections = memo(function WorkspaceSections({
                     </span>
                     <span className="chat-workspace-strip__row-meta">
                       {formatNextRun(entry.nextRunAtMs, nowMs)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </WorkspaceSection>
+        )}
+
+        {hasUserApps && (
+          <WorkspaceSection title="Apps" sectionId="user-apps">
+            <ul className="chat-workspace-strip__list">
+              {visibleUserApps.map((app) => (
+                <li key={app.slug} className="chat-workspace-strip__row">
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => {
+                      sidebarSections.openLocation("apps", app.slug);
+                      onNavigate?.();
+                    }}
+                  >
+                    <AppWindowMac size={15} strokeWidth={1.75} aria-hidden />
+                    <span className="chat-workspace-strip__file-name">
+                      {app.meta.label}
+                    </span>
+                    <span className="chat-workspace-strip__row-meta">
+                      {formatUserAppCreatedAt(app.meta.createdAt)}
                     </span>
                   </button>
                 </li>

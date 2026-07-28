@@ -64,6 +64,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
 import { DisplayPanelTopBar } from "@/shell/DisplayPanelTopBar";
+import { RadialSearchOverlay } from "@/shell/radial/RadialSearchOverlay";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -584,6 +585,8 @@ function RootChrome() {
         onCancel={chat.annotation.cancel}
         onSelect={chat.annotation.submit}
       />
+
+      {isFullWindow ? <RadialSearchOverlay /> : null}
 
       <FullShellDialogs
         activeDialog={activeDialog ?? null}

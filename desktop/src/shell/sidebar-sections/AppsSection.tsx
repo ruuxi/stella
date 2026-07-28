@@ -13,14 +13,12 @@
  * exists to keep its DOM nodes still.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { PersistentUserAppsHost } from "@/app/apps/PersistentUserAppsHost";
 import {
   formatUserAppCreatedAt,
   listUserApps,
-  USER_APP_SORT_LABELS,
   useRequestUserApp,
-  type UserAppSort,
 } from "@/app/apps/user-app-library";
 import {
   getSnapshot,
@@ -34,9 +32,7 @@ import {
   useSidebarSectionLocation,
 } from "@/features/workspace-display/sidebar-sections";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
-import { ChevronLeft, Search } from "@/ui/icons";
-import { Select } from "@/ui/select";
-import "./home-search.css";
+import { ChevronLeft } from "@/ui/icons";
 import "./apps-section.css";
 
 export function AppsSection() {
@@ -86,8 +82,6 @@ export function AppsSection() {
 }
 
 function AppsLibrary({ apps }: { apps: readonly UserApp[] }) {
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<UserAppSort>("recent");
   const requestUserApp = useRequestUserApp();
 
   if (apps.length === 0) {
@@ -108,62 +102,26 @@ function AppsLibrary({ apps }: { apps: readonly UserApp[] }) {
     );
   }
 
-  const visible = listUserApps(apps, query, sort);
+  const visible = listUserApps(apps, "", "recent");
 
   return (
     <div className="apps-section__library">
-      <div className="apps-section__toolbar sidebar-search__field">
-        <label className="apps-section__search">
-          <Search size={15} strokeWidth={1.75} aria-hidden="true" />
-          <input
-            type="text"
-            placeholder="Search apps"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            className="sidebar-search__input apps-section__search-input"
-            aria-label="Search apps"
-          />
-        </label>
-        <div className="apps-section__sort">
-          <Select<UserAppSort>
-            className="apps-section__sort-trigger"
-            value={sort}
-            onValueChange={setSort}
-            options={(Object.keys(USER_APP_SORT_LABELS) as UserAppSort[]).map(
-              (option) => ({
-                value: option,
-                label: USER_APP_SORT_LABELS[option],
-              }),
-            )}
-            aria-label="Sort"
-          />
-        </div>
-      </div>
-
-      {visible.length === 0 ? (
-        <div className="apps-section__no-match">
-          No apps match "{query.trim()}".
-        </div>
-      ) : (
-        <ul className="apps-section__grid sidebar-section__scroll">
-          {visible.map((app) => (
-            <li key={app.slug}>
-              <button
-                type="button"
-                className="apps-section__card"
-                onClick={() => sidebarSections.setLocation("apps", app.slug)}
-              >
-                <span className="apps-section__card-label">
-                  {app.meta.label}
-                </span>
-                <span className="apps-section__card-meta">
-                  {formatUserAppCreatedAt(app.meta.createdAt)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="apps-section__grid sidebar-section__scroll">
+        {visible.map((app) => (
+          <li key={app.slug}>
+            <button
+              type="button"
+              className="apps-section__card"
+              onClick={() => sidebarSections.setLocation("apps", app.slug)}
+            >
+              <span className="apps-section__card-label">{app.meta.label}</span>
+              <span className="apps-section__card-meta">
+                {formatUserAppCreatedAt(app.meta.createdAt)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
 
       <div className="apps-section__footer">
         <button type="button" className="pill-btn" onClick={requestUserApp}>
