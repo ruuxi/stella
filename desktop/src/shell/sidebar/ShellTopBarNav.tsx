@@ -101,7 +101,7 @@ const UNLINKED_NAV_IDS: readonly string[] = ["store", "social"];
 type ShellTopBarPrimaryNavProps = {
   /**
    * Nav entry ids to suppress. The full-window bar omits surfaces owned by
-   * the right sidebar; mobile still shows everything.
+   * the right sidebar.
    */
   omitIds?: readonly string[];
 };

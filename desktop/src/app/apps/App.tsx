@@ -2,10 +2,9 @@
  * The full-page user-app library.
  *
  * Apps themselves open in the right sidebar's Apps section, which also carries
- * its own library list; this page is what remains for the window types that
- * have no panel to open — the mobile WebView reaches it from the top-bar nav.
- * Picking an app here still hands off to the sidebar rather than rendering it
- * inline, so there is exactly one place a user app is ever mounted.
+ * its own library list. This route remains available to deep links, but picking
+ * an app here still hands off to the sidebar rather than rendering it inline,
+ * so there is exactly one place a user app is ever mounted.
  */
 
 import {

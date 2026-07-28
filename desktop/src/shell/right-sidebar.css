@@ -85,13 +85,13 @@
    when the user right-clicks to summon the display panel we want it to
    replace the chat surface entirely instead of slicing it. */
 @media (max-width: 600px) {
-  .right-sidebar--open {
+  html[data-stella-window="mini"] .right-sidebar--open {
     width: 100%;
     flex: 1;
     box-shadow: none;
   }
 
-  .right-sidebar-inner {
+  html[data-stella-window="mini"] .right-sidebar-inner {
     width: 100%;
     padding-top: var(--shell-topbar-height, 38px);
     border-left: none;
@@ -99,7 +99,7 @@
     box-shadow: none;
   }
 
-  .right-sidebar {
+  html[data-stella-window="mini"] .right-sidebar {
     border-radius: 0;
     margin-left: 0;
     /* No slide animation in mini — the panel is a full-surface swap
@@ -109,16 +109,19 @@
 
   /* Hide both the chat outlet AND the open panel chat so the display
      panel cleanly owns the available space next to the icon rail. */
-  :root[data-display-panel-open="true"] .full-body .content-area,
-  :root[data-display-panel-open="true"] .full-body .chat-sidebar {
+  html[data-stella-window="mini"][data-display-panel-open="true"]
+    .full-body
+    .content-area,
+  html[data-stella-window="mini"][data-display-panel-open="true"]
+    .full-body
+    .chat-sidebar {
     display: none;
   }
 
   /* Resize and expand are meaningless at full width. */
-  .right-sidebar__resize-handle {
+  html[data-stella-window="mini"] .right-sidebar__resize-handle {
     display: none;
   }
-
 }
 
 .right-sidebar-inner {

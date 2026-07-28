@@ -148,6 +148,30 @@ body[data-display-expanding="true"] .display-panel-topbar,
   padding-left: 84px;
 }
 
+/* At narrow widths the panel replaces the main content, so its external
+   header spans the same full-view frame. Resize/expand is meaningless in this
+   mode; closing returns to the regular shell. */
+:root[data-display-panel-takeover="true"]
+  .display-panel-topbar[data-display-open="true"] {
+  left: 6px;
+  right: 6px;
+  width: auto;
+  transition: none;
+}
+
+/* A takeover is full-width without setting the panel's persisted "expanded"
+   state, so it does not match the expanded macOS traffic-light inset above.
+   Reserve that same native-button gap on desktop, while leaving the mobile
+   WebView flush because it has no Electron traffic lights. */
+:root:not([data-platform="mobile"])[data-display-panel-takeover="true"]
+  .display-panel-topbar[data-display-open="true"][data-platform="mac"] {
+  padding-left: 84px;
+}
+
+:root[data-display-panel-takeover="true"] .shell-topbar-display-expand {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .display-panel-topbar {
     transition: none;

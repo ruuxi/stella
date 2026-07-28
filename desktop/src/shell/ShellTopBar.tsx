@@ -5,7 +5,6 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
-import { ShellTopBarPrimaryNav } from "@/shell/sidebar/ShellTopBarNav";
 import { WindowControls } from "@/shell/WindowControls";
 
 export const ShellTopBar = () => {
@@ -13,11 +12,6 @@ export const ShellTopBar = () => {
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
   const isMiniWindow = useWindowType() === "mini";
-  // The mobile WebView shim tags <html> before the app boots, so this is
-  // stable for the lifetime of the page. Mini window never has the tag.
-  const isMobileWebView =
-    typeof document !== "undefined" &&
-    document.documentElement.getAttribute("data-platform") === "mobile";
   const panelOpen = useDisplayPanelOpen();
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
@@ -54,8 +48,6 @@ export const ShellTopBar = () => {
         <div className="shell-topbar-tabs">
           <DisplayTabSwitcher />
         </div>
-      ) : isMobileWebView ? (
-        <ShellTopBarPrimaryNav />
       ) : (
         <div className="shell-topbar-spacer" aria-hidden="true" />
       )}

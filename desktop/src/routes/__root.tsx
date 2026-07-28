@@ -168,10 +168,7 @@ function RootChrome() {
       ),
     );
   const shellBreakpointsRef = useRef(shellBreakpoints);
-  const displayPanelWasHiddenRef = useRef(shellBreakpoints.hideDisplayPanel);
-  const autoCollapsedDisplayPanelRef = useRef<{
-    panelExpanded: boolean;
-  } | null>(null);
+  const panelExpandedBeforeTakeoverRef = useRef<boolean | null>(null);
   const displayBreakpointTransitionTimeoutRef = useRef<number | null>(null);
 
   const rightSidebarRef = useRef<RightSidebarHandle>(null);
@@ -182,10 +179,7 @@ function RootChrome() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isOnChatRoute = pathname === "/chat";
   const isMiniWindow = useWindowType() === "mini";
-  const isMobileWebView =
-    typeof document !== "undefined" &&
-    document.documentElement.getAttribute("data-platform") === "mobile";
-  const isFullWindow = !isMiniWindow && !isMobileWebView;
+  const isFullWindow = !isMiniWindow;
 
   const triggerDisplayBreakpointTransition = useCallback(() => {
     document.body.dataset.displayBreakpointTransition = "true";
@@ -389,7 +383,7 @@ function RootChrome() {
   // PDF / …) is left untouched so navigation never yanks the user off it,
   // and a closed panel stays closed (it picks the right surface on summon).
   useEffect(() => {
-    if (isMiniWindow || isMobileWebView) return;
+    if (isMiniWindow) return;
     const { panelOpen, activeTabId } = displayTabs.getSnapshot();
     if (!panelOpen) return;
     const isDefaultSurface =
@@ -401,7 +395,7 @@ function RootChrome() {
     } else if (activeTabId !== CHAT_DISPLAY_TAB_ID) {
       displayTabs.activateTab(CHAT_DISPLAY_TAB_ID);
     }
-  }, [isOnChatRoute, isMiniWindow, isMobileWebView]);
+  }, [isOnChatRoute, isMiniWindow]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -450,7 +444,7 @@ function RootChrome() {
     const previous = shellBreakpointsRef.current;
     if (
       next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-      next.hideDisplayPanel === previous.hideDisplayPanel
+      next.displayPanelTakeover === previous.displayPanelTakeover
     ) {
       return;
     }
@@ -499,40 +493,45 @@ function RootChrome() {
   }, [applyShellBreakpoints]);
 
   useEffect(() => {
-    if (isMiniWindow || isMobileWebView) {
-      displayPanelWasHiddenRef.current = shellBreakpoints.hideDisplayPanel;
-      autoCollapsedDisplayPanelRef.current = null;
+    const root = document.documentElement;
+    if (shellBreakpoints.displayPanelTakeover) {
+      root.dataset.displayPanelTakeover = "true";
+    } else {
+      delete root.dataset.displayPanelTakeover;
+    }
+    return () => {
+      delete root.dataset.displayPanelTakeover;
+    };
+  }, [shellBreakpoints.displayPanelTakeover]);
+
+  useEffect(() => {
+    if (isMiniWindow) {
+      panelExpandedBeforeTakeoverRef.current = null;
       return;
     }
 
-    const wasHidden = displayPanelWasHiddenRef.current;
-    const isHidden = shellBreakpoints.hideDisplayPanel;
-    displayPanelWasHiddenRef.current = isHidden;
-
-    const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
-
-    if (isHidden) {
-      if (!wasHidden && panelOpen) {
-        autoCollapsedDisplayPanelRef.current = { panelExpanded };
-        triggerDisplayBreakpointTransition();
+    const { panelExpanded } = displayTabs.getSnapshot();
+    if (shellBreakpoints.displayPanelTakeover) {
+      if (panelExpandedBeforeTakeoverRef.current === null) {
+        panelExpandedBeforeTakeoverRef.current = panelExpanded;
       }
-      if (panelExpanded) displayTabs.setPanelExpanded(false);
-      if (panelOpen) displayTabs.setPanelOpen(false);
+      if (panelExpanded) {
+        triggerDisplayBreakpointTransition();
+        displayTabs.setPanelExpanded(false);
+      }
       return;
     }
 
-    const autoCollapsedPanel = autoCollapsedDisplayPanelRef.current;
-    if (!wasHidden || !autoCollapsedPanel) return;
-    autoCollapsedDisplayPanelRef.current = null;
-    triggerDisplayBreakpointTransition();
-    if (!panelOpen) displayTabs.setPanelOpen(true);
-    if (autoCollapsedPanel.panelExpanded) displayTabs.setPanelExpanded(true);
+    const restoreExpanded = panelExpandedBeforeTakeoverRef.current;
+    panelExpandedBeforeTakeoverRef.current = null;
+    if (restoreExpanded && !panelExpanded) {
+      triggerDisplayBreakpointTransition();
+      displayTabs.setPanelExpanded(true);
+    }
   }, [
     isMiniWindow,
-    isMobileWebView,
     panelExpanded,
-    panelOpen,
-    shellBreakpoints.hideDisplayPanel,
+    shellBreakpoints.displayPanelTakeover,
     triggerDisplayBreakpointTransition,
   ]);
 

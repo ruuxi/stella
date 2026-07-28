@@ -3,7 +3,7 @@ import type { AppMetadata } from "../_shared/app-metadata";
 
 // The full-window bar omits this entry (`ShellTopBarFull`): there the Apps
 // sidebar section is the way in, and a nav entry would compete with it for the
-// same job. It stays registered for the window types that have no panel.
+// same job. It stays registered so the library route remains deep-linkable.
 const metadata: AppMetadata = {
   id: "apps",
   label: "Apps",

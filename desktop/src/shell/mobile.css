@@ -4,54 +4,19 @@
    mobile bridge shim.
    ================================================================ */
 
-[data-platform="mobile"]
-  .shell-topbar[data-display-open="true"]
-  .shell-topbar-tablist {
-  flex: 1 1 0;
-  max-width: none;
-}
-
-/* ── Top navigation rail ─────────────────────────────────────────
-   The topbar hosts the primary nav (Home / Apps / Store / Social)
-   on mobile, so it grows past the desktop 38px to give the rail
-   40px touch targets, and picks up a translucent backdrop since
-   route content scrolls beneath it. */
-
-/* The base declaration lives on `.window-shell.full` in
-   full-shell.layout.css, so the override must target the same element. */
-[data-platform="mobile"] .window-shell.full {
-  --shell-topbar-height: 56px;
-}
-
-[data-platform="mobile"] .shell-topbar {
-  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* Centered between the (empty) left/right clusters; shrinks and
-   scrolls internally on very narrow screens instead of clipping. */
-[data-platform="mobile"] .shell-topbar-nav {
-  flex: 0 1 auto;
-  margin: 0 auto;
-  height: 44px;
-  gap: 6px;
-}
-
-[data-platform="mobile"] .shell-topbar-nav-item {
-  height: 40px;
-  line-height: 40px;
-  padding: 0 16px;
-  font-size: 15px;
-}
-
 /* ── Mobile-friendly spacing ──────────────────────────────────── */
 
 [data-platform="mobile"] .session-messages {
-  /* The chat surface already starts below the 56px nav rail
-     (`.persistent-chat-surface` is offset by --shell-topbar-height),
-     so this is breathing room only — 56 + 24 ≈ the old 38 + 44. */
   padding: 24px 16px 16px;
+}
+
+/* The WebView has no Electron traffic lights even when it is connected to a
+   Mac desktop. Keep the shared full-shell topbar, but use its normal content
+   inset instead of reserving the desktop's native-button gap. */
+[data-platform="mobile"]
+  .shell-topbar-full[data-platform="mac"]
+  .shell-topbar-full__left {
+  padding-left: 12px;
 }
 
 [data-platform="mobile"] .composer {

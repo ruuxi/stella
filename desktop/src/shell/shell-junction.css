@@ -89,3 +89,47 @@
   .right-sidebar__active {
   min-width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
+
+/* ── Narrow shell: full-view panel takeover ─────────────────────────────
+   The panel remains available below its side-by-side pressure point. It
+   replaces the main content instead of squeezing it, while the external
+   panel topbar remains visible above the section body. */
+:root[data-shell-panel-chrome="true"][data-display-panel-takeover="true"]
+  .right-sidebar.right-sidebar-panel.right-sidebar--open {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  width: auto;
+  height: auto;
+  flex: none;
+  margin: var(--shell-topbar-height, 38px) 6px 6px;
+  border-radius: var(--display-panel-window-radius);
+  transition: none;
+}
+
+:root[data-shell-panel-chrome="true"][data-display-panel-takeover="true"]
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame,
+:root[data-shell-panel-chrome="true"][data-display-panel-takeover="true"]
+  .right-sidebar.right-sidebar-panel.right-sidebar--open
+  .right-sidebar-inner.right-sidebar-panel__frame {
+  width: 100%;
+  transition: none;
+}
+
+:root[data-shell-panel-chrome="true"][data-display-panel-takeover="true"]
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-panel__body
+  .right-sidebar__active {
+  min-width: 0;
+}
+
+:root[data-display-panel-takeover="true"][data-display-panel-open="true"]
+  .full-body
+  .content-area {
+  display: none;
+}
+
+:root[data-display-panel-takeover="true"] .right-sidebar__resize-handle {
+  display: none;
+}

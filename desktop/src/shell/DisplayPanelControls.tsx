@@ -36,7 +36,7 @@ export const DisplayPanelControls = () => {
       {!isMiniWindow ? (
         <button
           type="button"
-          className="shell-topbar-icon-btn"
+          className="shell-topbar-icon-btn shell-topbar-display-expand"
           onClick={() => displayTabs.togglePanelExpanded()}
           aria-label={panelExpanded ? "Restore panel size" : "Expand panel"}
           aria-pressed={panelExpanded}

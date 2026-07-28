@@ -7,15 +7,15 @@ describe("shell breakpoints", () => {
   it("keeps the display panel available after the workspace strip breakpoint", () => {
     expect(getShellBreakpointState(1120)).toMatchObject({
       hideWorkspaceStrip: true,
-      hideDisplayPanel: false,
+      displayPanelTakeover: false,
     });
     expect(getShellBreakpointState(1121).hideWorkspaceStrip).toBe(false);
   });
 
-  it("hides the display panel at the Codex right-panel pressure point", () => {
-    expect(getShellBreakpointState(721).hideDisplayPanel).toBe(false);
+  it("turns the display panel into a full-view takeover at its pressure point", () => {
+    expect(getShellBreakpointState(721).displayPanelTakeover).toBe(false);
     expect(getShellBreakpointState(720)).toMatchObject({
-      hideDisplayPanel: true,
+      displayPanelTakeover: true,
       hideWorkspaceStrip: true,
     });
   });
@@ -23,7 +23,7 @@ describe("shell breakpoints", () => {
   it("treats a zero width as un-measured and hides nothing", () => {
     expect(getShellBreakpointState(0)).toMatchObject({
       hideWorkspaceStrip: false,
-      hideDisplayPanel: false,
+      displayPanelTakeover: false,
     });
   });
 });
