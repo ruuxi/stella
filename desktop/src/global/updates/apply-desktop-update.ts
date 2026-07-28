@@ -160,8 +160,7 @@ export const applyDesktopUpdate = async (
 
   const baseCommit =
     options.installManifest.installState?.desktopReleaseCommit ??
-    options.installManifest.desktopReleaseCommit ??
-    options.installManifest.desktopInstallBaseCommit;
+    options.installManifest.desktopReleaseCommit;
   if (!baseCommit) {
     throw new Error(
       "This install is missing a base commit reference. Reinstall is required before updates can be tracked.",

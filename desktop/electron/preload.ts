@@ -1589,7 +1589,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         installedAt: string;
         desktopReleaseTag: string | null;
         desktopReleaseCommit: string | null;
-        desktopInstallBaseCommit: string | null;
         installState: {
           status: "complete";
           desktopReleaseTag: string | null;
@@ -1641,7 +1640,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
               installedAt: string;
               desktopReleaseTag: string | null;
               desktopReleaseCommit: string | null;
-              desktopInstallBaseCommit: string | null;
               installState: {
                 status: "complete";
                 desktopReleaseTag: string | null;
@@ -1721,7 +1719,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         installedAt: string;
         desktopReleaseTag: string | null;
         desktopReleaseCommit: string | null;
-        desktopInstallBaseCommit: string | null;
         installState: {
           status: "complete";
           desktopReleaseTag: string | null;

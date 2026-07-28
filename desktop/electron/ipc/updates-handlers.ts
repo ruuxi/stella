@@ -14,8 +14,7 @@
  *     that the install-update agent actually landed the target commit,
  *     then overwrite the manifest's `desktopReleaseCommit`. The agent's
  *     self-reported "completed" outcome is not trusted: the published commit
- *     must be in Git ancestry with no merge in progress. The local "start" commit
- *     (`desktopInstallBaseCommit`) is left untouched.
+ *     must be in Git ancestry with no merge in progress.
  */
 
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
@@ -289,7 +288,6 @@ export type InstallManifestSnapshot = {
   installedAt: string;
   desktopReleaseTag: string | null;
   desktopReleaseCommit: string | null;
-  desktopInstallBaseCommit: string | null;
   installState: InstallStateSnapshot | null;
   lastUpdateAttempt: UpdateAttemptSnapshot | null;
 };
@@ -1230,7 +1228,6 @@ const writeAppliedCommit = async (
         installedAt: recovered.installedAt,
         desktopReleaseTag: recovered.desktopReleaseTag,
         desktopReleaseCommit: recovered.desktopReleaseCommit,
-        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
         installState: recovered.installState,
         lastUpdateAttempt: recovered.lastUpdateAttempt,
       };
@@ -1424,7 +1421,6 @@ const parseManifest = (raw: string): InstallManifestSnapshot => {
     installedAt: requireString(parsed.installedAt, "installedAt"),
     desktopReleaseTag: asString(parsed.desktopReleaseTag),
     desktopReleaseCommit: asString(parsed.desktopReleaseCommit),
-    desktopInstallBaseCommit: asString(parsed.desktopInstallBaseCommit),
     installState: parseInstallStateSnapshot(parsed.installState),
     lastUpdateAttempt: parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt),
   };
@@ -1486,7 +1482,6 @@ const recoverManifest = async (
     desktopReleaseTag: release.tag,
     desktopReleaseCommit:
       release.commit ?? (head.exitCode === 0 ? head.stdout.trim() : null),
-    desktopInstallBaseCommit: null,
     installState: null,
     lastUpdateAttempt: null,
   };
@@ -1702,7 +1697,6 @@ const writeUpdateAttemptState = async (
         installedAt: recovered.installedAt,
         desktopReleaseTag: recovered.desktopReleaseTag,
         desktopReleaseCommit: recovered.desktopReleaseCommit,
-        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
         installState: recovered.installState,
         lastUpdateAttempt: recovered.lastUpdateAttempt,
       };

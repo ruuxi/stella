@@ -125,16 +125,30 @@ const createLauncherStyleInstall = async (): Promise<ScenarioInstall> => {
   await mkdir(path.join(repoRoot, "runtime", "worker"), { recursive: true });
   await mkdir(stellaDataDir, { recursive: true });
 
-  await writeFile(path.join(repoRoot, "desktop", "src", "panel.ts"), PANEL_BASE);
-  await writeFile(path.join(repoRoot, "runtime", "worker", "marker.ts"), "export {};\n");
+  await writeFile(
+    path.join(repoRoot, "desktop", "src", "panel.ts"),
+    PANEL_BASE,
+  );
+  await writeFile(
+    path.join(repoRoot, "runtime", "worker", "marker.ts"),
+    "export {};\n",
+  );
   await writeFile(path.join(repoRoot, "package.json"), PACKAGE_BASE);
   await writeFile(path.join(repoRoot, ".gitignore"), "node_modules/\nstate/\n");
-  await writeFile(path.join(repoRoot, "launch.sh"), "#!/usr/bin/env bash\nexit 0\n");
+  await writeFile(
+    path.join(repoRoot, "launch.sh"),
+    "#!/usr/bin/env bash\nexit 0\n",
+  );
   await chmod(path.join(repoRoot, "launch.sh"), 0o755);
 
   await runGit(repoRoot, ["init"]);
   await configureGitIdentity(repoRoot);
-  await runGit(repoRoot, ["remote", "add", "origin", "https://github.com/ruuxi/stella"]);
+  await runGit(repoRoot, [
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/ruuxi/stella",
+  ]);
   await runGit(repoRoot, ["add", "."]);
   await runGit(repoRoot, ["commit", "-m", "launcher release payload"]);
   const releaseCommit = await runGit(repoRoot, ["rev-parse", "HEAD"]);
@@ -148,7 +162,6 @@ const createLauncherStyleInstall = async (): Promise<ScenarioInstall> => {
     version: "0.0.0-validation",
     desktopReleaseTag: "desktop-validation-base",
     desktopReleaseCommit: releaseCommit,
-    desktopInstallBaseCommit: releaseCommit,
     platform: process.platform,
     installedAt: "2026-05-31T00:00:00.000Z",
     installPath: repoRoot,
@@ -230,7 +243,9 @@ describe("launcher-style source import scenarios", () => {
         "package.json": text(PACKAGE_BASE),
       },
       nextTree: {
-        "desktop/src/panel.ts": text(`${PANEL_BASE}export const cleanStore = true;\n`),
+        "desktop/src/panel.ts": text(
+          `${PANEL_BASE}export const cleanStore = true;\n`,
+        ),
         "package.json": text(PACKAGE_WITH_STORE_IMPORT),
       },
     });
@@ -301,13 +316,17 @@ describe("launcher-style source import scenarios", () => {
       "--format=%B",
     ]);
     expect(commitMessage).toContain("Store install: clean-store-package");
-    expect(commitMessage).toContain("Stella-Conversation: store-install:clean-store-package");
+    expect(commitMessage).toContain(
+      "Stella-Conversation: store-install:clean-store-package",
+    );
     expect(commitMessage).toContain("Stella-Package-Id: clean-store-package");
   });
 
   it("cleanly imports a related git ref without invoking review or agent fallback", async () => {
     const install = await createLauncherStyleInstall();
-    const sourceRoot = await mkdtemp(path.join(os.tmpdir(), "stella-related-source-"));
+    const sourceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "stella-related-source-"),
+    );
     extraRoots.add(sourceRoot);
     await cloneSourceRepo(sourceRoot, install.root);
     await writeFile(
@@ -368,7 +387,9 @@ describe("launcher-style source import scenarios", () => {
 
   it("falls back to a real self-mod commit when native git import is not clean", async () => {
     const install = await createLauncherStyleInstall();
-    const sourceRoot = await mkdtemp(path.join(os.tmpdir(), "stella-conflict-source-"));
+    const sourceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "stella-conflict-source-"),
+    );
     extraRoots.add(sourceRoot);
     await cloneSourceRepo(sourceRoot, install.root);
     await writeFile(
@@ -389,11 +410,15 @@ describe("launcher-style source import scenarios", () => {
 
     const beforeImportHead = await runGit(install.root, ["rev-parse", "HEAD"]);
     let fallbackPrompt = "";
-    const runBlockingLocalAgent: ExternalSourceImportRunner = async (request) => {
+    const runBlockingLocalAgent: ExternalSourceImportRunner = async (
+      request,
+    ) => {
       fallbackPrompt = request.prompt;
       expect(request.selfModMetadata).toEqual({ mode: "author" });
       expect(request.prompt).toContain("Resolved source root");
-      expect(request.prompt).toContain("Automatic import path skipped: Native git merge-tree was not clean");
+      expect(request.prompt).toContain(
+        "Automatic import path skipped: Native git merge-tree was not clean",
+      );
 
       const runId = "deterministic-conflict-agent";
       await install.service.beginSelfModRun({
@@ -469,7 +494,9 @@ describe("launcher-style source import scenarios", () => {
 
   it("blocks untrusted imports before any agent or git write when review fails", async () => {
     const install = await createLauncherStyleInstall();
-    const sourceRoot = await mkdtemp(path.join(os.tmpdir(), "stella-blocked-source-"));
+    const sourceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "stella-blocked-source-"),
+    );
     extraRoots.add(sourceRoot);
     await writeFile(path.join(sourceRoot, "README.md"), "# blocked\n", "utf8");
     const beforeHead = await runGit(install.root, ["rev-parse", "HEAD"]);

@@ -177,7 +177,7 @@ describe("StoreModService source history", () => {
     const initialCommit = git(repoRoot, ["rev-parse", "HEAD"]);
     await writeFile(
       path.join(repoRoot, "src", "copy.ts"),
-      "one\nfrom desktop source pack\n",
+      "one\nfrom desktop Git merge\n",
       "utf8",
     );
     git(repoRoot, ["add", "."]);
@@ -208,7 +208,7 @@ describe("StoreModService source history", () => {
     });
     await writeFile(
       path.join(repoRoot, "src", "copy.ts"),
-      "one\nfrom desktop source pack\nuser customization\n",
+      "one\nfrom desktop Git merge\nuser customization\n",
       "utf8",
     );
     const result = await service.finalizeSelfModRun({

@@ -78,7 +78,6 @@ const writeInstallManifest = async (
         installedAt: new Date(0).toISOString(),
         desktopReleaseTag: null,
         desktopReleaseCommit: args.activeCommit,
-        desktopInstallBaseCommit: args.activeCommit,
         installState: {
           status: "complete",
           desktopReleaseTag: null,
