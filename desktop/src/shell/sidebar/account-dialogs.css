@@ -118,6 +118,25 @@
   line-height: 1.5;
 }
 
+.sidebar-feedback-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.sidebar-feedback-panel .sidebar-feedback-description {
+  padding: 4px 4px 0;
+}
+
+.sidebar-feedback-panel .sidebar-feedback-body {
+  padding: 16px 4px 10px;
+}
+
+.sidebar-feedback-panel .sidebar-confirm-actions {
+  padding: 4px 4px 16px;
+}
+
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {
   background-color: var(--destructive);
   border-color: color-mix(in oklch, var(--destructive) 80%, var(--foreground));

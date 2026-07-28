@@ -41,10 +41,9 @@ const OMITTED_NAV_IDS = ["apps", "chat"] as const;
 
 type ShellTopBarFullProps = {
   onSignIn?: () => void;
-  onConnect?: () => void;
 };
 
-export function ShellTopBarFull({ onSignIn, onConnect }: ShellTopBarFullProps) {
+export function ShellTopBarFull({ onSignIn }: ShellTopBarFullProps) {
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
@@ -78,7 +77,7 @@ export function ShellTopBarFull({ onSignIn, onConnect }: ShellTopBarFullProps) {
           </button>
         ) : null}
 
-        <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
+        <ShellTopBarAccount onSignIn={onSignIn} />
 
         {isWin ? <WindowControls useWindowsIcons hidden={false} /> : null}
       </div>

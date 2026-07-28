@@ -168,10 +168,6 @@ body[data-display-expanding="true"] .display-panel-topbar,
   padding-left: 84px;
 }
 
-:root[data-display-panel-takeover="true"] .shell-topbar-display-expand {
-  display: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .display-panel-topbar {
     transition: none;

@@ -29,6 +29,8 @@ const COLOR_SCHEMES: { id: ColorScheme; label: string }[] = [
 ];
 
 interface ThemePickerProps {
+  /** Render the picker as a full-width in-panel settings surface. */
+  inline?: boolean;
   hideTrigger?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -45,6 +47,7 @@ interface ThemePickerProps {
 }
 
 export function ThemePicker({
+  inline = false,
   hideTrigger = false,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -107,6 +110,116 @@ export function ThemePicker({
         })
       : null;
 
+  const themeContent = (
+    <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
+      <div data-slot="theme-picker-section" data-bordered>
+        <div data-slot="theme-picker-label">Appearance</div>
+        <div data-slot="theme-picker-button-row">
+          {COLOR_SCHEMES.map((scheme) => (
+            <Button
+              key={scheme.id}
+              size="small"
+              variant={colorMode === scheme.id ? "secondary" : "ghost"}
+              data-slot="theme-picker-option-button"
+              onClick={() => setColorMode(scheme.id)}
+            >
+              {scheme.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Flat themes (the stock Default, plus any forcedMode-pinned
+          theme) render a solid surface. Keep the controls visible so
+          the panel layout and the user's saved gradient choices remain
+          stable, but make their inactive state explicit. */}
+      <div
+        data-slot="theme-picker-section"
+        data-bordered
+        data-disabled={flat || undefined}
+        role="group"
+        aria-label="Gradient controls"
+        aria-disabled={flat || undefined}
+      >
+        <div data-slot="theme-picker-label">Gradient Style</div>
+        <div data-slot="theme-picker-button-row">
+          {(["soft", "flat"] as const).map((value) => (
+            <Button
+              key={value}
+              size="small"
+              variant={gradientMode === value ? "secondary" : "ghost"}
+              data-slot="theme-picker-option-button"
+              onClick={() => setGradientMode(value)}
+              disabled={flat}
+              aria-disabled={flat || undefined}
+            >
+              {value === "soft" ? "Soft" : "Flat"}
+            </Button>
+          ))}
+        </div>
+
+        <div data-slot="theme-picker-label">Gradient Color</div>
+        <div data-slot="theme-picker-button-row">
+          {(["relative", "strong"] as const).map((value) => (
+            <Button
+              key={value}
+              size="small"
+              variant={gradientColor === value ? "secondary" : "ghost"}
+              data-slot="theme-picker-option-button"
+              onClick={() => setGradientColor(value)}
+              disabled={flat}
+              aria-disabled={flat || undefined}
+            >
+              {value === "relative" ? "Relative" : "Strong"}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div
+        data-slot="theme-picker-theme-list"
+        onMouseLeave={() => cancelThemePreview()}
+      >
+        {sortedThemes.map((t) => {
+          const isSelected = t.id === selectedThemeId;
+          return (
+            <Button
+              key={t.id}
+              size="normal"
+              variant={isSelected ? "secondary" : "ghost"}
+              data-slot="theme-picker-theme-button"
+              onClick={() => {
+                setTheme(t.id);
+                cancelPreview();
+                if (!inline) setOpen(false);
+                onThemeSelect?.();
+              }}
+              onMouseEnter={() => {
+                if (open || inline) previewTheme(t.id);
+              }}
+              onFocus={() => {
+                if (open || inline) previewTheme(t.id);
+              }}
+            >
+              <span data-slot="theme-picker-theme-name">{t.name}</span>
+              {isSelected && (
+                <Check size={12} data-slot="theme-picker-check" />
+              )}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <div data-theme-picker="true" data-theme-picker-inline="true">
+        <PopoverBody>{themeContent}</PopoverBody>
+      </div>
+    );
+  }
+
   return (
     <Popover
       open={open}
@@ -139,107 +252,7 @@ export function ThemePicker({
         collisionPadding={8}
         data-theme-picker="true"
       >
-        <PopoverBody>
-          <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
-            <div data-slot="theme-picker-section" data-bordered>
-              <div data-slot="theme-picker-label">Appearance</div>
-              <div data-slot="theme-picker-button-row">
-                {COLOR_SCHEMES.map((scheme) => (
-                  <Button
-                    key={scheme.id}
-                    size="small"
-                    variant={colorMode === scheme.id ? "secondary" : "ghost"}
-                    data-slot="theme-picker-option-button"
-                    onClick={() => setColorMode(scheme.id)}
-                  >
-                    {scheme.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Flat themes (the stock Default, plus any forcedMode-pinned
-                theme) render a solid surface. Keep the controls visible so
-                the panel layout and the user's saved gradient choices remain
-                stable, but make their inactive state explicit. */}
-            <div
-              data-slot="theme-picker-section"
-              data-bordered
-              data-disabled={flat || undefined}
-              role="group"
-              aria-label="Gradient controls"
-              aria-disabled={flat || undefined}
-            >
-              <div data-slot="theme-picker-label">Gradient Style</div>
-              <div data-slot="theme-picker-button-row">
-                {(["soft", "flat"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    size="small"
-                    variant={gradientMode === value ? "secondary" : "ghost"}
-                    data-slot="theme-picker-option-button"
-                    onClick={() => setGradientMode(value)}
-                    disabled={flat}
-                    aria-disabled={flat || undefined}
-                  >
-                    {value === "soft" ? "Soft" : "Flat"}
-                  </Button>
-                ))}
-              </div>
-
-              <div data-slot="theme-picker-label">Gradient Color</div>
-              <div data-slot="theme-picker-button-row">
-                {(["relative", "strong"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    size="small"
-                    variant={gradientColor === value ? "secondary" : "ghost"}
-                    data-slot="theme-picker-option-button"
-                    onClick={() => setGradientColor(value)}
-                    disabled={flat}
-                    aria-disabled={flat || undefined}
-                  >
-                    {value === "relative" ? "Relative" : "Strong"}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div
-              data-slot="theme-picker-theme-list"
-              onMouseLeave={() => cancelThemePreview()}
-            >
-              {sortedThemes.map((t) => {
-                const isSelected = t.id === selectedThemeId;
-                return (
-                  <Button
-                    key={t.id}
-                    size="normal"
-                    variant={isSelected ? "secondary" : "ghost"}
-                    data-slot="theme-picker-theme-button"
-                    onClick={() => {
-                      setTheme(t.id);
-                      cancelPreview();
-                      setOpen(false);
-                      onThemeSelect?.();
-                    }}
-                    onMouseEnter={() => {
-                      if (open) previewTheme(t.id);
-                    }}
-                    onFocus={() => {
-                      if (open) previewTheme(t.id);
-                    }}
-                  >
-                    <span data-slot="theme-picker-theme-name">{t.name}</span>
-                    {isSelected && (
-                      <Check size={12} data-slot="theme-picker-check" />
-                    )}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        </PopoverBody>
+        <PopoverBody>{themeContent}</PopoverBody>
       </PopoverContent>
     </Popover>
   );

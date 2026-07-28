@@ -1,5 +1,5 @@
 /**
- * The right sidebar's four fixed sections — Home, Files, Apps, Settings —
+ * The right sidebar's three primary sections plus its Settings utility surface,
  * and the "where was I" memory each one keeps.
  *
  * This sits beside `tab-store` rather than inside it because the two answer
@@ -65,7 +65,7 @@ export const resolveSidebarSection = (value: unknown): SidebarSection => {
  * - `home`  — a display-tab id for an agent-thread drill-down.
  * - `files` — a display-tab id for the open artifact.
  * - `apps`  — a user-app slug.
- * - `settings` — reserved for future settings sub-locations.
+ * - `settings` — the selected Settings destination.
  */
 export type SidebarSectionLocations = {
   home: string | null;

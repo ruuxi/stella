@@ -1,9 +1,8 @@
 /* Section rail in the outer topbar above the display panel — see
    `SidebarTabRail.tsx`.
 
-   Sized to sit inside the 38px topbar strip alongside `DisplayPanelControls`.
-   Labels hide below a narrow panel width so the tabs never crowd out the
-   controls; the icons and tooltips carry the meaning from there. */
+   Sized to sit inside the 38px topbar strip alongside the Settings and Close
+   controls. The three primary destinations always retain icon + name. */
 
 .sidebar-tab-rail {
   display: flex;
@@ -60,18 +59,4 @@
 .sidebar-tab-rail__label {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* Below ~440px of panel the four labels plus the panel controls stop fitting.
-   Collapse to icon-only square tabs; `title`/`aria-label` still name them. */
-@container display-panel (max-width: 440px) {
-  .sidebar-tab-rail__label {
-    display: none;
-  }
-
-  .sidebar-tab-rail__tab {
-    width: 26px;
-    padding: 0;
-    justify-content: center;
-  }
 }

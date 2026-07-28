@@ -1,12 +1,11 @@
 /**
- * The right sidebar's tab rail: Home, Files, Apps, Settings.
+ * The right sidebar's primary tab rail: Home, Files, Apps.
  *
  * Clicking the active tab returns a drilled-in section to its default view;
  * clicking it while already at that view does nothing.
  */
 
 import {
-  SIDEBAR_SECTIONS,
   sidebarSections,
   useActiveSidebarSection,
   type SidebarSection,
@@ -20,6 +19,8 @@ import {
 } from "@/ui/icons";
 import type { ComponentType } from "react";
 import "./sidebar-tab-rail.css";
+
+const PRIMARY_SIDEBAR_SECTIONS = ["home", "files", "apps"] as const;
 
 export const SIDEBAR_SECTION_META: Record<
   SidebarSection,
@@ -36,7 +37,7 @@ export function SidebarTabRail() {
 
   return (
     <div className="sidebar-tab-rail" role="tablist" aria-label="Sidebar">
-      {SIDEBAR_SECTIONS.map((section) => {
+      {PRIMARY_SIDEBAR_SECTIONS.map((section) => {
         const { label, Icon } = SIDEBAR_SECTION_META[section];
         const active = section === activeSection;
         return (

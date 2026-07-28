@@ -143,6 +143,17 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "shell/ShellTopBarFull.tsx"),
       "utf8",
     );
+    const panelTopBar = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/DisplayPanelTopBar.tsx"),
+      "utf8",
+    );
+    const sidebarTabRail = fs.readFileSync(
+      path.join(
+        SOURCE_ROOT,
+        "shell/sidebar-sections/SidebarTabRail.tsx",
+      ),
+      "utf8",
+    );
     const account = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/sidebar/ShellTopBarAccount.tsx"),
       "utf8",
@@ -153,10 +164,22 @@ describe("chat shell UI contracts", () => {
     );
 
     expect(fullTopBar).toContain('["apps", "chat"]');
+    expect(sidebarTabRail).toContain(
+      '["home", "files", "apps"] as const',
+    );
+    expect(panelTopBar).toContain(
+      'sidebarSections.openLocation("settings", null)',
+    );
     expect(account).toContain(
       'sidebarSections.openLocation("settings", null)',
     );
     expect(settingsSection).toContain("<SettingsScreen embedded");
+    expect(settingsSection).toContain("<ThemePicker inline");
+    expect(settingsSection).toContain("<ConnectPanel");
+    expect(settingsSection).toContain("<FeedbackPanel");
+    expect(account).not.toContain("<DropdownMenu");
+    expect(account).not.toContain("<ThemePicker");
+    expect(account).not.toContain("<FeedbackDialog");
   });
 
   it("anchors Models at the bottom right of the sidebar Home section", () => {

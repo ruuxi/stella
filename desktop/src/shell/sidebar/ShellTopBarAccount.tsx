@@ -1,27 +1,10 @@
-import { useNavigate } from "@tanstack/react-router";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  CreditCard,
-  LogOut,
-  MessageSquare,
-  Palette,
-  Settings as SettingsIcon,
-} from "@/ui/icons";
+import { useCallback, useEffect, useState } from "react";
+import { Settings as SettingsIcon } from "@/ui/icons";
 import { useT } from "@/shared/i18n";
 import {
   preloadAuthDialog,
-  preloadBillingScreen,
-  preloadConnectDialog,
   preloadNavSurfaceRoute,
 } from "@/shell/topbar/nav-surface-preloads";
-import { ThemePicker } from "@/global/settings/ThemePicker";
 import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import { api } from "@/convex/api";
@@ -29,31 +12,11 @@ import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { useNickname } from "@/global/auth/hooks/use-nickname";
-import { secureSignOut } from "@/global/auth/services/auth";
 import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
-import { Button } from "@/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/ui/dropdown-menu";
-import { CustomDevice as Device, CustomLogIn as LogIn } from "@/ui/nav-icons";
+import { CustomLogIn as LogIn } from "@/ui/nav-icons";
 import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./topbar-nav.css";
 import "./account-dialogs.css";
-
-const FeedbackDialog = lazy(() =>
-  import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })),
-);
 
 type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
 
@@ -85,62 +48,36 @@ const planLabel = (
 
 interface ShellTopBarAccountProps {
   onSignIn?: () => void;
-  onConnect?: () => void;
 }
 
 export const ShellTopBarAccount = ({
   onSignIn,
-  onConnect,
 }: ShellTopBarAccountProps) => {
   const t = useT();
-  const navigate = useNavigate();
   const { user: convexUser, hasConnectedAccount } = useCurrentUser();
   const { cacheScope, user: sessionUser } = useAuthSessionState();
   const { nickname } = useNickname();
   const user = {
     email: convexUser?.email ?? sessionUser?.email ?? undefined,
     name: convexUser?.name ?? sessionUser?.name ?? undefined,
-    isAnonymous:
-      convexUser?.isAnonymous ?? sessionUser?.isAnonymous ?? undefined,
   };
 
   const connectHint = usePostOnboardingHint("connect");
-  const handleOpenConnect = useCallback(() => {
-    preloadConnectDialog();
-    if (connectHint.active) connectHint.dismiss();
-    onConnect?.();
-  }, [connectHint, onConnect]);
-
   const handleOpenSettings = useCallback(() => {
     preloadNavSurfaceRoute("settings");
     sidebarSections.openLocation("settings", null);
   }, []);
 
-  const handleUpgrade = useCallback(() => {
-    void navigate({ to: "/billing" });
-  }, [navigate]);
-
   const {
     shouldPrompt: shouldAutoPromptFeedback,
     acknowledge: acknowledgeFeedbackPrompt,
   } = useFeedbackPrompt();
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackVariant, setFeedbackVariant] = useState<"manual" | "auto">(
-    "manual",
-  );
 
   useEffect(() => {
     if (!shouldAutoPromptFeedback) return;
-    if (feedbackOpen) return;
-    setFeedbackVariant("auto");
-    setFeedbackOpen(true);
+    sidebarSections.openLocation("settings", "feedback");
     acknowledgeFeedbackPrompt();
-  }, [shouldAutoPromptFeedback, feedbackOpen, acknowledgeFeedbackPrompt]);
-
-  const handleOpenFeedback = useCallback(() => {
-    setFeedbackVariant("manual");
-    setFeedbackOpen(true);
-  }, []);
+  }, [shouldAutoPromptFeedback, acknowledgeFeedbackPrompt]);
 
   const [billingQueryReady, setBillingQueryReady] = useState(false);
   useEffect(() => {
@@ -180,59 +117,6 @@ export const ShellTopBarAccount = ({
     },
   ) as BillingStatusLite | undefined;
 
-  const pendingFeedbackRef = useRef(false);
-  const pendingConnectRef = useRef(false);
-  const pendingSettingsRef = useRef(false);
-  const pendingThemeRef = useRef(false);
-  const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const pendingSignOutRef = useRef(false);
-
-  const handleDropdownCloseAutoFocus = useCallback(
-    (event: Event) => {
-      if (pendingFeedbackRef.current) {
-        pendingFeedbackRef.current = false;
-        event.preventDefault();
-        handleOpenFeedback();
-        return;
-      }
-      if (pendingSettingsRef.current) {
-        pendingSettingsRef.current = false;
-        event.preventDefault();
-        handleOpenSettings();
-        return;
-      }
-      if (pendingConnectRef.current) {
-        pendingConnectRef.current = false;
-        event.preventDefault();
-        handleOpenConnect();
-        return;
-      }
-      if (pendingThemeRef.current) {
-        pendingThemeRef.current = false;
-        event.preventDefault();
-        setThemePickerOpen(true);
-        return;
-      }
-      if (pendingSignOutRef.current) {
-        pendingSignOutRef.current = false;
-        event.preventDefault();
-        setSignOutConfirmOpen(true);
-        return;
-      }
-
-      // Click-away / Escape dismiss — don't return focus to the trigger or
-      // the open-state + focus-visible styles stick on the footer button.
-      event.preventDefault();
-    },
-    [handleOpenFeedback, handleOpenSettings, handleOpenConnect],
-  );
-
-  const handleConfirmSignOut = useCallback(() => {
-    setSignOutConfirmOpen(false);
-    void secureSignOut();
-  }, []);
-
   if (!hasConnectedAccount) {
     return (
       <div className="shell-topbar-account">
@@ -255,95 +139,17 @@ export const ShellTopBarAccount = ({
             {t("sidebar.signIn")}
           </span>
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="shell-topbar-account-settings"
-              title="Settings"
-              aria-label="Settings"
-            >
-              <SettingsIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="bottom"
-            align="end"
-            sideOffset={8}
-            onCloseAutoFocus={handleDropdownCloseAutoFocus}
-          >
-            <DropdownMenuItem
-              onClick={() => {
-                pendingSettingsRef.current = true;
-              }}
-              onMouseEnter={() => preloadNavSurfaceRoute("settings")}
-              onFocus={() => preloadNavSurfaceRoute("settings")}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <SettingsIcon size={14} strokeWidth={1.75} />
-              </span>
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                pendingThemeRef.current = true;
-              }}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <Palette size={14} strokeWidth={1.75} />
-              </span>
-              Theme
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                pendingConnectRef.current = true;
-              }}
-              onMouseEnter={preloadConnectDialog}
-              onFocus={preloadConnectDialog}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <Device size={14} />
-              </span>
-              Connect
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                pendingFeedbackRef.current = true;
-              }}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <MessageSquare size={14} strokeWidth={1.75} />
-              </span>
-              {t("sidebar.feedback")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <ThemePicker
-          open={themePickerOpen}
-          onOpenChange={setThemePickerOpen}
-          hideTrigger
-          side="bottom"
-          align="end"
-          trigger={
-            <button
-              type="button"
-              className="shell-topbar-account-theme-anchor"
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-          }
-        />
-        {feedbackOpen ? (
-          <Suspense fallback={null}>
-            <FeedbackDialog
-              open
-              onOpenChange={setFeedbackOpen}
-              variant={feedbackVariant}
-              onSubmitted={acknowledgeFeedbackPrompt}
-            />
-          </Suspense>
-        ) : null}
+        <button
+          type="button"
+          className="shell-topbar-account-settings"
+          onClick={handleOpenSettings}
+          onFocus={() => preloadNavSurfaceRoute("settings")}
+          onMouseEnter={() => preloadNavSurfaceRoute("settings")}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SettingsIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </div>
     );
   }
@@ -352,222 +158,48 @@ export const ShellTopBarAccount = ({
     (user.name ?? user.email ?? t("sidebar.account")).trim() ||
     t("sidebar.account");
   const displayLabel = nickname.trim() || accountName;
-  const plan = billingStatus?.plan;
-  const isPaidPlan = Boolean(plan) && plan !== "free";
-  const pillLabel = isPaidPlan
-    ? planLabel(plan, billingStatus)
-    : t("sidebar.upgrade");
   const sidebarPlanLabel = billingQueryReady
-    ? planLabel(plan, billingStatus)
+    ? planLabel(billingStatus?.plan, billingStatus)
     : null;
 
   return (
     <div className="shell-topbar-account">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="shell-topbar-account-trigger shell-topbar-account-trigger--split"
-            title={
-              displayLabel === accountName
-                ? sidebarPlanLabel
-                  ? `${accountName} · ${sidebarPlanLabel}`
-                  : accountName
-                : sidebarPlanLabel
-                  ? `${displayLabel} · ${accountName} · ${sidebarPlanLabel}`
-                  : `${displayLabel} · ${accountName}`
-            }
-            aria-label={
-              sidebarPlanLabel
-                ? `${displayLabel}, ${sidebarPlanLabel} plan`
-                : displayLabel
-            }
-          >
-            <span className="shell-topbar-account-identity">
-              <span className="shell-topbar-account-nickname">
-                {displayLabel}
-              </span>
-              {sidebarPlanLabel ? (
-                <span className="shell-topbar-account-plan">
-                  {sidebarPlanLabel}
-                </span>
-              ) : null}
-            </span>
-            <span className="shell-topbar-account-trigger-icon">
-              <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
-              {connectHint.active ? (
-                <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
-              ) : null}
-            </span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          onCloseAutoFocus={handleDropdownCloseAutoFocus}
-        >
-          <DropdownMenuItem
-            onClick={() => {
-              pendingSettingsRef.current = true;
-            }}
-            onMouseEnter={() => preloadNavSurfaceRoute("settings")}
-            onFocus={() => preloadNavSurfaceRoute("settings")}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <SettingsIcon size={14} strokeWidth={1.75} />
-            </span>
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              pendingThemeRef.current = true;
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Palette size={14} strokeWidth={1.75} />
-            </span>
-            Theme
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              pendingConnectRef.current = true;
-            }}
-            onMouseEnter={preloadConnectDialog}
-            onFocus={preloadConnectDialog}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Device size={14} />
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }}>Connect</span>
-            {connectHint.active ? (
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: "var(--danger)",
-                }}
-              />
-            ) : null}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              preloadBillingScreen();
-              handleUpgrade();
-            }}
-            onMouseEnter={preloadBillingScreen}
-            onFocus={preloadBillingScreen}
-            title={
-              isPaidPlan
-                ? `${pillLabel} plan — manage billing`
-                : "Upgrade your plan"
-            }
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <CreditCard size={14} strokeWidth={1.75} />
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              {isPaidPlan ? `${pillLabel} plan` : t("sidebar.upgrade")}
-            </span>
-            {isPaidPlan ? (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "var(--text-weak)",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                Manage
-              </span>
-            ) : null}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              pendingFeedbackRef.current = true;
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <MessageSquare size={14} strokeWidth={1.75} />
-            </span>
-            {t("sidebar.feedback")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            data-variant="destructive"
-            onClick={() => {
-              pendingSignOutRef.current = true;
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <LogOut size={14} strokeWidth={1.75} />
-            </span>
-            {t("common.signOut")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ThemePicker
-        open={themePickerOpen}
-        onOpenChange={setThemePickerOpen}
-        hideTrigger
-        side="bottom"
-        align="end"
-        trigger={
-          <button
-            type="button"
-            className="shell-topbar-account-theme-anchor"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
+      <button
+        type="button"
+        className="shell-topbar-account-trigger shell-topbar-account-trigger--split"
+        onClick={handleOpenSettings}
+        onFocus={() => preloadNavSurfaceRoute("settings")}
+        onMouseEnter={() => preloadNavSurfaceRoute("settings")}
+        title={
+          displayLabel === accountName
+            ? sidebarPlanLabel
+              ? `${accountName} · ${sidebarPlanLabel}`
+              : accountName
+            : sidebarPlanLabel
+              ? `${displayLabel} · ${accountName} · ${sidebarPlanLabel}`
+              : `${displayLabel} · ${accountName}`
         }
-      />
-      {feedbackOpen ? (
-        <Suspense fallback={null}>
-          <FeedbackDialog
-            open
-            onOpenChange={setFeedbackOpen}
-            variant={feedbackVariant}
-            onSubmitted={acknowledgeFeedbackPrompt}
-          />
-        </Suspense>
-      ) : null}
-      <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
-        <DialogContent
-          fit
-          className="sidebar-signout-dialog"
-          aria-describedby={undefined}
-        >
-          <DialogHeader>
-            <DialogTitle>Sign out of Stella?</DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="sidebar-signout-description">
-            Are you sure?
-          </DialogDescription>
-          <div className="sidebar-confirm-actions">
-            <Button
-              variant="ghost"
-              size="large"
-              className="pill-btn pill-btn--lg"
-              onClick={() => setSignOutConfirmOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="large"
-              onClick={handleConfirmSignOut}
-              data-tone="destructive"
-              className="pill-btn pill-btn--danger pill-btn--lg"
-            >
-              Sign out
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        aria-label={
+          sidebarPlanLabel
+            ? `${displayLabel}, ${sidebarPlanLabel} plan, open Settings`
+            : `${displayLabel}, open Settings`
+        }
+      >
+        <span className="shell-topbar-account-identity">
+          <span className="shell-topbar-account-nickname">{displayLabel}</span>
+          {sidebarPlanLabel ? (
+            <span className="shell-topbar-account-plan">
+              {sidebarPlanLabel}
+            </span>
+          ) : null}
+        </span>
+        <span className="shell-topbar-account-trigger-icon">
+          <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
+          {connectHint.active ? (
+            <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
+          ) : null}
+        </span>
+      </button>
     </div>
   );
 };

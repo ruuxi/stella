@@ -578,10 +578,7 @@ function RootChrome() {
               above but declared earlier still reads as draggable and swallows
               its own clicks. */}
           {isFullWindow ? (
-            <ShellTopBarFull
-              onSignIn={showAuthDialog}
-              onConnect={showConnectDialog}
-            />
+            <ShellTopBarFull onSignIn={showAuthDialog} />
           ) : null}
         </div>
       </StellaContextMenu>

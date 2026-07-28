@@ -4,6 +4,21 @@
   width: 256px;
 }
 
+[data-theme-picker][data-theme-picker-inline="true"] {
+  width: 100%;
+}
+
+[data-theme-picker][data-theme-picker-inline="true"]
+  [data-slot="theme-picker-sections"] {
+  max-height: none;
+  padding: 4px 2px 16px;
+}
+
+[data-theme-picker][data-theme-picker-inline="true"]
+  [data-slot="theme-picker-theme-list"] {
+  max-height: none;
+}
+
 /* Selected appearance / gradient / theme rows use the secondary variant;
    re-skin them to the canonical accent selected state so theme selection
    matches every other "you are here" surface. */
