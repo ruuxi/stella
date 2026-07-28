@@ -532,6 +532,37 @@ describe("buildHistorySource", () => {
 });
 
 describe("buildDefaultTransformContext", () => {
+  it("preserves tool-result images until normal context pruning", async () => {
+    const transform = buildDefaultTransformContext({
+      model: { contextWindow: 128_000 },
+    } as Parameters<typeof buildDefaultTransformContext>[0]);
+    const messages: AgentMessage[] = Array.from({ length: 10 }, (_, index) => ({
+      role: "toolResult",
+      toolCallId: `call-${index}`,
+      toolName: "view_image",
+      content: [
+        {
+          type: "image",
+          data: "a".repeat(1024),
+          mimeType: "image/png",
+        },
+      ],
+      isError: false,
+      timestamp: index,
+    }));
+
+    const transformed = await transform(messages);
+
+    expect(transformed).toBe(messages);
+    expect(
+      transformed.flatMap((message) =>
+        Array.isArray(message.content)
+          ? message.content.filter((block) => block.type === "image")
+          : [],
+      ),
+    ).toHaveLength(10);
+  });
+
   it("preserves bootstrap startup docs when pruning oversized context", async () => {
     const transform = buildDefaultTransformContext({
       model: { contextWindow: 20_000 },

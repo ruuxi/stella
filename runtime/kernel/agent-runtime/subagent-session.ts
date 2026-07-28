@@ -149,6 +149,7 @@ export class SubagentSession extends PiSessionCore {
       agentContext: opts.agentContext,
       ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
       tools,
+      stellaDataDir: opts.stellaDataDir,
       onProviderRetry: this.handleProviderRetry,
       logContext: {
         threadId: this.threadId,

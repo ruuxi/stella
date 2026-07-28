@@ -199,6 +199,7 @@ export class OrchestratorSession extends PiSessionCore {
       agentContext: opts.agentContext,
       ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
       tools,
+      stellaDataDir: opts.stellaDataDir,
       afterToolCall: async (context) => {
         this.currentResponseTargetTracker?.noteToolEnd(
           context.toolCall.name,

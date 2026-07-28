@@ -19,10 +19,8 @@ import {
   getAgentSteeringMode,
   getLocalCliWorkingDirectory,
 } from "../../contracts/agent-runtime.js";
-import {
-  isBootstrapStartupDocMessage,
-  stripStaleImageBlocks,
-} from "./thread-memory.js";
+import { isBootstrapStartupDocMessage } from "./thread-memory.js";
+import { createImageHistoryCompactor } from "./image-history-compaction.js";
 
 const MAX_RESULT_PREVIEW = 200;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
@@ -277,21 +275,14 @@ export const buildDefaultTransformContext = (
     if (signal?.aborted) {
       throw new Error("Aborted");
     }
-    // Strip on every per-turn call. `buildHistorySource` already runs this
-    // once at run start, but the agent loop appends fresh tool results
-    // (each carrying a base64 PNG) into the live messages array between
-    // LLM calls. Without re-stripping, all those screenshots stack up in
-    // the prompt every subsequent turn, and a 4-step stella-computer task
-    // overflows the managed runtime's payload budget.
-    const stripped = stripStaleImageBlocks(messages);
-    const totalTokens = stripped.reduce(
+    const totalTokens = messages.reduce(
       (sum, message) => sum + estimateAgentMessageTokens(message),
       0,
     );
     if (totalTokens <= maxTokens) {
-      return stripped;
+      return messages;
     }
-    const pinnedStartupDocs = stripped.filter(isBootstrapStartupDocMessage);
+    const pinnedStartupDocs = messages.filter(isBootstrapStartupDocMessage);
     if (pinnedStartupDocs.length > 0) {
       const pinnedDocSet = new Set<AgentMessage>(pinnedStartupDocs);
       const pinnedTokens = pinnedStartupDocs.reduce(
@@ -301,20 +292,20 @@ export const buildDefaultTransformContext = (
       const remainingBudget = maxTokens - pinnedTokens;
       if (remainingBudget > 0) {
         const recentUnpinned = selectRecentByTokenBudget({
-          itemsNewestFirst: stripped
+          itemsNewestFirst: messages
             .filter((message) => !pinnedDocSet.has(message))
             .reverse(),
           maxTokens: remainingBudget,
           estimateTokens: estimateAgentMessageTokens,
         });
         const recentSet = new Set<AgentMessage>(recentUnpinned);
-        return stripped.filter(
+        return messages.filter(
           (message) => pinnedDocSet.has(message) || recentSet.has(message),
         );
       }
     }
     const selected = selectRecentByTokenBudget({
-      itemsNewestFirst: [...stripped].reverse(),
+      itemsNewestFirst: [...messages].reverse(),
       maxTokens,
       estimateTokens: estimateAgentMessageTokens,
     });
@@ -474,6 +465,12 @@ export const createRuntimeAgent = (args: {
    * conversation hit the same cache shard.
    */
   cacheSessionId?: string;
+  /**
+   * Directory the byte-size image backstop spills stripped screenshots into
+   * (see `image-history-compaction.ts`). Omitted for callers with no data
+   * dir; stripping then falls back to non-recoverable placeholders.
+   */
+  imageHistorySpillDirPath?: string;
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,
@@ -493,6 +490,14 @@ export const createRuntimeAgent = (args: {
   }) => void;
 }): Agent => {
   const resolveLlm = args.resolvedLlmOverride ?? (() => args.resolvedLlm);
+  // One compactor per Agent: its sticky stripped-set is what keeps the
+  // prompt-cache prefix byte-stable between watermark crossings across the
+  // many LLM calls of this thread's lifetime.
+  const imageHistoryCompactor = createImageHistoryCompactor({
+    ...(args.imageHistorySpillDirPath
+      ? { spillDirPath: args.imageHistorySpillDirPath }
+      : {}),
+  });
   const toolInactivityRaw = process.env.STELLA_TOOL_INACTIVITY_TIMEOUT_MS?.trim();
   const toolInactivityParsed = toolInactivityRaw ? Number(toolInactivityRaw) : Number.NaN;
   return new Agent({
@@ -513,9 +518,14 @@ export const createRuntimeAgent = (args: {
       ? { toolInactivityTimeoutMs: toolInactivityParsed }
       : {}),
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
-    // Recompute the context budget against the current model route.
+    // Byte-size image backstop first (so token pruning sees placeholders,
+    // not base64), then recompute the context budget against the current
+    // model route.
     transformContext: async (messages, signal) =>
-      buildDefaultTransformContext(resolveLlm())(messages, signal),
+      buildDefaultTransformContext(resolveLlm())(
+        await imageHistoryCompactor.apply(messages),
+        signal,
+      ),
     // Only pass steering / follow-up modes when the agent opts out of
     // the Pi default ("one-at-a-time").
     ...(getAgentSteeringMode(args.agentType) === "all"
