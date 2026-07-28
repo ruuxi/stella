@@ -1,5 +1,5 @@
 /**
- * The right sidebar's tab rail: Home, Files, Apps.
+ * The right sidebar's tab rail: Home, Files, Apps, Settings.
  *
  * Clicking the active tab returns a drilled-in section to its default view;
  * clicking it while already at that view does nothing.
@@ -15,6 +15,7 @@ import {
   AppWindowMac,
   Folder,
   LayoutList,
+  Settings,
   type IconProps,
 } from "@/ui/icons";
 import type { ComponentType } from "react";
@@ -27,6 +28,7 @@ export const SIDEBAR_SECTION_META: Record<
   home: { label: "Home", Icon: LayoutList },
   files: { label: "Files", Icon: Folder },
   apps: { label: "Apps", Icon: AppWindowMac },
+  settings: { label: "Settings", Icon: Settings },
 };
 
 export function SidebarTabRail() {

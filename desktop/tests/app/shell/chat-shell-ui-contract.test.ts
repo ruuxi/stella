@@ -137,4 +137,48 @@ describe("chat shell UI contracts", () => {
       /\.display-panel-topbar\[data-display-open="false"\]\s+\*\s*\{[^}]*-webkit-app-region:\s*no-drag/,
     );
   });
+
+  it("keeps Home out of the full top bar and opens Settings in the sidebar", () => {
+    const fullTopBar = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/ShellTopBarFull.tsx"),
+      "utf8",
+    );
+    const account = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar/ShellTopBarAccount.tsx"),
+      "utf8",
+    );
+    const settingsSection = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/SettingsSection.tsx"),
+      "utf8",
+    );
+
+    expect(fullTopBar).toContain('["apps", "chat"]');
+    expect(account).toContain(
+      'sidebarSections.openLocation("settings", null)',
+    );
+    expect(settingsSection).toContain("<SettingsScreen embedded");
+  });
+
+  it("anchors Models at the bottom right of the sidebar Home section", () => {
+    const home = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
+      "utf8",
+    );
+    const account = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar/ShellTopBarAccount.tsx"),
+      "utf8",
+    );
+    const defaultTabs = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/display/default-tabs.tsx"),
+      "utf8",
+    );
+
+    expect(home).toContain("sidebar-home-footer");
+    expect(home).toContain("<ModelsPicker");
+    expect(home).toContain("sidebar-home-models-button");
+    expect(account).not.toContain("<ModelsPicker");
+    expect(defaultTabs).toContain(
+      'sidebarSections.openLocation("home", null)',
+    );
+  });
 });

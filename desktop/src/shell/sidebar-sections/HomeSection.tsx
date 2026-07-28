@@ -14,9 +14,15 @@ import {
   sidebarSections,
   useSidebarSectionLocation,
 } from "@/features/workspace-display/sidebar-sections";
+import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import { useDisplayTabList } from "@/features/workspace-display/tab-store";
+import { ModelsPicker } from "@/global/settings/ModelsPicker";
+import {
+  engineOverlay,
+  useEngineOverlayOpen,
+} from "@/shell/display/engine-overlay-store";
 import { WorkspaceSections } from "@/shell/workspace/WorkspaceSections";
-import { ChevronLeft, Search } from "@/ui/icons";
+import { ChevronLeft, Search, SlidersHorizontal } from "@/ui/icons";
 import { DeferredDisplayContent } from "./DeferredDisplayContent";
 import "./home-search.css";
 
@@ -27,6 +33,7 @@ export const shouldHoldSearchLayout = (
 
 function HomeOverview() {
   const query = useDisplaySearchQuery();
+  const modelsPickerOpen = useEngineOverlayOpen();
   const [inputValue, setInputValue] = useState(query);
   const deferredQuery = useDeferredValue(query);
 
@@ -66,6 +73,23 @@ function HomeOverview() {
           )}
         />
       </div>
+      <div className="sidebar-home-footer">
+        <ModelsPicker
+          open={modelsPickerOpen}
+          onOpenChange={engineOverlay.setOpen}
+          side="top"
+          align="end"
+          trigger={
+            <button
+              type="button"
+              className="pill-btn sidebar-home-models-button"
+            >
+              <SlidersHorizontal size={14} strokeWidth={1.75} />
+              Models
+            </button>
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -73,6 +97,17 @@ function HomeOverview() {
 export function HomeSection() {
   const openTabId = useSidebarSectionLocation("home");
   const { tabs } = useDisplayTabList();
+
+  useEffect(() => {
+    const handleOpenModelPicker = () => openEngineDisplayTab();
+    window.addEventListener("stella:open-model-picker", handleOpenModelPicker);
+    return () => {
+      window.removeEventListener(
+        "stella:open-model-picker",
+        handleOpenModelPicker,
+      );
+    };
+  }, []);
 
   // A remembered id can outlive its tab (the registry is not persisted across
   // launches). Falling back to the list is the graceful degradation.

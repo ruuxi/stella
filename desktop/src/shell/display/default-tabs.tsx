@@ -7,6 +7,7 @@ import { TrashTabContent } from "./TrashTabContent";
 import { HomeLauncherTab } from "./HomeLauncherTab";
 import { displayTabs, useDisplayPanelExpanded } from "@/features/workspace-display/tab-store";
 import { engineOverlay } from "./engine-overlay-store";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import {
   CHAT_DISPLAY_TAB_ID,
   HOME_DISPLAY_TAB_ID,
@@ -127,12 +128,10 @@ export function openTrashDisplayTab(): void {
 }
 
 /**
- * Open the sidebar Models popover. Callers that navigate to `/chat`
- * first continue to work — we activate the Chat display tab and open
- * the popover anchored to the footer Models button.
+ * Open the Models popover anchored to the Home section's footer button.
  */
 export function openEngineDisplayTab(): void {
-  openChatDisplayTab(null);
+  sidebarSections.openLocation("home", null);
   engineOverlay.setOpen(true);
 }
 

@@ -26,8 +26,8 @@ import type { ScoredSettingsSearchEntry } from "@/global/settings/lib/settings-s
 import { useT } from "@/shared/i18n";
 import "@/global/settings/settings.css";
 
-// Settings itself is already a route-level lazy chunk. Keep the tabs eager
-// inside that route so switching tabs does not show a blank Suspense gap.
+// Settings is lazy-preloaded before the sidebar opens. Keep the tabs eager
+// inside that chunk so switching tabs does not show a blank Suspense gap.
 const LegalDialog = lazy(() =>
   import("@/global/legal/LegalDialog").then((m) => ({
     default: m.LegalDialog,
@@ -35,7 +35,7 @@ const LegalDialog = lazy(() =>
 );
 
 // ---------------------------------------------------------------------------
-// SettingsScreen (route-mounted, no Dialog wrapper)
+// SettingsScreen (route- or sidebar-mounted, no Dialog wrapper)
 // ---------------------------------------------------------------------------
 
 export type { SettingsTab };
@@ -47,17 +47,19 @@ interface SettingsScreenProps {
   onActiveTabChange?: (tab: SettingsTab) => void;
   /** Called when the user signs out from the Basic tab. */
   onSignOut?: () => void;
+  /** Use the compact layout when Settings is hosted in the right sidebar. */
+  embedded?: boolean;
 }
 
 /**
- * The settings UI rendered inline (no Dialog wrapper). Mounted by the
- * `/settings` route. Tab state can be controlled (via `?tab=...`) or
- * uncontrolled.
+ * The settings UI rendered inline (no Dialog wrapper). Tab state can be
+ * controlled by the legacy `/settings` route or uncontrolled in the sidebar.
  */
 export const SettingsScreen = ({
   activeTab: activeTabProp,
   onActiveTabChange,
   onSignOut,
+  embedded = false,
 }: SettingsScreenProps) => {
   const [selectedTab, setSelectedTab] = useState<SettingsTab>("general");
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
@@ -125,7 +127,11 @@ export const SettingsScreen = ({
         className="settings-screen"
         data-search-active={isSearching ? "true" : "false"}
       >
-        <div className="settings-layout settings-layout--standalone">
+        <div
+          className={`settings-layout ${
+            embedded ? "settings-layout--sidebar" : "settings-layout--standalone"
+          }`}
+        >
           {/* Header: title row above, then horizontal tab strip. No
               side rail — keeps the page visually centered and gives
               the panel content the full width to breathe. */}

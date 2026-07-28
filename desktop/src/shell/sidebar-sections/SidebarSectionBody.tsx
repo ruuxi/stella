@@ -1,5 +1,5 @@
 /**
- * Renders whichever of the three sections is active.
+ * Renders whichever sidebar section is active.
  *
  * Every section is mounted for the lifetime of the panel and hidden with
  * `display: none` rather than unmounted. That is load-bearing, not an
@@ -20,6 +20,7 @@ import {
 import { AppsSection } from "./AppsSection";
 import { FilesSection } from "./FilesSection";
 import { HomeSection } from "./HomeSection";
+import { SettingsSection } from "./SettingsSection";
 import "./sidebar-sections.css";
 
 /**
@@ -30,6 +31,7 @@ const SECTION_BODIES: Record<SidebarSection, ComponentType> = {
   home: HomeSection,
   files: FilesSection,
   apps: AppsSection,
+  settings: SettingsSection,
 };
 
 /**

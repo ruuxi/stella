@@ -1,6 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { router } from "@/router";
-import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import {
   lazy,
   Suspense,
@@ -15,22 +13,15 @@ import {
   MessageSquare,
   Palette,
   Settings as SettingsIcon,
-  SlidersHorizontal,
 } from "@/ui/icons";
 import { useT } from "@/shared/i18n";
 import {
   preloadAuthDialog,
   preloadBillingScreen,
   preloadConnectDialog,
-  preloadModelsPicker,
   preloadNavSurfaceRoute,
 } from "@/shell/topbar/nav-surface-preloads";
-import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import { ThemePicker } from "@/global/settings/ThemePicker";
-import {
-  engineOverlay,
-  useEngineOverlayOpen,
-} from "@/shell/display/engine-overlay-store";
 import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import { api } from "@/convex/api";
@@ -39,6 +30,7 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { useNickname } from "@/global/auth/hooks/use-nickname";
 import { secureSignOut } from "@/global/auth/services/auth";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -120,8 +112,9 @@ export const ShellTopBarAccount = ({
   }, [connectHint, onConnect]);
 
   const handleOpenSettings = useCallback(() => {
-    void navigate({ to: "/settings" });
-  }, [navigate]);
+    preloadNavSurfaceRoute("settings");
+    sidebarSections.openLocation("settings", null);
+  }, []);
 
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
@@ -187,22 +180,9 @@ export const ShellTopBarAccount = ({
     },
   ) as BillingStatusLite | undefined;
 
-  useEffect(() => {
-    const handler = () => {
-      void router.navigate({ to: "/chat" });
-      openEngineDisplayTab();
-    };
-    window.addEventListener("stella:open-model-picker", handler);
-    return () => {
-      window.removeEventListener("stella:open-model-picker", handler);
-    };
-  }, []);
-
-  const modelsPickerOpen = useEngineOverlayOpen();
   const pendingFeedbackRef = useRef(false);
   const pendingConnectRef = useRef(false);
   const pendingSettingsRef = useRef(false);
-  const pendingModelsRef = useRef(false);
   const pendingThemeRef = useRef(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -226,12 +206,6 @@ export const ShellTopBarAccount = ({
         pendingConnectRef.current = false;
         event.preventDefault();
         handleOpenConnect();
-        return;
-      }
-      if (pendingModelsRef.current) {
-        pendingModelsRef.current = false;
-        event.preventDefault();
-        engineOverlay.setOpen(true);
         return;
       }
       if (pendingThemeRef.current) {
@@ -312,18 +286,6 @@ export const ShellTopBarAccount = ({
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
-                pendingModelsRef.current = true;
-              }}
-              onMouseEnter={preloadModelsPicker}
-              onFocus={preloadModelsPicker}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <SlidersHorizontal size={14} strokeWidth={1.75} />
-              </span>
-              Models
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
                 pendingThemeRef.current = true;
               }}
             >
@@ -357,21 +319,6 @@ export const ShellTopBarAccount = ({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <ModelsPicker
-          open={modelsPickerOpen}
-          onOpenChange={engineOverlay.setOpen}
-          hideTrigger
-          side="top"
-          align="end"
-          trigger={
-            <button
-              type="button"
-              className="shell-topbar-account-models-anchor"
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-          }
-        />
         <ThemePicker
           open={themePickerOpen}
           onOpenChange={setThemePickerOpen}
@@ -474,18 +421,6 @@ export const ShellTopBarAccount = ({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
-              pendingModelsRef.current = true;
-            }}
-            onMouseEnter={preloadModelsPicker}
-            onFocus={preloadModelsPicker}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <SlidersHorizontal size={14} strokeWidth={1.75} />
-            </span>
-            Models
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
               pendingThemeRef.current = true;
             }}
           >
@@ -575,21 +510,6 @@ export const ShellTopBarAccount = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ModelsPicker
-        open={modelsPickerOpen}
-        onOpenChange={engineOverlay.setOpen}
-        hideTrigger
-        side="top"
-        align="end"
-        trigger={
-          <button
-            type="button"
-            className="shell-topbar-account-models-anchor"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      />
       <ThemePicker
         open={themePickerOpen}
         onOpenChange={setThemePickerOpen}

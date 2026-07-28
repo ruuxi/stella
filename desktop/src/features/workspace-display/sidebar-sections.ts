@@ -1,5 +1,5 @@
 /**
- * The right sidebar's three fixed sections — Home, Files, Apps —
+ * The right sidebar's four fixed sections — Home, Files, Apps, Settings —
  * and the "where was I" memory each one keeps.
  *
  * This sits beside `tab-store` rather than inside it because the two answer
@@ -20,7 +20,7 @@ import { useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 import { displayTabs } from "./tab-store";
 
-export const SIDEBAR_SECTIONS = ["home", "files", "apps"] as const;
+export const SIDEBAR_SECTIONS = ["home", "files", "apps", "settings"] as const;
 
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
 
@@ -65,11 +65,13 @@ export const resolveSidebarSection = (value: unknown): SidebarSection => {
  * - `home`  — a display-tab id for an agent-thread drill-down.
  * - `files` — a display-tab id for the open artifact.
  * - `apps`  — a user-app slug.
+ * - `settings` — reserved for future settings sub-locations.
  */
 export type SidebarSectionLocations = {
   home: string | null;
   files: string | null;
   apps: string | null;
+  settings: string | null;
 };
 
 export type SidebarSectionsSnapshot = {
@@ -86,6 +88,7 @@ const DEFAULT_LOCATIONS: SidebarSectionLocations = {
   home: null,
   files: null,
   apps: null,
+  settings: null,
 };
 
 const readPersistedSection = (): SidebarSection => {
@@ -122,6 +125,7 @@ const readPersistedLocations = (): SidebarSectionLocations => {
       home: pick("home") ?? pick("tasks"),
       files: pick("files"),
       apps: pick("apps"),
+      settings: pick("settings"),
     };
   } catch {
     return DEFAULT_LOCATIONS;
@@ -153,6 +157,7 @@ const persistLocations = (locations: SidebarSectionLocations): void => {
       home: locations.home,
       files: locations.files,
       apps: locations.apps,
+      settings: locations.settings,
     }),
   );
 };

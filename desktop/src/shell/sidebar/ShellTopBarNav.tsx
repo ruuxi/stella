@@ -100,8 +100,8 @@ const UNLINKED_NAV_IDS: readonly string[] = ["store", "social"];
 
 type ShellTopBarPrimaryNavProps = {
   /**
-   * Nav entry ids to suppress. The full-window bar omits `apps`, whose
-   * surface moved into the right sidebar; mobile still shows everything.
+   * Nav entry ids to suppress. The full-window bar omits surfaces owned by
+   * the right sidebar; mobile still shows everything.
    */
   omitIds?: readonly string[];
 };

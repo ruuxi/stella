@@ -40,8 +40,7 @@ export const preloadModelsPicker = () =>
     preloadModelCatalogCache();
   });
 
-// Settings owns its tab content inside the route chunk, so warming the screen
-// chunk is enough to make both first open and tab switches feel immediate.
+// Warm the Settings screen before opening its sidebar section.
 export const preloadSettingsScreen = () => {
   runOnce("settings", () => import("@/global/settings/SettingsView"));
 };

@@ -299,13 +299,3 @@
   pointer-events: none;
   opacity: 0;
 }
-
-.shell-topbar-account-models-anchor {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 26px;
-  height: 26px;
-  pointer-events: none;
-  opacity: 0;
-}

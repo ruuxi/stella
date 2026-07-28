@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 
 /**
  * Auth and Connect render as URL-driven dialogs (`?dialog=auth|connect`).
- * Settings is a top-level route (`/settings`), not a dialog.
+ * Settings lives in the right sidebar, not a dialog.
  *
  * Both chunks are warmed by topbar hover/focus handlers
  * (`preloadAuthDialog` / `preloadConnectDialog` in

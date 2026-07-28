@@ -18,7 +18,7 @@
  * Apps are deliberately absent from the nav: they now open inside the right
  * sidebar's Apps section rather than the main content area, so a nav entry
  * pointing at the `/apps` route would compete with the sidebar for the same
- * job. Home, Store and Social keep their routes.
+ * job. Home is also omitted because its surface is the sidebar's first tab.
  */
 
 import { getPlatform } from "@/platform/electron/platform";
@@ -34,10 +34,10 @@ import { PanelRight } from "@/ui/icons";
 import "./shell-topbar-full.css";
 
 /**
- * Nav entries the full-window bar suppresses. `apps` lives in the right
- * sidebar now; see the module comment.
+ * Nav entries the full-window bar suppresses. Apps and Home both live in the
+ * right sidebar now.
  */
-const OMITTED_NAV_IDS = ["apps"] as const;
+const OMITTED_NAV_IDS = ["apps", "chat"] as const;
 
 type ShellTopBarFullProps = {
   onSignIn?: () => void;

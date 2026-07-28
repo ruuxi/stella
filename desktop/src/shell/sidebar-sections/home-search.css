@@ -44,6 +44,20 @@
   padding: 6px 8px 10px;
 }
 
+.sidebar-home-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding: 10px 12px 12px;
+}
+
+.sidebar-home-models-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* While searching, the results region is pinned to a resolved height — the
    whole of what the field leaves — and matches scroll inside it, so the box
    can't grow or shrink with the match count as you type. A `min-height` floor

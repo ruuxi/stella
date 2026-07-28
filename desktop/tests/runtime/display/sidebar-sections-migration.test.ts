@@ -91,6 +91,7 @@ describe("persisted sub-locations", () => {
     expect(locations.home).toBe("thread:7");
     expect(locations.files).toBe("pdf:/a.pdf");
     expect(locations.apps).toBeNull();
+    expect(locations.settings).toBeNull();
     expect(locations).not.toHaveProperty("search");
     expect(locations).not.toHaveProperty("tasks");
   });
@@ -113,6 +114,7 @@ describe("persisted sub-locations", () => {
       home: null,
       files: null,
       apps: null,
+      settings: null,
     });
   });
 });

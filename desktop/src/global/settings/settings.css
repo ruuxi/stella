@@ -34,6 +34,33 @@
   max-width: 760px;
 }
 
+.settings-layout--sidebar {
+  width: 100%;
+  padding: 14px 12px 0;
+  gap: 12px;
+  flex-direction: column;
+}
+
+.settings-layout--sidebar .settings-tab-rail-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-layout--sidebar .settings-tab-rail-title {
+  font-size: 21px;
+}
+
+.settings-layout--sidebar .settings-tab-rail-header .settings-search {
+  min-width: 0;
+  max-width: none;
+  margin-top: 0;
+}
+
+.settings-layout--sidebar .settings-panel {
+  padding: 6px 6px 24px;
+}
+
 /* ---- Settings header (title + search + horizontal tab strip) ---- */
 
 .settings-tab-rail {

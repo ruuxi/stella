@@ -34,6 +34,9 @@ vi.mock("@/app/apps/PersistentUserAppsHost", () => ({
 vi.mock("@/app/chat/DropOverlay", () => ({
   DropOverlay: () => <div data-stub="drop-overlay" />,
 }));
+vi.mock("@/global/settings/SettingsView", () => ({
+  SettingsScreen: () => <div data-stub="settings-screen" />,
+}));
 
 const { SidebarSectionBody, sidebarSectionBody } =
   await import("@/shell/sidebar-sections/SidebarSectionBody");
