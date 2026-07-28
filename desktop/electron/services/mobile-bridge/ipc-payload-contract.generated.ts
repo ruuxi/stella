@@ -270,7 +270,6 @@ export const IPC_PAYLOAD_CONTRACT: Readonly<
   "uiState:clear": { kind: "none" },
   "updates:getInstallManifest": { kind: "none" },
   "updates:recordAppliedCommit": { kind: "passthrough" },
-  "updates:recordSourceHistory": { kind: "passthrough" },
   "updates:refreshNativeHelpers": { kind: "passthrough" },
   "updates:rollbackCanceledUpdate": { kind: "passthrough" },
   "updates:tryApplyCleanUpdate": { kind: "passthrough" },

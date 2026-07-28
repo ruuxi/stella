@@ -41,7 +41,6 @@ import type {
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
   StoreInstallRecord as SharedStoreInstallRecord,
-  DesktopReleaseSourceHistoryRef as SharedDesktopReleaseSourceHistoryRef,
   StellaReleaseArtifactRef as SharedStellaReleaseArtifactRef,
   SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
   SelfModFeatureRosterEntry as SharedSelfModFeatureRosterEntry,
@@ -144,8 +143,6 @@ export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
 export type StoreInstallRecord = SharedStoreInstallRecord;
-export type DesktopReleaseSourceHistoryRef =
-  SharedDesktopReleaseSourceHistoryRef;
 export type StellaReleaseArtifactRef = SharedStellaReleaseArtifactRef;
 export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
 export type SelfModFeatureRosterEntry = SharedSelfModFeatureRosterEntry;
@@ -1196,10 +1193,7 @@ export type InstallManifestSnapshot = {
     operationId: string | null;
     phase:
       | "started"
-      | "source-pack-preflight"
-      | "source-pack-write"
-      | "source-pack-commit"
-      | "content-landing"
+      | "git-fast-forward"
       | "git-fetch"
       | "git-merge"
       | "dependency-install"
@@ -1207,7 +1201,7 @@ export type InstallManifestSnapshot = {
       | "record-complete"
       | "agent-fallback"
       | null;
-    mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+    mode: "git" | "native-helpers" | "agent" | null;
     recoveryAction: "resume" | "discard" | "needs-agent" | null;
     startingHeadCommit: string | null;
     updatedAt: string | null;
@@ -1237,9 +1231,6 @@ export type DesktopUpdateFastApplyResult =
       reason: string;
       headCommit?: string;
       changedFiles?: string[];
-      sourcePackFile?: string;
-      sourcePackConflictFile?: string;
-      sourcePackConflictJson?: string;
     };
 
 export type DesktopUpdateRollbackResult =
@@ -1260,21 +1251,8 @@ export type ElectronUpdatesApi = {
     baseCommit: string;
     targetCommit: string;
     releaseTag: string;
-    sourcePackRef?: {
-      kind: "url";
-      url: string;
-      sha256: string;
-      sizeBytes: number;
-    };
     artifactRefs?: StellaReleaseArtifactRef[];
   }) => Promise<DesktopUpdateFastApplyResult>;
-  recordSourceHistory: (payload: {
-    targetCommit: string;
-    releaseTag: string;
-    sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
-  }) => Promise<
-    { ok: true; revisionId: string } | { ok: false; reason: string }
-  >;
   refreshNativeHelpers: (
     releaseTag: string,
     artifactRefs?: StellaReleaseArtifactRef[],
@@ -1288,8 +1266,6 @@ export type ElectronUpdatesApi = {
     commit: string,
     tag?: string,
     options?: {
-      mode?: "git-ancestry" | "release-pointer";
-      startingHeadCommit?: string;
       agentRunId?: string;
     },
   ) => Promise<InstallManifestSnapshot | null>;

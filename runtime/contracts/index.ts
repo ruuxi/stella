@@ -442,20 +442,6 @@ export type StoreReleaseGitObjectUpload = StoreReleaseGitObject & {
   compressedBytes: Uint8Array;
 };
 
-export type DesktopReleaseSourcePackRef = {
-  kind: "url";
-  url: string;
-  sha256: string;
-  sizeBytes: number;
-};
-
-export type DesktopReleaseSourceHistoryRef = {
-  kind: "url";
-  url: string;
-  sha256: string;
-  sizeBytes: number;
-};
-
 export type StellaReleaseArtifactRef =
   | {
       kind: "native-helpers";

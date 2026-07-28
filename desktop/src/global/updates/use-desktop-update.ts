@@ -54,12 +54,6 @@ type DesktopUpdateState = {
     platform: string;
     tag: string;
     commit: string;
-    sourcePackUrl?: string;
-    sourcePackSha256?: string;
-    sourcePackSize?: number;
-    sourceHistoryUrl?: string;
-    sourceHistorySha256?: string;
-    sourceHistorySize?: number;
     artifactRefs?: StellaReleaseArtifactRef[];
     publishedAt: number;
   } | null;

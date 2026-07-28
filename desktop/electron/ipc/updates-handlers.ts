@@ -7,19 +7,14 @@
  *   - `updates:getInstallManifest` — return the parsed manifest so the
  *     renderer can compare its `desktopReleaseCommit` against the
  *     reactive `currentDesktopRelease` Convex query.
- *   - `updates:tryApplyCleanUpdate` — compare the install's tracked content
- *     with its recorded published base. An empty overlay lands directly on
- *     the new published commit (no merge); genuine overlays go through the
- *     content-aware source-pack merger and only real content conflicts reach
- *     the install-update agent. The ancestry-based Git path remains a legacy
- *     fallback for releases without a usable source pack.
+ *   - `updates:tryApplyCleanUpdate` — fetch the exact published commit,
+ *     fast-forward an unchanged clone, merge local commits when Git can do so
+ *     cleanly, and send only real conflicts to the install-update agent.
  *   - `updates:recordAppliedCommit` — verify against the local git tree
  *     that the install-update agent actually landed the target commit,
  *     then overwrite the manifest's `desktopReleaseCommit`. The agent's
- *     self-reported "completed" outcome is not trusted: normal updates use
- *     Git ancestry, while locally promoted builds may use the tracked root
- *     package version as a release floor. Both paths require a clean tree
- *     with no merge in progress. The local "start" commit
+ *     self-reported "completed" outcome is not trusted: the published commit
+ *     must be in Git ancestry with no merge in progress. The local "start" commit
  *     (`desktopInstallBaseCommit`) is left untouched.
  */
 
@@ -32,41 +27,19 @@ import { setupEnvironment } from "dugite";
 import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
-  IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
   IPC_UPDATES_ROLLBACK_CANCELED,
   IPC_UPDATES_TRY_APPLY_CLEAN,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
-import type {
-  DesktopReleaseSourceHistoryRef,
-  DesktopReleaseSourcePackRef,
-  StellaReleaseArtifactRef,
-  StoreReleaseSourcePack,
-} from "../../../runtime/contracts/index.js";
-import {
-  type StellaSourceApplyResult,
-  type StellaSourceApplyConflict,
-  type StellaSourceBlob,
-} from "../../../runtime/kernel/self-mod/stella-source-control.js";
+import type { StellaReleaseArtifactRef } from "../../../runtime/contracts/index.js";
 import { rollbackGitChangesSince } from "../../../runtime/kernel/self-mod/git/revert.js";
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
-import {
-  applyCleanSourceImportToWorkingTree,
-  preflightSourcePackImport,
-} from "../../../runtime/worker/source-import-core.js";
 import {
   STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
   runStorePublishDependencyInstall,
   storePublishTouchesDependencyFiles,
 } from "../../../runtime/worker/store-source-pack-install.js";
-import {
-  desktopSourcePackCanApplyLocally,
-  desktopSourcePackMatchesBaseCommit,
-  desktopReleaseManifestUrl,
-  recordDesktopUpdateSourceHistory,
-  sourceHistoryRefFromDesktopReleaseManifest,
-} from "./desktop-source-history.js";
 import {
   getFileLogger,
   type LogFields,
@@ -82,20 +55,7 @@ const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
 const MAX_STELLA_BROWSER_ARTIFACT_BYTES = 100 * 1024 * 1024;
 const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
-// Recording source history is best-effort and may run after launch or after an
-// update. Keep it out of renderer startup and wait for real runtime readiness
-// before issuing the worker RPC.
-const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 45_000;
 const UPDATE_DOWNLOAD_RETRY_DELAYS_MS = [750, 1_500, 3_000, 6_000];
-// The per-launch source-history reconciliation (`runner-ready`) is a background
-// safety net for the CURRENT install commit — nothing the user does in the first
-// seconds of a session depends on it. Firing it immediately on runner-ready (a
-// setTimeout(0)) lands its slow worker RPC (`hasSourceRevisionForCommit`, ~6s on
-// a cold Windows worker) right in the middle of worker warmup, so it competes
-// with first chat readiness. Delay it past the warmup window so it runs while
-// the app is idle. Post-update triggers (`clean-update-applied`,
-// `applied-commit-recorded`) stay immediate — those are genuinely time-sensitive.
-const OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS = 20_000;
 
 class DesktopUpdateRuntimeTimeoutError extends Error {
   constructor(
@@ -111,6 +71,9 @@ class DesktopUpdateRuntimeTimeoutError extends Error {
 
 const shortCommit = (commit: string | null | undefined): string | undefined =>
   commit ? commit.slice(0, 12) : undefined;
+
+const hashBytes = (bytes: Uint8Array): string =>
+  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
 const logDesktopUpdateProcess = (event: string, fields?: LogFields) => {
   getFileLogger()?.process(event, fields);
@@ -289,10 +252,7 @@ export type InstallStateSnapshot = {
 
 export type UpdateAttemptPhase =
   | "started"
-  | "source-pack-preflight"
-  | "source-pack-write"
-  | "source-pack-commit"
-  | "content-landing"
+  | "git-fast-forward"
   | "git-fetch"
   | "git-merge"
   | "dependency-install"
@@ -300,11 +260,7 @@ export type UpdateAttemptPhase =
   | "record-complete"
   | "agent-fallback";
 
-export type UpdateAttemptMode =
-  | "source-pack"
-  | "git"
-  | "native-helpers"
-  | "agent";
+export type UpdateAttemptMode = "git" | "native-helpers" | "agent";
 
 export type UpdateAttemptRecoveryAction = "resume" | "discard" | "needs-agent";
 
@@ -368,10 +324,7 @@ const asStringArray = (value: unknown): string[] =>
 const parseUpdateAttemptPhase = (value: unknown): UpdateAttemptPhase | null => {
   switch (value) {
     case "started":
-    case "source-pack-preflight":
-    case "source-pack-write":
-    case "source-pack-commit":
-    case "content-landing":
+    case "git-fast-forward":
     case "git-fetch":
     case "git-merge":
     case "dependency-install":
@@ -386,7 +339,6 @@ const parseUpdateAttemptPhase = (value: unknown): UpdateAttemptPhase | null => {
 
 const parseUpdateAttemptMode = (value: unknown): UpdateAttemptMode | null => {
   switch (value) {
-    case "source-pack":
     case "git":
     case "native-helpers":
     case "agent":
@@ -475,11 +427,7 @@ type ProcessRunResult = { exitCode: number; stdout: string; stderr: string };
 type ReleaseManifestSnapshot = {
   tag: string | null;
   commit: string | null;
-  sourceHistoryRef: DesktopReleaseSourceHistoryRef | null;
 };
-type OfficialSourceHistoryRecordResult =
-  | { ok: true; revisionId: string }
-  | { ok: false; reason: string };
 
 const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
   new Promise((resolve, reject) => {
@@ -802,41 +750,6 @@ type VerifyResult =
   | { ok: true; headCommit: string }
   | { ok: false; reason: string };
 
-type DesktopVersion = readonly [major: number, minor: number, patch: number];
-
-const parseDesktopVersion = (value: string): DesktopVersion | null => {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim());
-  if (!match) return null;
-  const parts = match.slice(1).map(Number);
-  if (parts.some((part) => !Number.isSafeInteger(part))) return null;
-  return parts as unknown as DesktopVersion;
-};
-
-const desktopVersionFromReleaseTag = (
-  releaseTag: string,
-): DesktopVersion | null => {
-  const match = /^desktop-v(.+)$/.exec(releaseTag.trim());
-  return match ? parseDesktopVersion(match[1]!) : null;
-};
-
-// The tracked root package version is a conservative release floor for local
-// source promotions: bump it only after that published release is contained in
-// DEV. It never replaces commit ancestry for ordinary updater-owned installs.
-export const localDesktopVersionCoversReleaseTag = (
-  localVersion: string,
-  releaseTag: string,
-): boolean => {
-  const local = parseDesktopVersion(localVersion);
-  const published = desktopVersionFromReleaseTag(releaseTag);
-  if (!local || !published) return false;
-  for (let index = 0; index < local.length; index += 1) {
-    if (local[index]! !== published[index]!) {
-      return local[index]! > published[index]!;
-    }
-  }
-  return true;
-};
-
 type DesktopUpdateFastApplyResult =
   | {
       status: "applied";
@@ -859,10 +772,6 @@ type DesktopUpdateFastApplyResult =
       reason: string;
       headCommit?: string;
       changedFiles?: string[];
-      sourcePackFile?: string;
-      sourcePackConflictFile?: string;
-      sourcePackConflictJson?: string;
-      contentConflicts?: true;
     };
 
 type DesktopUpdateRollbackResult =
@@ -877,9 +786,7 @@ type DesktopUpdateRollbackResult =
       headCommit?: string;
     };
 
-const MAX_DESKTOP_SOURCE_PACK_BYTES = 10 * 1024 * 1024;
 const MAX_DESKTOP_SOURCE_HISTORY_BYTES = 10 * 1024 * 1024;
-const MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES = 200 * 1024;
 
 const parseGitNameList = (stdout: string): string[] =>
   stdout
@@ -940,7 +847,7 @@ const finishUpdateSelfModRun = async (args: {
   reacquireRunner?: ReacquireRunner | undefined;
   runId: string;
   paths: string[];
-  logScope: "source-pack" | "git" | "agent-recovery";
+  logScope: "git" | "agent-recovery";
   logFields: LogFields;
 }): Promise<{ reloaded: boolean }> => {
   try {
@@ -1070,60 +977,6 @@ const hasTrackedWorkingTreeChanges = async (
     );
   }
   return status.stdout.trim().length > 0;
-};
-
-const verifyLocalDesktopVersionCoversRelease = async (
-  stellaAppDir: string,
-  releaseTag: string | null,
-): Promise<VerifyResult & { localVersion?: string }> => {
-  if (!releaseTag) {
-    return { ok: false, reason: "Published release tag is unavailable." };
-  }
-  if (await hasMergeInProgress(stellaAppDir)) {
-    return {
-      ok: false,
-      reason: "A merge is still in progress in the install tree.",
-    };
-  }
-  if (await hasTrackedWorkingTreeChanges(stellaAppDir)) {
-    return {
-      ok: false,
-      reason: "The install tree still has tracked local changes.",
-    };
-  }
-  const rawPackage = await readGitFile(stellaAppDir, "HEAD:package.json");
-  if (!rawPackage) {
-    return {
-      ok: false,
-      reason: "Tracked desktop package metadata is unavailable.",
-    };
-  }
-  let localVersion: string | null = null;
-  try {
-    const parsed = JSON.parse(rawPackage) as Record<string, unknown>;
-    localVersion = asString(parsed.version);
-  } catch {
-    return {
-      ok: false,
-      reason: "Tracked desktop package metadata is invalid.",
-    };
-  }
-  if (
-    !localVersion ||
-    !localDesktopVersionCoversReleaseTag(localVersion, releaseTag)
-  ) {
-    return {
-      ok: false,
-      reason: localVersion
-        ? `Local desktop version ${localVersion} does not cover ${releaseTag}.`
-        : "Tracked desktop package version is unavailable.",
-    };
-  }
-  return {
-    ok: true,
-    headCommit: await readHeadCommit(stellaAppDir),
-    localVersion,
-  };
 };
 
 const listTrackedWorkingTreeChanges = async (
@@ -1438,83 +1291,6 @@ const writeAppliedCommit = async (
   return parseManifest(next);
 };
 
-const writeAppliedReleasePointer = async (
-  stellaAppDir: string,
-  commit: string,
-  tag: string | null,
-): Promise<InstallManifestSnapshot | null> => {
-  const manifestPath = manifestPathFromRoot(stellaAppDir);
-  let parsed: Record<string, unknown> | null = null;
-  try {
-    const raw = await fs.readFile(manifestPath, "utf-8");
-    parseManifest(raw);
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    const recovered = await readManifestWithRecovery(stellaAppDir);
-    if (recovered) {
-      parsed = {
-        version: recovered.version,
-        platform: recovered.platform,
-        installPath: recovered.installPath,
-        installedAt: recovered.installedAt,
-        desktopReleaseTag: recovered.desktopReleaseTag,
-        desktopReleaseCommit: recovered.desktopReleaseCommit,
-        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
-        installState: recovered.installState,
-        lastUpdateAttempt: recovered.lastUpdateAttempt,
-      };
-    }
-  }
-  if (!parsed) {
-    throw new Error("Install manifest is unavailable.");
-  }
-  parsed.desktopReleaseCommit = commit;
-  if (tag) {
-    parsed.desktopReleaseTag = tag;
-  }
-  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaAppDir);
-  const localHeadCommit = await readHeadCommit(stellaAppDir).catch(() => null);
-  parsed.installState = {
-    status: "complete",
-    desktopReleaseTag: tag ?? asString(parsed.desktopReleaseTag),
-    desktopReleaseCommit: commit,
-    localHeadCommit,
-    nativeHelpersSha,
-    completedAt: new Date().toISOString(),
-  };
-  const previousAttempt = parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt);
-  parsed.lastUpdateAttempt = {
-    status: "complete",
-    targetTag: tag,
-    targetCommit: commit,
-    startedAt: previousAttempt?.startedAt ?? new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
-    reason: null,
-    operationId: previousAttempt?.operationId ?? null,
-    phase: "record-complete",
-    mode: previousAttempt?.mode ?? "source-pack",
-    recoveryAction: previousAttempt?.recoveryAction ?? "resume",
-    startingHeadCommit: previousAttempt?.startingHeadCommit ?? null,
-    updatedAt: new Date().toISOString(),
-    changedFiles: previousAttempt?.changedFiles ?? [],
-    ownedTempPaths: previousAttempt?.ownedTempPaths ?? [],
-    nativeHelpersManifestUrl: previousAttempt?.nativeHelpersManifestUrl ?? null,
-  };
-  const next = `${JSON.stringify(parsed, null, 2)}\n`;
-  parseManifest(next);
-  await writeFileAtomic(manifestPath, next);
-  await writeAppliedReleaseManifest(stellaAppDir, commit, tag).catch(
-    (error) => {
-      logDesktopUpdateWarn("desktop-update.release-manifest.write-failed", {
-        tag: tag ?? undefined,
-        commit: shortCommit(commit),
-        error,
-      });
-    },
-  );
-  return parseManifest(next);
-};
-
 /**
  * Confirm the install-update agent actually landed `targetCommit` into the
  * install's git history. The two checks together are the contract:
@@ -1682,14 +1458,9 @@ const readReleaseManifest = async (
     return {
       tag: asString(parsed.tag),
       commit,
-      sourceHistoryRef: commit
-        ? sourceHistoryRefFromDesktopReleaseManifest(parsed, {
-            targetCommit: commit,
-          })
-        : null,
     };
   } catch {
-    return { tag: null, commit: null, sourceHistoryRef: null };
+    return { tag: null, commit: null };
   }
 };
 
@@ -1738,8 +1509,6 @@ const readManifestWithRecovery = async (
   }
   return await recoverManifest(stellaAppDir);
 };
-
-type RecordAppliedCommitMode = "git-ancestry" | "release-pointer";
 
 const listRecoveredAgentChangedFiles = async (
   stellaAppDir: string,
@@ -1847,50 +1616,13 @@ export const recordAppliedDesktopUpdate = async (args: {
   reacquireRunner?: ReacquireRunner | undefined;
   commit: string;
   tag: string | null;
-  mode?: RecordAppliedCommitMode | undefined;
   startingHeadCommit?: string | null | undefined;
   agentRunId?: string | null | undefined;
 }): Promise<InstallManifestSnapshot | null> => {
   const startingHeadCommit = args.startingHeadCommit ?? null;
-  let recordedViaLocalVersion = false;
-  if (args.mode === "release-pointer") {
-    if (!startingHeadCommit) {
-      throw new Error("startingHeadCommit is required.");
-    }
-    if (await hasMergeInProgress(args.stellaAppDir)) {
-      throw new Error("A merge is still in progress in the install tree.");
-    }
-    if (await hasTrackedWorkingTreeChanges(args.stellaAppDir)) {
-      throw new Error("The install tree still has tracked local changes.");
-    }
-    const currentHead = await readHeadCommit(args.stellaAppDir);
-    if (currentHead === startingHeadCommit) {
-      throw new Error(
-        "The install-update agent did not create an update commit.",
-      );
-    }
-  } else {
-    const verification = await verifyMergeApplied(
-      args.stellaAppDir,
-      args.commit,
-    );
-    if (!verification.ok) {
-      const localVersionVerification =
-        await verifyLocalDesktopVersionCoversRelease(
-          args.stellaAppDir,
-          args.tag,
-        );
-      if (!localVersionVerification.ok) {
-        throw new Error(verification.reason);
-      }
-      recordedViaLocalVersion = true;
-      logDesktopUpdateProcess("desktop-update.local-version.reconciled", {
-        tag: args.tag ?? undefined,
-        commit: shortCommit(args.commit),
-        localVersion: localVersionVerification.localVersion,
-        headCommit: shortCommit(localVersionVerification.headCommit),
-      });
-    }
+  const verification = await verifyMergeApplied(args.stellaAppDir, args.commit);
+  if (!verification.ok) {
+    throw new Error(verification.reason);
   }
 
   const attempt = (await readManifestWithRecovery(args.stellaAppDir))
@@ -1900,9 +1632,7 @@ export const recordAppliedDesktopUpdate = async (args: {
     attempt.mode === "agent" &&
     attempt.targetCommit === args.commit;
   const needsFinalizationCheck =
-    isAgentAttempt &&
-    (Boolean(args.agentRunId) ||
-      (attempt.status === "failed" && !recordedViaLocalVersion));
+    isAgentAttempt && (Boolean(args.agentRunId) || attempt.status === "failed");
   if (needsFinalizationCheck) {
     const runner = args.runner ?? (await args.reacquireRunner?.());
     if (!runner) {
@@ -1929,9 +1659,7 @@ export const recordAppliedDesktopUpdate = async (args: {
     }
   }
 
-  return args.mode === "release-pointer" || recordedViaLocalVersion
-    ? await writeAppliedReleasePointer(args.stellaAppDir, args.commit, args.tag)
-    : await writeAppliedCommit(args.stellaAppDir, args.commit, args.tag);
+  return await writeAppliedCommit(args.stellaAppDir, args.commit, args.tag);
 };
 
 type DesktopUpdateTransaction = {
@@ -2097,333 +1825,6 @@ const cleanupOwnedUpdateTempPaths = async (
     cleaned.push(relativePath);
   }
   return cleaned;
-};
-
-const hashBytes = (bytes: Uint8Array): string =>
-  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-
-const fetchDesktopSourcePackRef = async (
-  ref: DesktopReleaseSourcePackRef | DesktopReleaseSourceHistoryRef,
-  args: { label: string; maxBytes: number },
-): Promise<StoreReleaseSourcePack> => {
-  if (ref.kind !== "url" || !/^https:\/\//i.test(ref.url)) {
-    throw new Error(`${args.label} reference is invalid.`);
-  }
-  if (!/^sha256:[0-9a-f]{64}$/i.test(ref.sha256)) {
-    throw new Error(`${args.label} hash is invalid.`);
-  }
-  if (
-    !Number.isInteger(ref.sizeBytes) ||
-    ref.sizeBytes <= 0 ||
-    ref.sizeBytes > args.maxBytes
-  ) {
-    throw new Error(`${args.label} size is invalid.`);
-  }
-  const bytes = await withDownloadRetries(args.label, ref.url, async () => {
-    const response = await fetch(ref.url);
-    if (!response.ok) {
-      const message = `${args.label} download failed (${response.status}).`;
-      if (isRetryableHttpStatus(response.status)) {
-        throw new RetryableDownloadError(message, response.status);
-      }
-      throw new Error(message);
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength !== ref.sizeBytes) {
-      throw new RetryableDownloadError(
-        `${args.label} size did not match the release.`,
-      );
-    }
-    return bytes;
-  });
-  if (hashBytes(bytes).toLowerCase() !== ref.sha256.toLowerCase()) {
-    throw new Error(`${args.label} hash did not match the release.`);
-  }
-  return JSON.parse(new TextDecoder().decode(bytes)) as StoreReleaseSourcePack;
-};
-
-const fetchDesktopUpdateSourcePack = async (
-  ref: DesktopReleaseSourcePackRef,
-): Promise<StoreReleaseSourcePack> =>
-  fetchDesktopSourcePackRef(ref, {
-    label: "Desktop source pack",
-    maxBytes: MAX_DESKTOP_SOURCE_PACK_BYTES,
-  });
-
-const sourcePackEmbedsContent = (pack: StoreReleaseSourcePack): boolean =>
-  pack.changeSets.some((changeSet) =>
-    changeSet.changes.some((change) => "base" in change || "next" in change),
-  );
-
-const fetchDesktopSourceHistoryPack = async (
-  ref: DesktopReleaseSourceHistoryRef,
-): Promise<StoreReleaseSourcePack> => {
-  const pack = await fetchDesktopSourcePackRef(ref, {
-    label: "Desktop source history",
-    maxBytes: MAX_DESKTOP_SOURCE_HISTORY_BYTES,
-  });
-  if (sourcePackEmbedsContent(pack)) {
-    throw new Error("Desktop source history must not include source content.");
-  }
-  return pack;
-};
-
-const fetchDesktopReleaseSourceHistoryRef = async (args: {
-  releaseTag: string;
-  targetCommit: string;
-}): Promise<DesktopReleaseSourceHistoryRef | null> => {
-  const url = desktopReleaseManifestUrl(args.releaseTag);
-  const response = await withDownloadRetries(
-    "Desktop release manifest",
-    url,
-    async () => {
-      const next = await fetch(url);
-      if (!next.ok && isRetryableHttpStatus(next.status)) {
-        throw new RetryableDownloadError(
-          `Desktop release manifest download failed (${next.status}).`,
-          next.status,
-        );
-      }
-      return next;
-    },
-  );
-  if (!response.ok) {
-    return null;
-  }
-  const manifest = (await response.json()) as unknown;
-  return sourceHistoryRefFromDesktopReleaseManifest(manifest, {
-    targetCommit: args.targetCommit,
-  });
-};
-
-const createOfficialSourceHistoryReconciler = (
-  options: UpdatesHandlersOptions,
-) => {
-  const inFlight = new Map<
-    string,
-    Promise<OfficialSourceHistoryRecordResult>
-  >();
-
-  const resolveInstalledRelease = async (args?: {
-    targetCommit?: string | null;
-    releaseTag?: string | null;
-    sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
-  }): Promise<{
-    targetCommit: string;
-    releaseTag: string;
-    sourceHistoryRef: DesktopReleaseSourceHistoryRef | null;
-  } | null> => {
-    const targetCommit = asString(args?.targetCommit);
-    const releaseTag = asString(args?.releaseTag);
-    if (targetCommit && releaseTag) {
-      let sourceHistoryRef = args?.sourceHistoryRef ?? null;
-      if (!sourceHistoryRef) {
-        const stellaAppDir = options.getStellaAppDir();
-        if (stellaAppDir) {
-          const release = await readReleaseManifest(stellaAppDir);
-          if (release.commit === targetCommit && release.tag === releaseTag) {
-            sourceHistoryRef = release.sourceHistoryRef;
-          }
-        }
-      }
-      return {
-        targetCommit,
-        releaseTag,
-        sourceHistoryRef,
-      };
-    }
-
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) {
-      return null;
-    }
-    const release = await readReleaseManifest(stellaAppDir);
-    if (!release.commit || !release.tag) {
-      return null;
-    }
-    return {
-      targetCommit: release.commit,
-      releaseTag: release.tag,
-      sourceHistoryRef: release.sourceHistoryRef,
-    };
-  };
-
-  const waitForReadyRunner = async (fields: LogFields) => {
-    let runner = options.getStellaHostRunner?.() ?? null;
-    if (!runner) {
-      runner = await waitForConnectedRunner(
-        () => options.getStellaHostRunner?.() ?? null,
-        {
-          timeoutMs: UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-          unavailableMessage: "Runtime not available.",
-          ...(options.onStellaHostRunnerChanged
-            ? { onRunnerChanged: options.onStellaHostRunnerChanged }
-            : {}),
-        },
-      );
-    }
-
-    await withDesktopUpdateTimeout(
-      "official.wait-runtime-ready",
-      UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-      runner.waitUntilReady(UPDATE_SOURCE_HISTORY_TIMEOUT_MS),
-      fields,
-    );
-    return runner;
-  };
-
-  const record = async (args?: {
-    targetCommit?: string | null;
-    releaseTag?: string | null;
-    sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
-    reason?: string;
-  }): Promise<OfficialSourceHistoryRecordResult> => {
-    const release = await resolveInstalledRelease(args);
-    if (!release) {
-      logDesktopUpdateWarn("desktop-update.record-source-history.unavailable", {
-        reason: args?.reason ?? "installed-release-unavailable",
-      });
-      return { ok: false, reason: "installed-release-unavailable" };
-    }
-
-    const key = `${release.targetCommit}:${release.releaseTag}:${release.sourceHistoryRef?.sha256 ?? "manifest"}`;
-    const existing = inFlight.get(key);
-    if (existing) {
-      return await existing;
-    }
-
-    const promise = (async (): Promise<OfficialSourceHistoryRecordResult> => {
-      const startedAt = Date.now();
-      const reason = args?.reason ?? "manual";
-      const baseFields = {
-        releaseTag: release.releaseTag,
-        targetCommit: shortCommit(release.targetCommit),
-        reason,
-      };
-      logDesktopUpdateProcess("desktop-update.record-source-history.start", {
-        ...baseFields,
-        hasSourceHistoryRef: Boolean(release.sourceHistoryRef),
-      });
-
-      let runner: StellaHostRunner;
-      try {
-        runner = await waitForReadyRunner(baseFields);
-      } catch {
-        logDesktopUpdateWarn(
-          "desktop-update.record-source-history.unavailable",
-          {
-            ...baseFields,
-            elapsedMs: Date.now() - startedAt,
-            reason: "runtime-unavailable",
-          },
-        );
-        return { ok: false, reason: "runtime-unavailable" };
-      }
-
-      const existing = await withDesktopUpdateTimeout(
-        "official.check-history",
-        UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-        runner.hasSourceRevisionForCommit(release.targetCommit),
-        baseFields,
-      ).catch((error) => {
-        logDesktopUpdateWarn(
-          "desktop-update.record-source-history.check-failed",
-          {
-            ...baseFields,
-            error,
-          },
-        );
-        return null;
-      });
-      if (existing?.exists) {
-        const revisionId = existing.revisionId ?? `git:${release.targetCommit}`;
-        logDesktopUpdateProcess(
-          "desktop-update.record-source-history.skipped",
-          {
-            ...baseFields,
-            revisionId,
-            elapsedMs: Date.now() - startedAt,
-            reason: "already-recorded",
-          },
-        );
-        return { ok: true, revisionId };
-      }
-
-      let sourceHistoryRef = release.sourceHistoryRef;
-      if (!sourceHistoryRef) {
-        sourceHistoryRef = await fetchDesktopReleaseSourceHistoryRef({
-          releaseTag: release.releaseTag,
-          targetCommit: release.targetCommit,
-        });
-      }
-      if (!sourceHistoryRef) {
-        logDesktopUpdateWarn(
-          "desktop-update.record-source-history.unavailable",
-          {
-            ...baseFields,
-            elapsedMs: Date.now() - startedAt,
-            reason: "source-history-unavailable",
-          },
-        );
-        return { ok: false, reason: "source-history-unavailable" };
-      }
-
-      try {
-        const sourcePack =
-          await fetchDesktopSourceHistoryPack(sourceHistoryRef);
-        await withDesktopUpdateTimeout(
-          "official.record-history",
-          UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-          recordDesktopUpdateSourceHistory(runner, {
-            sourcePack,
-            releaseTag: release.releaseTag,
-            targetCommit: release.targetCommit,
-            origin: "official",
-          }),
-          baseFields,
-        );
-        logDesktopUpdateProcess("desktop-update.record-source-history.done", {
-          ...baseFields,
-          revisionId: sourcePack.revisionId,
-          elapsedMs: Date.now() - startedAt,
-        });
-        return { ok: true, revisionId: sourcePack.revisionId };
-      } catch (error) {
-        logDesktopUpdateError(
-          "desktop-update.record-source-history.failed",
-          error,
-          {
-            ...baseFields,
-            elapsedMs: Date.now() - startedAt,
-          },
-        );
-        throw error;
-      }
-    })().finally(() => {
-      inFlight.delete(key);
-    });
-    inFlight.set(key, promise);
-    return await promise;
-  };
-
-  const schedule = (
-    reason: string,
-    args?: {
-      targetCommit?: string | null;
-      releaseTag?: string | null;
-      sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
-    },
-    opts?: { delayMs?: number },
-  ) => {
-    // Concurrent/duplicate scheduled records are deduped by the inFlight key in
-    // record(), so a delayed timer that overlaps a later trigger is harmless.
-    const timer = setTimeout(() => {
-      void record({ ...(args ?? {}), reason }).catch(() => undefined);
-    }, opts?.delayMs ?? 0);
-    timer.unref?.();
-  };
-
-  return { record, schedule };
 };
 
 const writeFileAtomic = async (filePath: string, content: string) => {
@@ -2663,79 +2064,8 @@ export const recoverInterruptedDesktopUpdate = async (
   }
 
   const startingHeadCommit = attempt.startingHeadCommit;
-  const currentHead = await readHeadCommit(stellaAppDir).catch(() => null);
-  if (
-    startingHeadCommit &&
-    currentHead &&
-    currentHead !== startingHeadCommit &&
-    attempt.mode === "source-pack"
-  ) {
-    const subjects = await readCommitSubjectsSince(
-      stellaAppDir,
-      startingHeadCommit,
-    );
-    const owned =
-      subjects &&
-      subjects.length > 0 &&
-      subjects.every(updateCommitSubjectPolicy(attempt.targetTag));
-    if (owned) {
-      try {
-        const reconciliation = await reconcileUpdaterOwnedPaths(
-          stellaAppDir,
-          attempt.changedFiles,
-        );
-        if (reconciliation.browserBinaryActivated) {
-          logDesktopUpdateProcess("desktop-update.recovery.browser-activated", {
-            targetCommit: shortCommit(attempt.targetCommit),
-            updaterOwnedPaths: attempt.changedFiles,
-          });
-        }
-        await runDependencyInstall();
-        await refresh();
-        await reconcileUpdaterOwnedPaths(stellaAppDir, attempt.changedFiles);
-        await writeUpdateAttemptState(stellaAppDir, {
-          status: "updating",
-          targetCommit: attempt.targetCommit,
-          targetTag: attempt.targetTag,
-          operationId: attempt.operationId,
-          phase: "record-complete",
-          mode: "source-pack",
-          recoveryAction: "resume",
-          startingHeadCommit,
-          changedFiles: attempt.changedFiles,
-          ownedTempPaths,
-          nativeHelpersManifestUrl: attempt.nativeHelpersManifestUrl,
-        });
-        const nextManifest = await writeAppliedReleasePointer(
-          stellaAppDir,
-          attempt.targetCommit,
-          attempt.targetTag,
-        );
-        return {
-          status: "completed",
-          reason:
-            "Interrupted source-pack update had already created an owned update commit; refreshed helpers and recorded completion.",
-          manifest: nextManifest,
-          cleanedTempPaths,
-        };
-      } catch (error) {
-        return await failAttempt(
-          updateAttemptFailedReason(
-            error,
-            "Interrupted source-pack update could not be completed during recovery.",
-          ),
-        );
-      }
-    }
-    return await failAttempt(
-      "HEAD moved after the interrupted update, but the commits do not match Stella's update ownership policy.",
-    );
-  }
 
-  const shouldDiscard =
-    attempt.recoveryAction === "discard" ||
-    attempt.phase === "source-pack-write" ||
-    attempt.phase === "source-pack-commit";
+  const shouldDiscard = attempt.recoveryAction === "discard";
   if (shouldDiscard && startingHeadCommit) {
     const rollback = await rollbackCanceledDesktopUpdate(stellaAppDir, {
       startingHeadCommit,
@@ -2797,59 +2127,36 @@ export const writeAppliedReleaseManifest = async (
   stellaAppDir: string,
   commit: string,
   tag: string | null,
-  options?: { releaseManifestBaseUrl?: string },
 ): Promise<boolean> => {
   if (!tag) return false;
-  const url = desktopReleaseManifestUrl(tag, options?.releaseManifestBaseUrl);
-  const response = await withDownloadRetries(
-    "Desktop release manifest",
-    url,
-    async () => {
-      const next = await fetch(url);
-      if (!next.ok && isRetryableHttpStatus(next.status)) {
-        throw new RetryableDownloadError(
-          `Release manifest download failed (${next.status}).`,
-          next.status,
-        );
-      }
-      return next;
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Release manifest download failed (${response.status}).`);
+  const version = tag.startsWith("desktop-v")
+    ? tag.slice("desktop-v".length)
+    : tag;
+  let existing: Record<string, unknown> = {};
+  try {
+    existing = JSON.parse(
+      await fs.readFile(releaseManifestPathFromRoot(stellaAppDir), "utf8"),
+    ) as Record<string, unknown>;
+  } catch {
+    // A missing local release marker is recoverable from the applied commit.
   }
-  const manifest = (await response.json()) as Record<string, unknown>;
-  if (manifest.tag !== tag) {
-    throw new Error("Release manifest tag did not match the applied release.");
-  }
-  if (manifest.commit !== commit) {
-    throw new Error(
-      "Release manifest commit did not match the applied release.",
-    );
-  }
-  const schemaVersion = manifest.schemaVersion;
-  if (typeof schemaVersion !== "number" || schemaVersion < 1) {
-    throw new Error("Release manifest schemaVersion is invalid.");
-  }
+  const manifest = {
+    ...existing,
+    schemaVersion: 1,
+    tag,
+    version,
+    commit,
+    files:
+      existing.files && typeof existing.files === "object"
+        ? existing.files
+        : {},
+  };
   await writeFileAtomic(
     releaseManifestPathFromRoot(stellaAppDir),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
   return true;
 };
-
-type SourcePackAppliedChangeForAgent = {
-  path: string;
-  content: StellaSourceBlob | null;
-};
-
-const buildSourcePackAppliedChangesForAgent = (
-  sourceApply: StellaSourceApplyResult,
-): SourcePackAppliedChangeForAgent[] =>
-  sourceApply.appliedPaths.map((filePath) => ({
-    path: filePath,
-    content: sourceApply.tree[filePath] ?? null,
-  }));
 
 const gitCommitExists = async (
   stellaAppDir: string,
@@ -2946,7 +2253,7 @@ const createContentLandingRecoverySnapshot = async (args: {
     throw new Error(
       gitFailureDetail(
         stashResult,
-        "Could not snapshot the install before content landing.",
+        "Could not snapshot the install before fast-forward.",
       ),
     );
   }
@@ -3086,11 +2393,10 @@ const listLegacyBrowserPathsRemovedByTarget = async (
 };
 
 /**
- * If the install's tracked content exactly matches its published base, land
- * directly on the new published commit. No merge is computed or attempted,
- * so synthetic install lineage cannot manufacture add/add conflicts.
+ * If the install's tracked content exactly matches its published base and
+ * HEAD is an ancestor of the target, fast-forward to the published commit.
  */
-const tryLandContentCleanPublishedTree = async (
+const tryFastForwardCleanPublishedTree = async (
   stellaAppDir: string,
   stellaDataDir: string,
   runner: StellaHostRunner | null,
@@ -3141,6 +2447,13 @@ const tryLandContentCleanPublishedTree = async (
     workingTreeOverlayPaths: overlay.workingTreeOverlayPaths,
   });
   if (effectiveOverlayPaths.length > 0) return null;
+  const canFastForward = await runGit(stellaAppDir, [
+    "merge-base",
+    "--is-ancestor",
+    "HEAD",
+    args.targetCommit,
+  ]);
+  if (canFastForward.exitCode !== 0) return null;
 
   const changedResult = await runGit(stellaAppDir, [
     "-c",
@@ -3177,7 +2490,7 @@ const tryLandContentCleanPublishedTree = async (
     throw new Error(
       gitFailureDetail(
         targetFilesResult,
-        "Could not inspect target paths before content landing.",
+        "Could not inspect target paths before fast-forward.",
       ),
     );
   }
@@ -3215,7 +2528,7 @@ const tryLandContentCleanPublishedTree = async (
     };
   }
 
-  const runId = `desktop-update-content-landing:${Date.now()}:${Math.random()
+  const runId = `desktop-update-git-fast-forward:${Date.now()}:${Math.random()
     .toString(36)
     .slice(2)}`;
   let hmrRunStarted = false;
@@ -3223,7 +2536,7 @@ const tryLandContentCleanPublishedTree = async (
   try {
     if (runner && transitionPaths.length > 0) {
       await withDesktopUpdateTimeout(
-        "content-landing.begin-external-self-mod",
+        "git-fast-forward.begin-external-self-mod",
         UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
         runner.beginExternalSelfMod({
           runId,
@@ -3240,12 +2553,12 @@ const tryLandContentCleanPublishedTree = async (
     }
 
     await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-      phase: "content-landing",
+      phase: "git-fast-forward",
       mode: "git",
       recoveryAction: "resume",
       changedFiles: transitionPaths,
     });
-    logDesktopUpdateProcess("desktop-update.content-landing.start", {
+    logDesktopUpdateProcess("desktop-update.git-fast-forward.start", {
       runId,
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
@@ -3261,7 +2574,7 @@ const tryLandContentCleanPublishedTree = async (
       overlay,
       obstructionPaths,
     });
-    logDesktopUpdateProcess("desktop-update.content-landing.snapshot", {
+    logDesktopUpdateProcess("desktop-update.git-fast-forward.snapshot", {
       runId,
       releaseTag: args.releaseTag,
       recoveryRoot: recoverySnapshot.recoveryRoot,
@@ -3273,17 +2586,17 @@ const tryLandContentCleanPublishedTree = async (
       ignoredObstructionPaths: obstructingIgnoredPaths,
       untrackedObstructionPaths: obstructingUntrackedFiles,
     });
-    const resetResult = await runGit(stellaAppDir, [
-      "reset",
-      "--hard",
+    const fastForwardResult = await runGit(stellaAppDir, [
+      "merge",
+      "--ff-only",
       args.targetCommit,
     ]);
-    if (resetResult.exitCode !== 0) {
+    if (fastForwardResult.exitCode !== 0) {
       await restoreContentLandingObstructions(stellaAppDir, recoverySnapshot);
       throw new Error(
         gitFailureDetail(
-          resetResult,
-          "Could not land the published desktop tree.",
+          fastForwardResult,
+          "Could not fast-forward to the published desktop tree.",
         ),
       );
     }
@@ -3349,7 +2662,7 @@ const tryLandContentCleanPublishedTree = async (
       args.targetCommit,
       args.releaseTag,
     );
-    logDesktopUpdateProcess("desktop-update.content-landing.done", {
+    logDesktopUpdateProcess("desktop-update.git-fast-forward.done", {
       runId,
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
@@ -3379,626 +2692,6 @@ const tryLandContentCleanPublishedTree = async (
   }
 };
 
-const tryApplySourcePackDesktopUpdate = async (
-  stellaAppDir: string,
-  stellaDataDir: string,
-  runner: StellaHostRunner | null,
-  args: {
-    baseCommit: string;
-    targetCommit: string;
-    releaseTag: string;
-    sourcePackRef: DesktopReleaseSourcePackRef;
-    artifactRefs?: StellaReleaseArtifactRef[];
-    transaction?: DesktopUpdateTransaction;
-    reacquireRunner?: ReacquireRunner;
-  },
-): Promise<DesktopUpdateFastApplyResult> => {
-  await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-    phase: "source-pack-preflight",
-    mode: "source-pack",
-    recoveryAction: "discard",
-  });
-  logDesktopUpdateProcess("desktop-update.source-pack.start", {
-    releaseTag: args.releaseTag,
-    baseCommit: shortCommit(args.baseCommit),
-    targetCommit: shortCommit(args.targetCommit),
-  });
-  if (await hasMergeInProgress(stellaAppDir)) {
-    logDesktopUpdateWarn("desktop-update.source-pack.needs-agent", {
-      releaseTag: args.releaseTag,
-      reason: "merge-in-progress",
-    });
-    return {
-      status: "needs-agent",
-      reason: "A merge is already in progress in the install tree.",
-    };
-  }
-
-  const sourcePack = await fetchDesktopUpdateSourcePack(args.sourcePackRef);
-  if (!desktopSourcePackMatchesBaseCommit(sourcePack, args.baseCommit)) {
-    logDesktopUpdateWarn("desktop-update.source-pack.base-mismatch", {
-      releaseTag: args.releaseTag,
-      baseCommit: shortCommit(args.baseCommit),
-      sourceBaseRevisionId: sourcePack.baseRevisionId,
-    });
-    return {
-      status: "needs-agent",
-      reason: `Desktop source pack starts at ${sourcePack.baseRevisionId}, but this install is based on git:${args.baseCommit}.`,
-      changedFiles: [],
-    };
-  }
-  const recordSourceHistory = async (commitHash = args.targetCommit) => {
-    if (!runner) return;
-    await withDesktopUpdateTimeout(
-      "source-pack.record-history",
-      UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-      recordDesktopUpdateSourceHistory(runner, {
-        sourcePack,
-        releaseTag: args.releaseTag,
-        targetCommit: commitHash,
-      }),
-      {
-        releaseTag: args.releaseTag,
-        targetCommit: shortCommit(commitHash),
-      },
-    ).catch((error) => {
-      console.warn("[updates] Failed to record desktop source history:", error);
-    });
-  };
-
-  // Fetching is best-effort here: source packs intentionally support installs
-  // that do not yet have the published Git object. When it is available, use
-  // the full-tree content comparison to bypass synthetic lineage entirely.
-  await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-    phase: "git-fetch",
-    mode: "git",
-    recoveryAction: "discard",
-  });
-  const contentLandingFetch = await runGit(stellaAppDir, [
-    "fetch",
-    "--filter=blob:none",
-    "--no-tags",
-    "origin",
-    args.targetCommit,
-  ]);
-  let legacyBrowserPathsToUntrack: string[] = [];
-  if (contentLandingFetch.exitCode === 0) {
-    legacyBrowserPathsToUntrack = await listLegacyBrowserPathsRemovedByTarget(
-      stellaAppDir,
-      args.targetCommit,
-    );
-    const contentLanding = await tryLandContentCleanPublishedTree(
-      stellaAppDir,
-      stellaDataDir,
-      runner,
-      {
-        baseCommit: args.baseCommit,
-        targetCommit: args.targetCommit,
-        releaseTag: args.releaseTag,
-        ...(args.artifactRefs ? { artifactRefs: args.artifactRefs } : {}),
-        ...(args.transaction ? { transaction: args.transaction } : {}),
-        ...(args.reacquireRunner
-          ? { reacquireRunner: args.reacquireRunner }
-          : {}),
-      },
-    );
-    if (contentLanding) {
-      if (contentLanding.status === "applied") {
-        await recordSourceHistory(contentLanding.headCommit);
-      }
-      return contentLanding;
-    }
-  } else {
-    logDesktopUpdateWarn("desktop-update.content-landing.fetch-unavailable", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      reason: gitFailureDetail(
-        contentLandingFetch,
-        "Published commit is not locally available for content landing.",
-      ),
-    });
-  }
-  if (!desktopSourcePackCanApplyLocally(sourcePack)) {
-    const sourcePaths = sourcePack.changeSets.flatMap((changeSet) =>
-      changeSet.changes.map((change) => change.path),
-    );
-    logDesktopUpdateWarn("desktop-update.source-pack.not-local", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      changedFileCount: sourcePaths.length,
-    });
-    return {
-      status: "needs-agent",
-      reason:
-        "Desktop source pack omits content needed for local apply; falling back to Git update.",
-      changedFiles: sourcePaths,
-    };
-  }
-
-  const dirtyPaths = await listTrackedWorkingTreeChanges(stellaAppDir);
-  const sourcePaths = sourcePack.changeSets.flatMap((changeSet) =>
-    changeSet.changes.map((change) => change.path),
-  );
-  const dirtyUpdatePaths = findOverlappingRepoPaths(dirtyPaths, sourcePaths);
-  if (dirtyPaths.length > 0) {
-    logDesktopUpdateProcess("desktop-update.source-pack.local-content", {
-      releaseTag: args.releaseTag,
-      dirtyPaths,
-      dirtyPathCount: dirtyPaths.length,
-      dirtyUpdatePaths,
-      dirtyUpdatePathCount: dirtyUpdatePaths.length,
-      changedFileCount: sourcePaths.length,
-      changedFileScope: "release-update-files",
-    });
-  }
-
-  const preflight = await preflightSourcePackImport({
-    repoRoot: stellaAppDir,
-    sourcePack,
-    isPathTracked: async (sourcePath) => {
-      const result = await runGit(stellaAppDir, [
-        "ls-files",
-        "--error-unmatch",
-        "--",
-        sourcePath,
-      ]);
-      return result.exitCode === 0;
-    },
-  });
-  if (preflight.status === "needs-agent") {
-    logDesktopUpdateWarn("desktop-update.source-pack.obstructed", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      reason: preflight.reason,
-      changedFileCount: preflight.sourcePaths.length,
-      changedFileScope: "release-update-files",
-      dirtyPaths,
-    });
-    return {
-      status: "needs-agent",
-      reason: preflight.obstruction
-        ? `${preflight.reason} Falling back to Git update.`
-        : preflight.reason,
-      changedFiles: preflight.sourcePaths,
-    };
-  }
-  if (preflight.status === "conflicts") {
-    logDesktopUpdateWarn("desktop-update.source-pack.conflicts", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      appliedPathCount: preflight.sourceApply.appliedPaths.length,
-      conflictCount: preflight.sourceApply.conflicts.length,
-    });
-    const conflictRoot = path.join(
-      stellaDataDir,
-      "raw",
-      "desktop-updates",
-      args.releaseTag.replace(/[^a-z0-9_.-]/gi, "_"),
-    );
-    const sourcePackFile = path.join(conflictRoot, "SOURCE_PACK.json");
-    const conflictFile = path.join(conflictRoot, "SOURCE_PACK_CONFLICTS.json");
-    const conflictPayload = {
-      status: preflight.sourceApply.status,
-      revisionId: preflight.sourceApply.revisionId,
-      sourcePackFile,
-      appliedPaths: preflight.sourceApply.appliedPaths,
-      appliedChanges: buildSourcePackAppliedChangesForAgent(
-        preflight.sourceApply,
-      ),
-      noopPaths: preflight.sourceApply.noopPaths,
-      conflicts: preflight.sourceApply
-        .conflicts satisfies StellaSourceApplyConflict[],
-    };
-    const sourcePackConflictJson = `${JSON.stringify(conflictPayload, null, 2)}\n`;
-    const shouldInlineConflictJson =
-      new TextEncoder().encode(sourcePackConflictJson).byteLength <=
-      MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES;
-    await fs.rm(conflictRoot, { recursive: true, force: true });
-    await fs.mkdir(conflictRoot, { recursive: true });
-    await fs.writeFile(
-      sourcePackFile,
-      `${JSON.stringify(sourcePack, null, 2)}\n`,
-      "utf8",
-    );
-    await fs.writeFile(conflictFile, sourcePackConflictJson, "utf8");
-    return {
-      status: "needs-agent",
-      reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${conflictFile}.`,
-      headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: preflight.sourcePaths,
-      sourcePackFile,
-      sourcePackConflictFile: conflictFile,
-      contentConflicts: true,
-      ...(shouldInlineConflictJson ? { sourcePackConflictJson } : {}),
-    };
-  }
-
-  const stagedBrowserPath = await stageStellaBrowserUpdate(
-    stellaAppDir,
-    args.artifactRefs,
-  );
-  const sourceUpdatePaths = stagedBrowserPath
-    ? [...new Set([...preflight.sourcePaths, stagedBrowserPath])]
-    : preflight.sourcePaths;
-  const transitionUpdatePaths = stagedBrowserPath
-    ? [...new Set([...preflight.sourceApply.appliedPaths, stagedBrowserPath])]
-    : preflight.sourceApply.appliedPaths;
-  const updaterOwnedTrackedPaths = [
-    ...new Set([
-      ...preflight.sourceApply.appliedPaths,
-      ...legacyBrowserPathsToUntrack,
-    ]),
-  ];
-  const transactionChangedPaths = [
-    ...new Set([...transitionUpdatePaths, ...legacyBrowserPathsToUntrack]),
-  ];
-
-  if (updaterOwnedTrackedPaths.length === 0) {
-    const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
-      () => null,
-    );
-    const alreadyLive =
-      manifestBefore?.installState?.desktopReleaseCommit ===
-        args.targetCommit && !stagedBrowserPath;
-    // The tree already matches the target. If the install was recorded
-    // complete for this exact commit, the app already reloaded onto it and
-    // there is nothing to do. Otherwise a previous attempt was interrupted
-    // after writing files but before the reload — the disk is updated while
-    // the running app is stale. Replay the self-mod reload cycle over the
-    // pack's paths instead of fake-reporting success.
-    let reloaded = alreadyLive;
-    let browserBinaryActivated = false;
-    if (!alreadyLive && !runner) {
-      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
-    }
-    if (!alreadyLive && runner && sourceUpdatePaths.length > 0) {
-      const resumeRunId = `desktop-update-source-pack-resume:${Date.now()}:${Math.random()
-        .toString(36)
-        .slice(2)}`;
-      try {
-        await withDesktopUpdateTimeout(
-          "source-pack.resume-begin-external-self-mod",
-          UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
-          runner.beginExternalSelfMod({
-            runId: resumeRunId,
-            paths: expandExternalSelfModPaths(sourceUpdatePaths),
-          }),
-          {
-            runId: resumeRunId,
-            releaseTag: args.releaseTag,
-            targetCommit: shortCommit(args.targetCommit),
-            changedFileCount: sourceUpdatePaths.length,
-          },
-        );
-        const browserReconciliation = await reconcileUpdaterOwnedPaths(
-          stellaAppDir,
-          [],
-        );
-        browserBinaryActivated = browserReconciliation.browserBinaryActivated;
-        ({ reloaded } = await finishUpdateSelfModRun({
-          runner,
-          reacquireRunner: args.reacquireRunner,
-          runId: resumeRunId,
-          paths: sourceUpdatePaths,
-          logScope: "source-pack",
-          logFields: {
-            runId: resumeRunId,
-            releaseTag: args.releaseTag,
-            targetCommit: shortCommit(args.targetCommit),
-          },
-        }));
-      } catch (error) {
-        logDesktopUpdateError(
-          "desktop-update.source-pack.resume-reload-failed",
-          error,
-          {
-            runId: resumeRunId,
-            releaseTag: args.releaseTag,
-            targetCommit: shortCommit(args.targetCommit),
-          },
-        );
-        await runner
-          .finishExternalSelfMod({ runId: resumeRunId, succeeded: false })
-          .catch(() => undefined);
-        await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
-        reloaded = false;
-      }
-    }
-    logDesktopUpdateProcess("desktop-update.source-pack.noop", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      alreadyLive,
-      browserBinaryActivated,
-    });
-    await recordSourceHistory();
-    await refreshNativeHelpers(
-      stellaAppDir,
-      args.releaseTag,
-      args.artifactRefs,
-      {
-        transaction: args.transaction,
-        mode: "source-pack",
-        changedFiles: transactionChangedPaths,
-      },
-    );
-    await reconcileUpdaterOwnedPaths(stellaAppDir, []);
-    if (!reloaded) {
-      // Leave the attempt in its resumable phase: the update pill keeps
-      // offering the update (retry replays the reload) and startup recovery
-      // records completion once the app is actually running the new code.
-      logDesktopUpdateWarn(
-        "desktop-update.source-pack.applied-without-reload",
-        {
-          releaseTag: args.releaseTag,
-          targetCommit: shortCommit(args.targetCommit),
-        },
-      );
-      return {
-        status: "applied",
-        manifest: null,
-        headCommit: await readHeadCommit(stellaAppDir),
-        changedFiles: transactionChangedPaths,
-        dependencyInstallRan: false,
-        nativeHelpersRefreshed: true,
-        reloaded: false,
-      };
-    }
-    await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-      phase: "record-complete",
-      mode: "source-pack",
-      recoveryAction: "resume",
-      changedFiles: transactionChangedPaths,
-    });
-    const manifest = await writeAppliedReleasePointer(
-      stellaAppDir,
-      args.targetCommit,
-      args.releaseTag,
-    );
-    return {
-      status: "applied",
-      manifest,
-      headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: transactionChangedPaths,
-      dependencyInstallRan: false,
-      nativeHelpersRefreshed: true,
-      reloaded: true,
-    };
-  }
-
-  if (!runner) {
-    await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
-    return {
-      status: "needs-agent",
-      reason: "Stella runtime is not available for the update morph.",
-      headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: transactionChangedPaths,
-    };
-  }
-
-  const runId = `desktop-update-source-pack:${Date.now()}:${Math.random()
-    .toString(36)
-    .slice(2)}`;
-  let hmrRunStarted = false;
-  let sourcePackCommitLanded = false;
-  try {
-    await withDesktopUpdateTimeout(
-      "source-pack.begin-external-self-mod",
-      UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
-      runner.beginExternalSelfMod({
-        runId,
-        paths: expandExternalSelfModPaths(transitionUpdatePaths),
-      }),
-      {
-        runId,
-        releaseTag: args.releaseTag,
-        targetCommit: shortCommit(args.targetCommit),
-        changedFileCount: transitionUpdatePaths.length,
-      },
-    );
-    hmrRunStarted = true;
-    logDesktopUpdateProcess("desktop-update.source-pack.write.start", {
-      runId,
-      releaseTag: args.releaseTag,
-      changedFileCount: preflight.sourceApply.appliedPaths.length,
-    });
-    const sourceImportTouchesDependencies = storePublishTouchesDependencyFiles(
-      preflight.sourceApply.appliedPaths,
-    );
-    if (sourceImportTouchesDependencies) {
-      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-    }
-    await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-      phase: "source-pack-write",
-      mode: "source-pack",
-      recoveryAction: "discard",
-      changedFiles: transactionChangedPaths,
-    });
-    const { dependencyInstallRan } = await applyCleanSourceImportToWorkingTree({
-      repoRoot: stellaAppDir,
-      sourcePaths: preflight.sourcePaths,
-      sourceApply: preflight.sourceApply,
-    });
-    if (dependencyInstallRan) {
-      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-    }
-    logDesktopUpdateProcess("desktop-update.source-pack.write.done", {
-      runId,
-      releaseTag: args.releaseTag,
-      changedFileCount: preflight.sourceApply.appliedPaths.length,
-    });
-
-    await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-      phase: "source-pack-commit",
-      mode: "source-pack",
-      recoveryAction: "resume",
-      changedFiles: transactionChangedPaths,
-    });
-    if (preflight.sourceApply.appliedPaths.length > 0) {
-      const addResult = await runGit(stellaAppDir, [
-        "add",
-        "-A",
-        "--",
-        ...preflight.sourceApply.appliedPaths,
-      ]);
-      if (addResult.exitCode !== 0) {
-        throw new Error(
-          gitFailureDetail(addResult, "Could not stage source-pack update."),
-        );
-      }
-    }
-    if (legacyBrowserPathsToUntrack.length > 0) {
-      const untrackResult = await runGit(stellaAppDir, [
-        "rm",
-        "--cached",
-        "--ignore-unmatch",
-        "--",
-        ...legacyBrowserPathsToUntrack,
-      ]);
-      if (untrackResult.exitCode !== 0) {
-        throw new Error(
-          gitFailureDetail(
-            untrackResult,
-            "Could not migrate legacy browser artifacts out of Git.",
-          ),
-        );
-      }
-    }
-    const commitResult = await runGit(stellaAppDir, [
-      "commit",
-      "-m",
-      `Update to ${args.releaseTag}`,
-    ]);
-    if (commitResult.exitCode !== 0) {
-      throw new Error(
-        gitFailureDetail(commitResult, "Could not commit source-pack update."),
-      );
-    }
-    sourcePackCommitLanded = true;
-
-    // The browser executable is a separately hydrated, ignored artifact. Its
-    // verified `.update` file is promoted atomically, while only source-pack
-    // paths are asserted against Git HEAD.
-    const ownedPathReconciliation = await reconcileUpdaterOwnedPaths(
-      stellaAppDir,
-      updaterOwnedTrackedPaths,
-    );
-
-    logDesktopUpdateProcess("desktop-update.source-pack.commit.done", {
-      runId,
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      browserBinaryActivated: ownedPathReconciliation.browserBinaryActivated,
-      updaterOwnedTrackedPaths,
-    });
-
-    await recordSourceHistory(await readHeadCommit(stellaAppDir));
-    // Drive the reload morph BEFORE the slow native-helper refresh and before
-    // recording completion: "complete" in the manifest must mean the running
-    // app actually reloaded onto the new code, and finishing promptly shrinks
-    // the window in which the update's own runtime changes can restart the
-    // worker underneath this flow.
-    const { reloaded } = await finishUpdateSelfModRun({
-      runner,
-      reacquireRunner: args.reacquireRunner,
-      runId,
-      paths: transitionUpdatePaths,
-      logScope: "source-pack",
-      logFields: {
-        runId,
-        releaseTag: args.releaseTag,
-        targetCommit: shortCommit(args.targetCommit),
-      },
-    });
-    hmrRunStarted = false;
-    await refreshNativeHelpers(
-      stellaAppDir,
-      args.releaseTag,
-      args.artifactRefs,
-      {
-        transaction: args.transaction,
-        mode: "source-pack",
-        changedFiles: transactionChangedPaths,
-      },
-    );
-    await reconcileUpdaterOwnedPaths(stellaAppDir, updaterOwnedTrackedPaths);
-    if (!reloaded) {
-      logDesktopUpdateWarn(
-        "desktop-update.source-pack.applied-without-reload",
-        {
-          runId,
-          releaseTag: args.releaseTag,
-          targetCommit: shortCommit(args.targetCommit),
-        },
-      );
-      return {
-        status: "applied",
-        manifest: null,
-        headCommit: await readHeadCommit(stellaAppDir),
-        changedFiles: transactionChangedPaths,
-        dependencyInstallRan,
-        nativeHelpersRefreshed: true,
-        reloaded: false,
-      };
-    }
-    await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
-      phase: "record-complete",
-      mode: "source-pack",
-      recoveryAction: "resume",
-      changedFiles: transactionChangedPaths,
-    });
-    const manifest = await writeAppliedReleasePointer(
-      stellaAppDir,
-      args.targetCommit,
-      args.releaseTag,
-    );
-    return {
-      status: "applied",
-      manifest,
-      headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: transactionChangedPaths,
-      dependencyInstallRan,
-      nativeHelpersRefreshed: true,
-      reloaded: true,
-    };
-  } catch (error) {
-    if (!sourcePackCommitLanded) {
-      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
-    }
-    logDesktopUpdateError("desktop-update.source-pack.failed", error, {
-      runId,
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      hmrRunStarted,
-      transportClosed: isRuntimeTransportClosedError(error),
-    });
-    if (hmrRunStarted) {
-      await runner
-        .finishExternalSelfMod({ runId, succeeded: sourcePackCommitLanded })
-        .catch(async () => {
-          // The old transport may be gone (worker restarted mid-update); try
-          // once more against the reconnected worker so the host-side
-          // runtime-reload pause for this runId is not leaked forever.
-          await args
-            .reacquireRunner?.()
-            .then((fresh) =>
-              fresh.finishExternalSelfMod({
-                runId,
-                succeeded: sourcePackCommitLanded,
-              }),
-            )
-            .catch(() => undefined);
-        });
-    }
-    throw error;
-  }
-};
-
 export const tryApplyCleanDesktopUpdate = async (
   stellaAppDir: string,
   stellaDataDir: string,
@@ -4007,7 +2700,6 @@ export const tryApplyCleanDesktopUpdate = async (
     baseCommit: string;
     targetCommit: string;
     releaseTag: string;
-    sourcePackRef?: DesktopReleaseSourcePackRef;
     artifactRefs?: StellaReleaseArtifactRef[];
     transaction?: DesktopUpdateTransaction;
     reacquireRunner?: ReacquireRunner;
@@ -4017,58 +2709,7 @@ export const tryApplyCleanDesktopUpdate = async (
     releaseTag: args.releaseTag,
     baseCommit: shortCommit(args.baseCommit),
     targetCommit: shortCommit(args.targetCommit),
-    hasSourcePack: Boolean(args.sourcePackRef),
   });
-  if (args.sourcePackRef) {
-    try {
-      const sourcePackResult = await tryApplySourcePackDesktopUpdate(
-        stellaAppDir,
-        stellaDataDir,
-        runner,
-        {
-          targetCommit: args.targetCommit,
-          releaseTag: args.releaseTag,
-          baseCommit: args.baseCommit,
-          sourcePackRef: args.sourcePackRef,
-          ...(args.artifactRefs ? { artifactRefs: args.artifactRefs } : {}),
-          ...(args.transaction ? { transaction: args.transaction } : {}),
-          ...(args.reacquireRunner
-            ? { reacquireRunner: args.reacquireRunner }
-            : {}),
-        },
-      );
-      if (
-        sourcePackResult.status === "applied" ||
-        sourcePackResult.contentConflicts === true
-      ) {
-        logDesktopUpdateProcess("desktop-update.fast.source-pack-result", {
-          releaseTag: args.releaseTag,
-          targetCommit: shortCommit(args.targetCommit),
-          status: sourcePackResult.status,
-          changedFileCount:
-            sourcePackResult.status === "applied"
-              ? sourcePackResult.changedFiles.length
-              : (sourcePackResult.changedFiles?.length ?? 0),
-        });
-        return sourcePackResult;
-      }
-      logDesktopUpdateWarn("desktop-update.fast.source-pack-fallback", {
-        releaseTag: args.releaseTag,
-        targetCommit: shortCommit(args.targetCommit),
-        reason: sourcePackResult.reason,
-      });
-    } catch (error) {
-      console.warn(
-        "[updates] Source-pack update path failed; not falling back to git:",
-        error,
-      );
-      logDesktopUpdateError("desktop-update.fast.source-pack-failed", error, {
-        releaseTag: args.releaseTag,
-        targetCommit: shortCommit(args.targetCommit),
-      });
-      throw error;
-    }
-  }
 
   if (await hasMergeInProgress(stellaAppDir)) {
     logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
@@ -4095,11 +2736,24 @@ export const tryApplyCleanDesktopUpdate = async (
     "--filter=blob:none",
     "--no-tags",
     "origin",
-    args.targetCommit,
+    "master",
   ]);
   if (fetchResult.exitCode !== 0) {
     throw new Error(
       gitFailureDetail(fetchResult, "Failed to fetch the desktop update."),
+    );
+  }
+  const remoteMasterResult = await runGit(stellaAppDir, [
+    "rev-parse",
+    "origin/master",
+  ]);
+  const remoteMaster = remoteMasterResult.stdout.trim().toLowerCase();
+  if (
+    remoteMasterResult.exitCode !== 0 ||
+    remoteMaster !== args.targetCommit.toLowerCase()
+  ) {
+    throw new Error(
+      `Published desktop commit ${args.targetCommit} did not match origin/master${remoteMaster ? ` ${remoteMaster}` : ""}.`,
     );
   }
   logDesktopUpdateProcess("desktop-update.git.fetch.done", {
@@ -4107,7 +2761,7 @@ export const tryApplyCleanDesktopUpdate = async (
     targetCommit: shortCommit(args.targetCommit),
   });
 
-  const contentLanding = await tryLandContentCleanPublishedTree(
+  const contentLanding = await tryFastForwardCleanPublishedTree(
     stellaAppDir,
     stellaDataDir,
     runner,
@@ -4449,8 +3103,7 @@ export const tryApplyCleanDesktopUpdate = async (
       dependencyInstallRan,
       browserBinaryActivated: browserReconciliation.browserBinaryActivated,
     });
-    // Drive the reload morph BEFORE the native-helper refresh and before
-    // recording completion — see the source-pack path for rationale.
+    // Drive the reload morph before helper refresh and completion recording.
     let reloaded = true;
     if (hmrRunStarted && runner) {
       ({ reloaded } = await finishUpdateSelfModRun({
@@ -4549,7 +3202,6 @@ export const tryApplyCleanDesktopUpdate = async (
 };
 
 export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
-  const officialSourceHistory = createOfficialSourceHistoryReconciler(options);
   const reacquireUpdateRunner: ReacquireRunner = async () => {
     const runner = await waitForConnectedRunner(
       () => options.getStellaHostRunner?.() ?? null,
@@ -4565,19 +3217,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
     await runner.waitUntilReady(UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS);
     return runner;
   };
-  options.onStellaHostRunnerChanged?.((runner) => {
-    if (runner) {
-      officialSourceHistory.schedule("runner-ready", undefined, {
-        delayMs: OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS,
-      });
-    }
-  });
-  if (options.getStellaHostRunner?.()) {
-    officialSourceHistory.schedule("runner-ready", undefined, {
-      delayMs: OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS,
-    });
-  }
-
   ipcMain.handle(
     IPC_UPDATES_GET_INSTALL_MANIFEST,
     async (event): Promise<InstallManifestSnapshot | null> => {
@@ -4605,7 +3244,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         baseCommit?: string;
         targetCommit?: string;
         releaseTag?: string;
-        sourcePackRef?: DesktopReleaseSourcePackRef;
         artifactRefs?: StellaReleaseArtifactRef[];
       },
     ): Promise<DesktopUpdateFastApplyResult> => {
@@ -4665,7 +3303,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         releaseTag,
         baseCommit: shortCommit(baseCommit),
         targetCommit: shortCommit(targetCommit),
-        hasSourcePack: Boolean(payload.sourcePackRef),
         artifactRefCount: Array.isArray(payload.artifactRefs)
           ? payload.artifactRefs.length
           : 0,
@@ -4683,9 +3320,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
             baseCommit,
             targetCommit,
             releaseTag,
-            ...(payload.sourcePackRef
-              ? { sourcePackRef: payload.sourcePackRef }
-              : {}),
             ...(Array.isArray(payload.artifactRefs)
               ? { artifactRefs: payload.artifactRefs }
               : {}),
@@ -4699,12 +3333,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
             mode: "agent",
             recoveryAction: "needs-agent",
             changedFiles: result.changedFiles ?? [],
-          });
-        }
-        if (result.status === "applied") {
-          officialSourceHistory.schedule("clean-update-applied", {
-            targetCommit,
-            releaseTag,
           });
         }
         logDesktopUpdateProcess("desktop-update.try-clean.done", {
@@ -4805,45 +3433,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
   );
 
   ipcMain.handle(
-    IPC_UPDATES_RECORD_SOURCE_HISTORY,
-    async (
-      event,
-      payload: {
-        targetCommit?: string;
-        releaseTag?: string;
-        sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
-      },
-    ): Promise<
-      { ok: true; revisionId: string } | { ok: false; reason: string }
-    > => {
-      if (
-        !options.assertPrivilegedSender(
-          event,
-          IPC_UPDATES_RECORD_SOURCE_HISTORY,
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted updates:recordSourceHistory request.",
-        );
-      }
-      const targetCommit = asString(payload?.targetCommit);
-      if (!targetCommit) {
-        throw new Error("targetCommit is required.");
-      }
-      const releaseTag = asString(payload?.releaseTag);
-      if (!releaseTag) {
-        throw new Error("releaseTag is required.");
-      }
-      return await officialSourceHistory.record({
-        targetCommit,
-        releaseTag,
-        sourceHistoryRef: payload?.sourceHistoryRef ?? null,
-        reason: "ipc",
-      });
-    },
-  );
-
-  ipcMain.handle(
     IPC_UPDATES_ROLLBACK_CANCELED,
     async (
       event,
@@ -4898,8 +3487,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       payload: {
         commit?: string;
         tag?: string;
-        mode?: "git-ancestry" | "release-pointer";
-        startingHeadCommit?: string;
         agentRunId?: string;
       },
     ): Promise<InstallManifestSnapshot | null> => {
@@ -4924,27 +3511,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         throw new Error("Stella install directory is unavailable.");
       }
       try {
-        if (payload?.mode === "release-pointer") {
-          const startingHeadCommit = asString(payload.startingHeadCommit);
-          if (!startingHeadCommit) {
-            throw new Error("startingHeadCommit is required.");
-          }
-          const manifest = await recordAppliedDesktopUpdate({
-            stellaAppDir,
-            runner: null,
-            reacquireRunner: reacquireUpdateRunner,
-            commit,
-            tag,
-            mode: "release-pointer",
-            startingHeadCommit,
-            agentRunId,
-          });
-          officialSourceHistory.schedule("applied-commit-recorded", {
-            targetCommit: commit,
-            releaseTag: tag,
-          });
-          return manifest;
-        }
         const manifest = await recordAppliedDesktopUpdate({
           stellaAppDir,
           runner: null,
@@ -4952,10 +3518,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           commit,
           tag,
           agentRunId,
-        });
-        officialSourceHistory.schedule("applied-commit-recorded", {
-          targetCommit: commit,
-          releaseTag: tag,
         });
         return manifest;
       } catch (error) {

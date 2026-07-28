@@ -12,14 +12,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createStellaSourceChangeSetFromTrees,
-  createStellaSourcePack,
-  hashSourceTree,
-  type StellaSourceTree,
-} from "../../../../runtime/kernel/self-mod/stella-source-control.js";
-import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-peer.js";
-import {
-  localDesktopVersionCoversReleaseTag,
   nativeHelperPlatformKey,
   recordAppliedDesktopUpdate,
   reconcileUpdaterOwnedPaths,
@@ -41,20 +33,6 @@ describe("desktop release artifact platform selection", () => {
   });
 });
 
-describe("local desktop version coverage", () => {
-  it.each([
-    ["0.0.440", "desktop-v0.0.440", true],
-    ["0.0.441", "desktop-v0.0.440", true],
-    ["0.0.439", "desktop-v0.0.440", false],
-    ["0.0.440-beta.1", "desktop-v0.0.440", false],
-    ["0.0.440", "desktop-preview", false],
-  ])("compares %s with %s", (localVersion, releaseTag, expected) => {
-    expect(localDesktopVersionCoversReleaseTag(localVersion, releaseTag)).toBe(
-      expected,
-    );
-  });
-});
-
 const git = (
   cwd: string,
   args: string[],
@@ -67,6 +45,11 @@ const git = (
     );
   }
   return result;
+};
+
+const addOriginAtTarget = (repoRoot: string, targetCommit: string) => {
+  git(repoRoot, ["branch", "-f", "master", targetCommit]);
+  git(repoRoot, ["remote", "add", "origin", repoRoot]);
 };
 
 const platformKey =
@@ -118,8 +101,6 @@ const readInstallManifest = async (repoRoot: string) =>
     await readFile(path.join(repoRoot, "stella-install.json"), "utf8"),
   );
 
-const text = (content: string) => ({ kind: "text" as const, content });
-
 const writeNativeHelperDownloadStub = async (repoRoot: string) => {
   const scriptPath = path.join(
     repoRoot,
@@ -133,80 +114,6 @@ const writeNativeHelperDownloadStub = async (repoRoot: string) => {
     "process.stdout.write('native helpers already current\\n');\n",
     "utf8",
   );
-};
-
-const sourcePackRefFor = (pack: unknown) => {
-  const raw = JSON.stringify(pack);
-  const sha256 = `sha256:${createHash("sha256").update(raw).digest("hex")}`;
-  return {
-    kind: "url" as const,
-    url: "https://source-pack.test/source-pack.json",
-    sha256,
-    sizeBytes: new TextEncoder().encode(raw).byteLength,
-  };
-};
-
-const prepareDivergentPublishedUpdate = async (
-  repoRoot: string,
-  localContent: string,
-) => {
-  const commonCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-  const baseContent = "title: base\nseparator\nbody: base\n";
-  const targetContent = "title: base\nseparator\nbody: target\n";
-  const legacyBrowserName =
-    platformKey === "win-x64"
-      ? "stella-browser-win32-x64.exe"
-      : `stella-browser-${platformKey}`;
-  const legacyBrowserPath = `desktop/stella-browser/bin/${legacyBrowserName}`;
-
-  git(repoRoot, ["checkout", "-q", "-b", "published"]);
-  await writeFile(path.join(repoRoot, "app.txt"), baseContent, "utf8");
-  await mkdir(path.dirname(path.join(repoRoot, legacyBrowserPath)), {
-    recursive: true,
-  });
-  await writeFile(path.join(repoRoot, legacyBrowserPath), "published-browser");
-  git(repoRoot, ["add", "app.txt", legacyBrowserPath]);
-  git(repoRoot, ["commit", "-m", "Published base release"]);
-  const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-  await writeFile(path.join(repoRoot, "app.txt"), targetContent, "utf8");
-  await rm(path.join(repoRoot, legacyBrowserPath));
-  git(repoRoot, ["add", "-A", "--", "app.txt", legacyBrowserPath]);
-  git(repoRoot, ["commit", "-m", "Published target release"]);
-  const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-
-  git(repoRoot, ["checkout", "-q", "-b", "synthetic", commonCommit]);
-  await writeFile(path.join(repoRoot, "app.txt"), localContent, "utf8");
-  await mkdir(path.dirname(path.join(repoRoot, legacyBrowserPath)), {
-    recursive: true,
-  });
-  await writeFile(path.join(repoRoot, legacyBrowserPath), "published-browser");
-  git(repoRoot, ["add", "app.txt", legacyBrowserPath]);
-  git(repoRoot, ["commit", "-m", "Synthetic current-release content"]);
-  git(repoRoot, ["remote", "add", "origin", repoRoot]);
-
-  const baseTree: StellaSourceTree = { "app.txt": text(baseContent) };
-  const nextTree: StellaSourceTree = { "app.txt": text(targetContent) };
-  const baseRevisionId = hashSourceTree(baseTree);
-  const sourcePack = createStellaSourcePack({
-    baseRevisionId: `git:${baseCommit}`,
-    changeSets: [
-      createStellaSourceChangeSetFromTrees({
-        baseRevisionId,
-        baseTree,
-        nextTree,
-        featureId: "desktop-release",
-      }),
-    ],
-    featureId: "desktop-release",
-  });
-  return {
-    baseCommit,
-    targetCommit,
-    baseContent,
-    targetContent,
-    legacyBrowserPath,
-    sourcePack,
-  };
 };
 
 describe("stageStellaBrowserUpdate", () => {
@@ -416,81 +323,6 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
   });
 
-  it("discards an interrupted source-pack write before an update commit exists", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    await writeFile(path.join(repoRoot, "app.txt"), "partial source write\n");
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: {
-        status: "updating",
-        targetTag: null,
-        targetCommit: "f".repeat(40),
-        startedAt: new Date(1).toISOString(),
-        finishedAt: null,
-        reason: null,
-        operationId: "op-source-write",
-        phase: "source-pack-write",
-        mode: "source-pack",
-        recoveryAction: "discard",
-        startingHeadCommit: baseCommit,
-        updatedAt: new Date(1).toISOString(),
-        changedFiles: ["app.txt"],
-        ownedTempPaths: [],
-        nativeHelpersManifestUrl: null,
-      },
-    });
-
-    const result = await recoverInterruptedDesktopUpdate(repoRoot, {
-      refreshNativeHelpers: vi.fn(async () => undefined),
-    });
-
-    expect(result.status).toBe("discarded");
-    await expect(
-      readFile(path.join(repoRoot, "app.txt"), "utf8"),
-    ).resolves.toBe("base\n");
-    expect(
-      (await readInstallManifest(repoRoot)).lastUpdateAttempt,
-    ).toMatchObject({
-      status: "failed",
-      phase: "source-pack-write",
-    });
-  });
-
-  it("records completion when an interrupted source-pack update already made an owned commit", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    await writeFile(path.join(repoRoot, "app.txt"), "source-pack target\n");
-    git(repoRoot, ["commit", "-am", "Update to local source pack"]);
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: {
-        status: "updating",
-        targetTag: null,
-        targetCommit: "e".repeat(40),
-        startedAt: new Date(1).toISOString(),
-        finishedAt: null,
-        reason: null,
-        operationId: "op-source-commit",
-        phase: "native-refresh",
-        mode: "source-pack",
-        recoveryAction: "resume",
-        startingHeadCommit: baseCommit,
-        updatedAt: new Date(1).toISOString(),
-        changedFiles: ["app.txt"],
-        ownedTempPaths: [],
-        nativeHelpersManifestUrl: null,
-      },
-    });
-
-    const result = await recoverInterruptedDesktopUpdate(repoRoot, {
-      refreshNativeHelpers: vi.fn(async () => undefined),
-    });
-
-    expect(result.status).toBe("completed");
-    const manifest = await readInstallManifest(repoRoot);
-    expect(manifest.desktopReleaseCommit).toBe("e".repeat(40));
-    expect(manifest.lastUpdateAttempt.status).toBe("complete");
-  });
-
   it("finishes a legacy staged-browser index/worktree gap during recovery", async () => {
     const browserName =
       platformKey === "win-x64"
@@ -520,6 +352,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
       `100755,${objectId},${browserRelativePath}`,
     ]);
     git(repoRoot, ["commit", "-m", "Update to desktop-v9.9.12"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     expect(await readFile(browserPath, "utf8")).toBe("old-browser");
     expect(
       git(repoRoot, ["status", "--porcelain", "--untracked-files=no"]).stdout,
@@ -530,13 +363,13 @@ describe("recoverInterruptedDesktopUpdate", () => {
       attempt: {
         status: "updating",
         targetTag: "desktop-v9.9.12",
-        targetCommit: "f".repeat(40),
+        targetCommit,
         startedAt: new Date(1).toISOString(),
         finishedAt: null,
         reason: null,
         operationId: "op-browser-gap",
         phase: "native-refresh",
-        mode: "source-pack",
+        mode: "git",
         recoveryAction: "resume",
         startingHeadCommit,
         updatedAt: new Date(1).toISOString(),
@@ -598,40 +431,6 @@ describe("recoverInterruptedDesktopUpdate", () => {
       status: "failed",
       recoveryAction: "needs-agent",
     });
-  });
-
-  it("does not fall back to Git when source-pack download fails", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    vi.useFakeTimers();
-    let markFirstFetchStarted!: () => void;
-    const firstFetchStarted = new Promise<void>((resolve) => {
-      markFirstFetchStarted = resolve;
-    });
-    const fetchMock = vi.fn(async () => {
-      markFirstFetchStarted();
-      throw new TypeError("fetch failed");
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const update = tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
-      baseCommit,
-      targetCommit: "f".repeat(40),
-      releaseTag: "desktop-v9.9.9",
-      sourcePackRef: {
-        kind: "url",
-        url: "https://source-pack.test/source-pack.json",
-        sha256: `sha256:${"a".repeat(64)}`,
-        sizeBytes: 1,
-      },
-    });
-    const rejection = expect(update).rejects.toThrow("fetch failed");
-    await firstFetchStarted;
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.runAllTimersAsync();
-    await rejection;
-
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(baseCommit);
   });
 
   it("morphs a conflict-recovered agent update before recording completion", async () => {
@@ -788,51 +587,6 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
   });
 
-  it("reconciles a synthetic local build from tracked desktop version metadata", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    git(repoRoot, ["checkout", "-q", "-b", "published"]);
-    await writeFile(path.join(repoRoot, "app.txt"), "published target\n");
-    git(repoRoot, ["commit", "-am", "Published target release"]);
-    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-
-    git(repoRoot, ["checkout", "-q", "main"]);
-    await writeFile(
-      path.join(repoRoot, "package.json"),
-      `${JSON.stringify({ name: "stella", version: "9.9.10" }, null, 2)}\n`,
-    );
-    await writeFile(path.join(repoRoot, "app.txt"), "newer local source\n");
-    git(repoRoot, ["add", "package.json", "app.txt"]);
-    git(repoRoot, ["commit", "-m", "Promote newer local source"]);
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: null,
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("not found", { status: 404 })),
-    );
-
-    const manifest = await recordAppliedDesktopUpdate({
-      stellaAppDir: repoRoot,
-      runner: null,
-      commit: targetCommit,
-      tag: "desktop-v9.9.10",
-    });
-
-    expect(manifest).toMatchObject({
-      desktopReleaseTag: "desktop-v9.9.10",
-      desktopReleaseCommit: targetCommit,
-      installState: {
-        desktopReleaseTag: "desktop-v9.9.10",
-        desktopReleaseCommit: targetCommit,
-        localHeadCommit: git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim(),
-      },
-    });
-    expect(
-      git(repoRoot, ["status", "--porcelain", "--untracked-files=no"]).stdout,
-    ).toBe("");
-  }, 15_000);
-
   it("brackets a clean Git update in the external self-mod morph lifecycle", async () => {
     const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     await writeInstallManifest(repoRoot, {
@@ -844,7 +598,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     git(repoRoot, ["commit", "-am", "Target desktop release"]);
     const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     git(repoRoot, ["reset", "--hard", baseCommit]);
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
 
     const events: string[] = [];
     const runner = {
@@ -884,6 +638,12 @@ describe("recoverInterruptedDesktopUpdate", () => {
     expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(events).toEqual(["begin:base\n", "finish:git target\n"]);
+    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(
+      targetCommit,
+    );
+    expect(git(repoRoot, ["rev-parse", "origin/master"]).stdout.trim()).toBe(
+      targetCommit,
+    );
     await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
       installState: { desktopReleaseCommit: targetCommit },
       lastUpdateAttempt: {
@@ -891,6 +651,28 @@ describe("recoverInterruptedDesktopUpdate", () => {
         targetCommit,
       },
     });
+  });
+
+  it("rejects a published commit that is not origin/master", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeFile(path.join(repoRoot, "app.txt"), "git target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Target desktop release"]);
+    const remoteMaster = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["reset", "--hard", baseCommit]);
+    addOriginAtTarget(repoRoot, remoteMaster);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+
+    await expect(
+      tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
+        baseCommit,
+        targetCommit: baseCommit,
+        releaseTag: "desktop-v9.9.80",
+      }),
+    ).rejects.toThrow("did not match origin/master");
+    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(baseCommit);
   });
 
   it("activates the release browser artifact during a clean Git update", async () => {
@@ -918,7 +700,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     git(repoRoot, ["commit", "-am", "Target desktop release"]);
     const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     git(repoRoot, ["reset", "--hard", baseCommit]);
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(nextBrowserBytes, { status: 200 })),
@@ -982,7 +764,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
       attempt: null,
     });
     await writeNativeHelperDownloadStub(repoRoot);
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(nextBrowserBytes, { status: 200 })),
@@ -1024,7 +806,94 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
   });
 
-  it("discards a staged browser artifact when a content landing is deferred", async () => {
+  it("merges a non-conflicting local commit with origin/master", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "-b", "published"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "published target\n");
+    git(repoRoot, ["commit", "-am", "Published target release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(path.join(repoRoot, "local.txt"), "local customization\n");
+    git(repoRoot, ["add", "local.txt"]);
+    git(repoRoot, ["commit", "-m", "Keep local customization"]);
+    addOriginAtTarget(repoRoot, targetCommit);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeNativeHelperDownloadStub(repoRoot);
+    const runner = {
+      beginExternalSelfMod: vi.fn(async () => undefined),
+      finishExternalSelfMod: vi.fn(async () => undefined),
+    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
+
+    const result = await tryApplyCleanDesktopUpdate(
+      repoRoot,
+      repoRoot,
+      runner,
+      {
+        baseCommit,
+        targetCommit,
+        releaseTag: "desktop-v9.9.85",
+      },
+    );
+
+    expect(result.status).toBe("applied");
+    expect(await readFile(path.join(repoRoot, "app.txt"), "utf8")).toBe(
+      "published target\n",
+    );
+    expect(await readFile(path.join(repoRoot, "local.txt"), "utf8")).toBe(
+      "local customization\n",
+    );
+    expect(
+      git(repoRoot, ["merge-base", "--is-ancestor", targetCommit, "HEAD"])
+        .status,
+    ).toBe(0);
+    expect(
+      git(repoRoot, ["rev-list", "--parents", "-n", "1", "HEAD"])
+        .stdout.trim()
+        .split(/\s+/),
+    ).toHaveLength(3);
+  });
+
+  it("routes a real Git content conflict to the update agent", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "-b", "published"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "published target\n");
+    git(repoRoot, ["commit", "-am", "Published target release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "local customization\n");
+    git(repoRoot, ["commit", "-am", "Keep local customization"]);
+    const localHead = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    addOriginAtTarget(repoRoot, targetCommit);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+
+    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
+      baseCommit,
+      targetCommit,
+      releaseTag: "desktop-v9.9.86",
+    });
+
+    expect(result).toMatchObject({
+      status: "needs-agent",
+      reason: "Git reported merge conflicts.",
+      changedFiles: ["app.txt"],
+    });
+    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(localHead);
+    expect(
+      git(repoRoot, ["rev-parse", "-q", "--verify", "MERGE_HEAD"], {
+        allowFailure: true,
+      }).status,
+    ).not.toBe(0);
+  });
+
+  it("discards a staged browser artifact when a fast-forward is deferred", async () => {
     const browserBinaryName =
       platformKey === "win-x64" ? "stella-browser.exe" : "stella-browser";
     const browserRelativePath = `desktop/stella-browser/out/${platformKey}/${browserBinaryName}`;
@@ -1048,7 +917,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     git(repoRoot, ["commit", "-am", "Target desktop release"]);
     const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     git(repoRoot, ["reset", "--hard", baseCommit]);
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(nextBrowserBytes, { status: 200 })),
@@ -1110,7 +979,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     );
     git(repoRoot, ["add", "local.txt"]);
     git(repoRoot, ["commit", "-m", "Keep local overlay"]);
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
     await writeInstallManifest(repoRoot, {
       activeCommit: baseCommit,
       attempt: null,
@@ -1159,7 +1028,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
   });
 
-  it("moves ignored target obstructions aside and snapshots the pre-reset install", async () => {
+  it("moves ignored target obstructions aside before a fast-forward", async () => {
     await writeFile(path.join(repoRoot, ".gitignore"), "runtime-cache/\n");
     git(repoRoot, ["add", ".gitignore"]);
     git(repoRoot, ["commit", "-m", "Ignore runtime cache"]);
@@ -1178,7 +1047,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
       path.join(repoRoot, "runtime-cache", "config.json"),
       "user runtime data\n",
     );
-    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    addOriginAtTarget(repoRoot, targetCommit);
     await writeInstallManifest(repoRoot, {
       activeCommit: baseCommit,
       attempt: null,
@@ -1230,529 +1099,6 @@ describe("recoverInterruptedDesktopUpdate", () => {
     await expect(readFile(movedUserFile, "utf8")).resolves.toBe(
       "user runtime data\n",
     );
-  });
-
-  it("lands divergent synthetic lineage directly on the published commit when the content overlay is empty", async () => {
-    const prepared = await prepareDivergentPublishedUpdate(
-      repoRoot,
-      "title: base\nseparator\nbody: base\n",
-    );
-    await writeInstallManifest(repoRoot, {
-      activeCommit: prepared.baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    await writeFile(
-      path.join(repoRoot, "claude-code-resolved-models.json"),
-      '{"default":"test"}\n',
-      "utf8",
-    );
-    const sourcePackRef = sourcePackRefFor(prepared.sourcePack);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) =>
-        String(url) === sourcePackRef.url
-          ? new Response(JSON.stringify(prepared.sourcePack), { status: 200 })
-          : new Response("not found", { status: 404 }),
-      ),
-    );
-    const runner = {
-      beginExternalSelfMod: vi.fn(async () => undefined),
-      finishExternalSelfMod: vi.fn(async () => undefined),
-    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
-
-    const result = await tryApplyCleanDesktopUpdate(
-      repoRoot,
-      repoRoot,
-      runner,
-      {
-        baseCommit: prepared.baseCommit,
-        targetCommit: prepared.targetCommit,
-        releaseTag: "desktop-v9.9.20",
-        sourcePackRef,
-      },
-    );
-
-    expect(result.status).toBe("applied");
-    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(
-      prepared.targetCommit,
-    );
-    expect(
-      git(repoRoot, ["rev-list", "--parents", "-n", "1", "HEAD"])
-        .stdout.trim()
-        .split(/\s+/),
-    ).toHaveLength(2);
-    expect(await readFile(path.join(repoRoot, "app.txt"), "utf8")).toBe(
-      prepared.targetContent,
-    );
-    await expect(
-      readFile(path.join(repoRoot, "claude-code-resolved-models.json"), "utf8"),
-    ).resolves.toContain("test");
-  });
-
-  it("preserves a genuine non-conflicting content overlay through the source-pack merger", async () => {
-    const prepared = await prepareDivergentPublishedUpdate(
-      repoRoot,
-      "title: local\nseparator\nbody: base\n",
-    );
-    await writeInstallManifest(repoRoot, {
-      activeCommit: prepared.baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    const sourcePackRef = sourcePackRefFor(prepared.sourcePack);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) =>
-        String(url) === sourcePackRef.url
-          ? new Response(JSON.stringify(prepared.sourcePack), { status: 200 })
-          : new Response("not found", { status: 404 }),
-      ),
-    );
-    const runner = {
-      beginExternalSelfMod: vi.fn(async () => undefined),
-      finishExternalSelfMod: vi.fn(async () => undefined),
-    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
-
-    const result = await tryApplyCleanDesktopUpdate(
-      repoRoot,
-      repoRoot,
-      runner,
-      {
-        baseCommit: prepared.baseCommit,
-        targetCommit: prepared.targetCommit,
-        releaseTag: "desktop-v9.9.21",
-        sourcePackRef,
-      },
-    );
-
-    expect(result.status).toBe("applied");
-    expect(await readFile(path.join(repoRoot, "app.txt"), "utf8")).toBe(
-      "title: local\nseparator\nbody: target\n",
-    );
-    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).not.toBe(
-      prepared.targetCommit,
-    );
-    expect(
-      git(
-        repoRoot,
-        ["ls-files", "--error-unmatch", prepared.legacyBrowserPath],
-        { allowFailure: true },
-      ).status,
-    ).not.toBe(0);
-    expect(
-      git(
-        repoRoot,
-        ["merge-base", "--is-ancestor", prepared.targetCommit, "HEAD"],
-        { allowFailure: true },
-      ).status,
-    ).not.toBe(0);
-  });
-
-  it("routes only a genuine overlapping content conflict to the agent", async () => {
-    const prepared = await prepareDivergentPublishedUpdate(
-      repoRoot,
-      "title: base\nseparator\nbody: local\n",
-    );
-    await writeInstallManifest(repoRoot, {
-      activeCommit: prepared.baseCommit,
-      attempt: null,
-    });
-    const sourcePackRef = sourcePackRefFor(prepared.sourcePack);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) =>
-        String(url) === sourcePackRef.url
-          ? new Response(JSON.stringify(prepared.sourcePack), { status: 200 })
-          : new Response("not found", { status: 404 }),
-      ),
-    );
-
-    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
-      baseCommit: prepared.baseCommit,
-      targetCommit: prepared.targetCommit,
-      releaseTag: "desktop-v9.9.22",
-      sourcePackRef,
-    });
-
-    expect(result).toMatchObject({
-      status: "needs-agent",
-      changedFiles: ["app.txt"],
-      sourcePackConflictFile: expect.any(String),
-    });
-    expect(await readFile(path.join(repoRoot, "app.txt"), "utf8")).toBe(
-      "title: base\nseparator\nbody: local\n",
-    );
-    expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).not.toBe(
-      prepared.targetCommit,
-    );
-    expect(
-      git(repoRoot, ["rev-parse", "-q", "--verify", "MERGE_HEAD"], {
-        allowFailure: true,
-      }).status,
-    ).not.toBe(0);
-  });
-
-  it("brackets source-pack batch apply in the external self-mod morph lifecycle", async () => {
-    const browserBinaryName =
-      platformKey === "win-x64" ? "stella-browser.exe" : "stella-browser";
-    const browserRelativePath = `desktop/stella-browser/out/${platformKey}/${browserBinaryName}`;
-    const browserPath = path.join(repoRoot, ...browserRelativePath.split("/"));
-    const oldBrowserBytes = Buffer.from("old-browser-binary");
-    const nextBrowserBytes = Buffer.from("new-browser-binary");
-    await mkdir(path.dirname(browserPath), { recursive: true });
-    await writeFile(browserPath, oldBrowserBytes, { mode: 0o755 });
-    await writeFile(
-      path.join(repoRoot, ".gitignore"),
-      "desktop/stella-browser/out/\n",
-      "utf8",
-    );
-    git(repoRoot, ["add", ".gitignore"]);
-    git(repoRoot, ["commit", "-m", "Ignore hydrated browser artifacts"]);
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    const baseTree: StellaSourceTree = {
-      "app.txt": text("base\n"),
-    };
-    const nextTree: StellaSourceTree = {
-      "app.txt": text("source-pack target\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const pack = createStellaSourcePack({
-      baseRevisionId: `git:${baseCommit}`,
-      changeSets: [
-        createStellaSourceChangeSetFromTrees({
-          baseRevisionId,
-          baseTree,
-          nextTree,
-          featureId: "desktop-release",
-          description: "Desktop release desktop-v9.9.7",
-        }),
-      ],
-      featureId: "desktop-release",
-      description: "Desktop release desktop-v9.9.7",
-    });
-    const sourcePackRef = sourcePackRefFor(pack);
-    const sourcePackRaw = JSON.stringify(pack);
-    const targetCommit = "d".repeat(40);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value === sourcePackRef.url) {
-          return new Response(sourcePackRaw, { status: 200 });
-        }
-        if (value === "https://releases.test/stella-browser") {
-          return new Response(nextBrowserBytes, { status: 200 });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
-    const events: string[] = [];
-    const runner = {
-      beginExternalSelfMod: vi.fn(async (payload: { paths: string[] }) => {
-        events.push(
-          `begin:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`,
-        );
-        expect(payload.paths).toContain("app.txt");
-        expect(payload.paths).toContain(browserRelativePath);
-      }),
-      finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
-        events.push(
-          `finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`,
-        );
-        expect(payload.succeeded).toBe(true);
-        // Reload-before-record: the pointer must not have advanced yet.
-        await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-          installState: { desktopReleaseCommit: baseCommit },
-        });
-      }),
-    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
-
-    const result = await tryApplyCleanDesktopUpdate(
-      repoRoot,
-      repoRoot,
-      runner,
-      {
-        baseCommit,
-        targetCommit,
-        releaseTag: "desktop-v9.9.7",
-        sourcePackRef,
-        artifactRefs: [
-          {
-            kind: "stella-browser",
-            platform: platformKey,
-            asset: {
-              url: "https://releases.test/stella-browser",
-              sha256: `sha256:${createHash("sha256").update(nextBrowserBytes).digest("hex")}`,
-              sizeBytes: nextBrowserBytes.byteLength,
-            },
-          },
-        ],
-      },
-    );
-
-    expect(result.status).toBe("applied");
-    expect(result.status === "applied" && result.reloaded).toBe(true);
-    expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
-    expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
-    expect(events).toEqual(["begin:base\n", "finish:source-pack target\n"]);
-    expect(await readFile(browserPath)).toEqual(nextBrowserBytes);
-    await expect(readFile(`${browserPath}.update`)).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    expect(
-      git(repoRoot, ["ls-files", "--error-unmatch", browserRelativePath], {
-        allowFailure: true,
-      }).status,
-    ).not.toBe(0);
-    expect(
-      git(repoRoot, ["status", "--porcelain", "--untracked-files=no"]).stdout,
-    ).toBe("");
-    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-      installState: { desktopReleaseCommit: targetCommit },
-      lastUpdateAttempt: {
-        status: "complete",
-        targetCommit,
-      },
-    });
-  });
-
-  it("recovers the reload when the runtime restarts underneath finish", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    const baseTree: StellaSourceTree = {
-      "app.txt": text("base\n"),
-    };
-    const nextTree: StellaSourceTree = {
-      "app.txt": text("restart target\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const pack = createStellaSourcePack({
-      baseRevisionId: `git:${baseCommit}`,
-      changeSets: [
-        createStellaSourceChangeSetFromTrees({
-          baseRevisionId,
-          baseTree,
-          nextTree,
-          featureId: "desktop-release",
-          description: "Desktop release desktop-v9.9.6",
-        }),
-      ],
-      featureId: "desktop-release",
-      description: "Desktop release desktop-v9.9.6",
-    });
-    const sourcePackRef = sourcePackRefFor(pack);
-    const sourcePackRaw = JSON.stringify(pack);
-    const targetCommit = "e".repeat(40);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value === sourcePackRef.url) {
-          return new Response(sourcePackRaw, { status: 200 });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
-    // The original worker connection dies mid-finish — exactly what happens
-    // when the update's own runtime/ changes (or a concurrent self-mod apply)
-    // restart the worker while the update flow still holds the old transport.
-    const runner = {
-      beginExternalSelfMod: vi.fn(async () => undefined),
-      finishExternalSelfMod: vi.fn(async () => {
-        throw createRuntimeUnavailableError("Runtime RPC transport is closed.");
-      }),
-    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
-    const reconnectedRunner = {
-      beginExternalSelfMod: vi.fn(async () => undefined),
-      finishExternalSelfMod: vi.fn(async () => undefined),
-    };
-    const reacquireRunner = vi.fn(
-      async () => reconnectedRunner,
-    ) as unknown as NonNullable<
-      Parameters<typeof tryApplyCleanDesktopUpdate>[3]["reacquireRunner"]
-    > &
-      ReturnType<typeof vi.fn>;
-
-    const result = await tryApplyCleanDesktopUpdate(
-      repoRoot,
-      repoRoot,
-      runner,
-      {
-        baseCommit,
-        targetCommit,
-        releaseTag: "desktop-v9.9.6",
-        sourcePackRef,
-        reacquireRunner,
-      },
-    );
-
-    expect(result.status).toBe("applied");
-    expect(result.status === "applied" && result.reloaded).toBe(true);
-    // Cleanup finish for the dead run, then a replayed begin/finish cycle so
-    // the renderer actually reloads the updated code.
-    expect(reacquireRunner).toHaveBeenCalled();
-    expect(reconnectedRunner.finishExternalSelfMod).toHaveBeenCalledTimes(2);
-    expect(reconnectedRunner.beginExternalSelfMod).toHaveBeenCalledTimes(1);
-    const replayBegin = reconnectedRunner.beginExternalSelfMod.mock
-      .calls[0]?.[0] as { runId: string; paths: string[] };
-    expect(replayBegin.runId).toMatch(/:reload-replay$/);
-    expect(replayBegin.paths).toContain("app.txt");
-    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-      installState: { desktopReleaseCommit: targetCommit },
-      lastUpdateAttempt: { status: "complete", targetCommit },
-    });
-  });
-
-  it("resumes an interrupted update instead of fake-applying when the tree already matches", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    // Simulate a previous attempt that wrote + committed the update but died
-    // before the reload: the tree matches the target while the manifest
-    // pointer is still at the base commit.
-    await writeFile(path.join(repoRoot, "app.txt"), "resume target\n", "utf8");
-    git(repoRoot, ["commit", "-am", "Update to desktop-v9.9.5"]);
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    const baseTree: StellaSourceTree = {
-      "app.txt": text("base\n"),
-    };
-    const nextTree: StellaSourceTree = {
-      "app.txt": text("resume target\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const pack = createStellaSourcePack({
-      baseRevisionId: `git:${baseCommit}`,
-      changeSets: [
-        createStellaSourceChangeSetFromTrees({
-          baseRevisionId,
-          baseTree,
-          nextTree,
-          featureId: "desktop-release",
-          description: "Desktop release desktop-v9.9.5",
-        }),
-      ],
-      featureId: "desktop-release",
-      description: "Desktop release desktop-v9.9.5",
-    });
-    const sourcePackRef = sourcePackRefFor(pack);
-    const sourcePackRaw = JSON.stringify(pack);
-    const targetCommit = "b".repeat(40);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value === sourcePackRef.url) {
-          return new Response(sourcePackRaw, { status: 200 });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
-    const runner = {
-      beginExternalSelfMod: vi.fn(async (payload: { paths: string[] }) => {
-        expect(payload.paths).toContain("app.txt");
-      }),
-      finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
-        expect(payload.succeeded).toBe(true);
-      }),
-    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
-
-    const result = await tryApplyCleanDesktopUpdate(
-      repoRoot,
-      repoRoot,
-      runner,
-      {
-        baseCommit,
-        targetCommit,
-        releaseTag: "desktop-v9.9.5",
-        sourcePackRef,
-      },
-    );
-
-    // No files changed on disk, but the reload cycle must still run so the
-    // running app picks up the previously written code.
-    expect(result.status).toBe("applied");
-    expect(result.status === "applied" && result.reloaded).toBe(true);
-    expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
-    expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
-    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-      installState: { desktopReleaseCommit: targetCommit },
-      lastUpdateAttempt: { status: "complete", targetCommit },
-    });
-  });
-
-  it("does not record completion when the resume reload cannot run", async () => {
-    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
-    await writeFile(path.join(repoRoot, "app.txt"), "resume target\n", "utf8");
-    git(repoRoot, ["commit", "-am", "Update to desktop-v9.9.4"]);
-    await writeInstallManifest(repoRoot, {
-      activeCommit: baseCommit,
-      attempt: null,
-    });
-    await writeNativeHelperDownloadStub(repoRoot);
-    const baseTree: StellaSourceTree = {
-      "app.txt": text("base\n"),
-    };
-    const nextTree: StellaSourceTree = {
-      "app.txt": text("resume target\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const pack = createStellaSourcePack({
-      baseRevisionId: `git:${baseCommit}`,
-      changeSets: [
-        createStellaSourceChangeSetFromTrees({
-          baseRevisionId,
-          baseTree,
-          nextTree,
-          featureId: "desktop-release",
-          description: "Desktop release desktop-v9.9.4",
-        }),
-      ],
-      featureId: "desktop-release",
-      description: "Desktop release desktop-v9.9.4",
-    });
-    const sourcePackRef = sourcePackRefFor(pack);
-    const sourcePackRaw = JSON.stringify(pack);
-    const targetCommit = "c".repeat(40);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value === sourcePackRef.url) {
-          return new Response(sourcePackRaw, { status: 200 });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
-    // No runtime available: the tree matches the target but nothing can
-    // reload the running app — the update must not claim to be live.
-    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
-      baseCommit,
-      targetCommit,
-      releaseTag: "desktop-v9.9.4",
-      sourcePackRef,
-    });
-
-    expect(result.status).toBe("applied");
-    expect(result.status === "applied" && result.reloaded).toBe(false);
-    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-      installState: { desktopReleaseCommit: baseCommit },
-    });
   });
 });
 

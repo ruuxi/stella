@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { IpcRendererEvent } from "electron";
 import type {
   ChatContext,
-  DesktopReleaseSourceHistoryRef,
   SelfModHmrState,
   StellaReleaseArtifactRef,
 } from "../../runtime/contracts/index.js";
@@ -126,7 +125,6 @@ import {
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
-  IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
   IPC_UPDATES_ROLLBACK_CANCELED,
   IPC_UPDATES_TRY_APPLY_CLEAN,
@@ -1610,10 +1608,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           operationId: string | null;
           phase:
             | "started"
-            | "source-pack-preflight"
-            | "source-pack-write"
-            | "source-pack-commit"
-            | "content-landing"
+            | "git-fast-forward"
             | "git-fetch"
             | "git-merge"
             | "dependency-install"
@@ -1621,7 +1616,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "record-complete"
             | "agent-fallback"
             | null;
-          mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+          mode: "git" | "native-helpers" | "agent" | null;
           recoveryAction: "resume" | "discard" | "needs-agent" | null;
           startingHeadCommit: string | null;
           updatedAt: string | null;
@@ -1634,12 +1629,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       baseCommit: string;
       targetCommit: string;
       releaseTag: string;
-      sourcePackRef?: {
-        kind: "url";
-        url: string;
-        sha256: string;
-        sizeBytes: number;
-      };
       artifactRefs?: StellaReleaseArtifactRef[];
     }) =>
       ipcRenderer.invoke(IPC_UPDATES_TRY_APPLY_CLEAN, payload) as Promise<
@@ -1671,10 +1660,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
                 operationId: string | null;
                 phase:
                   | "started"
-                  | "source-pack-preflight"
-                  | "source-pack-write"
-                  | "source-pack-commit"
-                  | "content-landing"
+                  | "git-fast-forward"
                   | "git-fetch"
                   | "git-merge"
                   | "dependency-install"
@@ -1682,7 +1668,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
                   | "record-complete"
                   | "agent-fallback"
                   | null;
-                mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+                mode: "git" | "native-helpers" | "agent" | null;
                 recoveryAction: "resume" | "discard" | "needs-agent" | null;
                 startingHeadCommit: string | null;
                 updatedAt: string | null;
@@ -1702,18 +1688,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             reason: string;
             headCommit?: string;
             changedFiles?: string[];
-            sourcePackFile?: string;
-            sourcePackConflictFile?: string;
-            sourcePackConflictJson?: string;
           }
-      >,
-    recordSourceHistory: (payload: {
-      targetCommit: string;
-      releaseTag: string;
-      sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
-    }) =>
-      ipcRenderer.invoke(IPC_UPDATES_RECORD_SOURCE_HISTORY, payload) as Promise<
-        { ok: true; revisionId: string } | { ok: false; reason: string }
       >,
     refreshNativeHelpers: (
       releaseTag: string,
@@ -1732,18 +1707,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       commit: string,
       tag?: string,
       options?: {
-        mode?: "git-ancestry" | "release-pointer";
-        startingHeadCommit?: string;
         agentRunId?: string;
       },
     ) =>
       ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
         commit,
         tag,
-        ...(options?.mode ? { mode: options.mode } : {}),
-        ...(options?.startingHeadCommit
-          ? { startingHeadCommit: options.startingHeadCommit }
-          : {}),
         ...(options?.agentRunId ? { agentRunId: options.agentRunId } : {}),
       }) as Promise<{
         version: string;
@@ -1771,10 +1740,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           operationId: string | null;
           phase:
             | "started"
-            | "source-pack-preflight"
-            | "source-pack-write"
-            | "source-pack-commit"
-            | "content-landing"
+            | "git-fast-forward"
             | "git-fetch"
             | "git-merge"
             | "dependency-install"
@@ -1782,7 +1748,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "record-complete"
             | "agent-fallback"
             | null;
-          mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+          mode: "git" | "native-helpers" | "agent" | null;
           recoveryAction: "resume" | "discard" | "needs-agent" | null;
           startingHeadCommit: string | null;
           updatedAt: string | null;

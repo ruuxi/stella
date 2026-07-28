@@ -309,8 +309,6 @@ export const IPC_UPDATES_GET_INSTALL_MANIFEST =
   "updates:getInstallManifest" as const;
 export const IPC_UPDATES_TRY_APPLY_CLEAN =
   "updates:tryApplyCleanUpdate" as const;
-export const IPC_UPDATES_RECORD_SOURCE_HISTORY =
-  "updates:recordSourceHistory" as const;
 export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
   "updates:recordAppliedCommit" as const;
 export const IPC_UPDATES_REFRESH_NATIVE_HELPERS =

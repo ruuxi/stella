@@ -54,12 +54,6 @@ type ApplyDesktopUpdateOptions = {
   publishedCommit: string;
   publishedTag: string;
   publishedAt: number;
-  sourcePackRef?: {
-    kind: "url";
-    url: string;
-    sha256: string;
-    sizeBytes: number;
-  };
   artifactRefs?: StellaReleaseArtifactRef[];
   onAppliedCommit?: (
     manifest: InstallManifestSnapshot | null,
@@ -85,9 +79,6 @@ export type UpdateAgentFallback = {
   reason: string;
   headCommit?: string;
   changedFiles?: string[];
-  sourcePackFile?: string;
-  sourcePackConflictFile?: string;
-  sourcePackConflictJson?: string;
 };
 
 type DesktopUpdateRollbackSnapshot = {
@@ -105,52 +96,15 @@ export const buildInstallUpdatePrompt = (args: {
   installRoot: string;
   fallback: UpdateAgentFallback | null;
 }) => {
-  const conflictLines = args.fallback?.sourcePackConflictFile
-    ? [
-        "Fast update path: Stella source-pack merge needs agent resolution.",
-        `Fast path reason: ${args.fallback.reason}`,
-        ...(args.fallback.sourcePackFile
-          ? [
-              `Full source pack: ${args.fallback.sourcePackFile} (relative to the install root)`,
-            ]
-          : []),
-        `Conflict file: ${args.fallback.sourcePackConflictFile} (relative to the install root, kept for audit)`,
-        ...(args.fallback.headCommit
-          ? [
-              `Starting HEAD before agent resolution: ${args.fallback.headCommit}`,
-            ]
-          : []),
-        "The conflict file lists compatible appliedPaths and appliedChanges. Apply each appliedChanges entry exactly as its content field specifies, then resolve the conflicts, stage, and commit the complete result.",
-        ...(args.fallback.changedFiles?.length
-          ? [
-              "Source-pack touched paths:",
-              ...args.fallback.changedFiles.map((file) => `- ${file}`),
-            ]
-          : []),
-        "",
-        ...(args.fallback.sourcePackConflictJson
-          ? [
-              "Source-pack conflict JSON:",
-              "```json",
-              args.fallback.sourcePackConflictJson.trimEnd(),
-              "```",
-              "",
-              "Use the embedded conflict JSON first. It contains base, local, and next content for conflicted paths, plus appliedChanges with exact final content for compatible paths. Apply the compatible text changes from appliedChanges, resolve the conflicted files directly in the install root, preserve local edits, stage and commit the result, and install dependencies only if package manifests or lockfiles changed. If appliedChanges contains binary content that cannot be written with your tools, use the Git fallback instead.",
-            ]
-          : [
-              "The conflict JSON was too large to embed in this prompt. Use the Git fallback instead of trying to read state files from disk.",
-              "Fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
-            ]),
-      ]
-    : [
-        ...(args.fallback
-          ? [
-              `Fast update path could not apply automatically: ${args.fallback.reason}`,
-              "",
-            ]
-          : []),
-        "Run the normal update merge from the install root: fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
-      ];
+  const conflictLines = [
+    ...(args.fallback
+      ? [
+          `Fast update path could not apply automatically: ${args.fallback.reason}`,
+          "",
+        ]
+      : []),
+    "Run the normal update merge from the install root: fetch origin/master, verify it matches the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
+  ];
   return [
     "You are the install-update agent. Apply the upstream change set below.",
     "",
@@ -243,9 +197,6 @@ export const applyDesktopUpdate = async (
       baseCommit,
       targetCommit: options.publishedCommit,
       releaseTag: options.publishedTag,
-      ...(options.sourcePackRef
-        ? { sourcePackRef: options.sourcePackRef }
-        : {}),
       ...(options.artifactRefs ? { artifactRefs: options.artifactRefs } : {}),
     });
     if (fastApply.status === "applied") {
@@ -273,15 +224,6 @@ export const applyDesktopUpdate = async (
       ...(fastApply.changedFiles
         ? { changedFiles: fastApply.changedFiles }
         : {}),
-      ...(fastApply.sourcePackFile
-        ? { sourcePackFile: fastApply.sourcePackFile }
-        : {}),
-      ...(fastApply.sourcePackConflictFile
-        ? { sourcePackConflictFile: fastApply.sourcePackConflictFile }
-        : {}),
-      ...(fastApply.sourcePackConflictJson
-        ? { sourcePackConflictJson: fastApply.sourcePackConflictJson }
-        : {}),
     };
   } catch (error) {
     if (getActiveDesktopUpdate()?.conversationId === conversationId) {
@@ -299,10 +241,6 @@ export const applyDesktopUpdate = async (
     installRoot: options.installManifest.installPath,
     fallback: fastApplyFallback,
   });
-  const sourcePackStartingHeadCommit =
-    fastApplyFallback?.sourcePackConflictFile && fastApplyFallback.headCommit
-      ? fastApplyFallback.headCommit
-      : null;
   const rollbackSnapshot: DesktopUpdateRollbackSnapshot | null =
     fastApplyFallback?.headCommit
       ? {
@@ -349,8 +287,7 @@ export const applyDesktopUpdate = async (
     void (async () => {
       // The agent's "completed" outcome only means the agent thread finished
       // without crashing — it does NOT prove the update actually landed.
-      // `recordAppliedCommit` verifies Git ancestry for normal merges, or a
-      // clean new local commit for source-pack conflict resolution.
+      // `recordAppliedCommit` verifies that the target is in Git ancestry.
       let effectiveEvent: AgentStreamIpcEvent = event;
       try {
         if (event.outcome === "completed") {
@@ -361,13 +298,7 @@ export const applyDesktopUpdate = async (
           const manifest = await electronApi.updates.recordAppliedCommit(
             options.publishedCommit,
             options.publishedTag,
-            sourcePackStartingHeadCommit
-              ? {
-                  mode: "release-pointer",
-                  startingHeadCommit: sourcePackStartingHeadCommit,
-                  agentRunId: event.runId,
-                }
-              : { agentRunId: event.runId },
+            { agentRunId: event.runId },
           );
           await options.onAppliedCommit?.(manifest);
         }
@@ -429,12 +360,6 @@ export const applyDesktopUpdate = async (
           repoName,
           ...(fastApplyFallback
             ? { fastApplyReason: fastApplyFallback.reason }
-            : {}),
-          ...(fastApplyFallback?.sourcePackConflictFile
-            ? {
-                sourcePackConflictFile:
-                  fastApplyFallback.sourcePackConflictFile,
-              }
             : {}),
         },
       },

@@ -65,18 +65,6 @@ export const ShellTopBarUpdatePill = () => {
         publishedCommit,
         publishedTag: currentRelease.tag,
         publishedAt: currentRelease.publishedAt,
-        ...(currentRelease.sourcePackUrl &&
-        currentRelease.sourcePackSha256 &&
-        typeof currentRelease.sourcePackSize === "number"
-          ? {
-              sourcePackRef: {
-                kind: "url",
-                url: currentRelease.sourcePackUrl,
-                sha256: currentRelease.sourcePackSha256,
-                sizeBytes: currentRelease.sourcePackSize,
-              },
-            }
-          : {}),
         ...(currentRelease.artifactRefs
           ? { artifactRefs: currentRelease.artifactRefs }
           : {}),
