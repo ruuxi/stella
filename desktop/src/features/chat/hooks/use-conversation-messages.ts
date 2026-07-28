@@ -43,9 +43,9 @@ export const MESSAGE_PAGE_SIZE = 200;
  * for every row it retains (and IPC on the full-refetch fallback paths),
  * so an unbounded window makes worst-case cost scale with how far the
  * user once scrolled. In practice users rarely scroll past a few hundred
- * rows; 2000 keeps deep history reachable while bounding the worst case.
+ * rows; 1000 keeps deep history reachable while bounding the worst case.
  */
-export const MAX_VISIBLE_MESSAGES = 2_000;
+export const MAX_VISIBLE_MESSAGES = 1_000;
 const LOCAL_MESSAGE_LOAD_RETRY_MS = 300;
 
 /**
