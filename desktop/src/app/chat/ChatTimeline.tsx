@@ -149,10 +149,8 @@ type ChatTimelineProps = {
  * `--chat-item-part-gap` in full-shell.chat.css.
  *
  * When judging perceived spacing remember each text-bearing assistant
- * row ends with an invisible 8px tail (the part gap before the
- * zero-height hover action strip — its buttons overlay the gap below
- * rather than reserving a band), so the visual gap between two
- * assistant paragraphs is `8 + ASSISTANT_RUN_GAP`.
+ * row ends with the part gap plus the reserved hover-action strip before
+ * the between-row separator.
  * ------------------------------------------------------------------ */
 
 /** Turn boundary: spacing across a sender change (user <-> assistant). */

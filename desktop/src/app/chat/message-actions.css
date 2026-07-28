@@ -1,11 +1,10 @@
 /* Per-message Copy / Read-aloud action row (see MessageActions.tsx).
  *
- * The row's in-flow height is a CONSTANT zero: the 24px buttons overflow
- * downward into the inter-row whitespace instead of reserving a band of
- * their own. Constant geometry is the contract — the chat scroll-follow
- * logic and the virtualized timeline key on stable row heights, so the
- * strip must never grow/shrink on hover or when streaming finalizes.
- * Visibility is purely an opacity fade.
+ * The row reserves its full 24px height throughout the message lifetime.
+ * Constant geometry is the contract — the chat scroll-follow logic and the
+ * virtualized timeline key on stable row heights, so the strip must never
+ * grow/shrink on hover or when streaming finalizes. Visibility is purely an
+ * opacity fade.
  *
  * It is mounted for the whole life of an assistant message, including while
  * it streams. While the row is streaming (`.event-row--streaming` ancestor)
@@ -16,15 +15,17 @@
   display: flex;
   align-items: flex-start;
   gap: 2px;
-  /* Zero-height overlay: buttons render on top of the gap below the
-     message. On tight assistant runs they can graze the next row, so the
-     revealed buttons carry an opaque backdrop (see the reveal rule). */
-  height: 0;
-  overflow: visible;
+  height: 24px;
   opacity: 0;
   transition: opacity 0.12s ease;
-  /* Invisible state must not intercept clicks / hover. */
+  /* Streaming rows stay non-interactive; settled rows opt back in below so
+     their dedicated hover target can reveal the controls. */
   pointer-events: none;
+}
+
+/* Give the settled action strip its own hover target. */
+.message-actions:not([data-streaming="true"]) {
+  pointer-events: auto;
 }
 
 .message-actions--start {
@@ -32,8 +33,8 @@
 }
 
 /* User actions sit a hair below the right-aligned bubble. The user row's
-   flex `gap` is `--chat-item-part-gap`; pull the (zero-height) row back up
-   so the overlaid buttons start 2px under the bubble. */
+   flex `gap` is `--chat-item-part-gap`; pull the row back up so the buttons
+   start 2px under the bubble. */
 .message-actions--end {
   justify-content: flex-end;
   align-self: flex-end;
@@ -47,19 +48,10 @@
  * playing) can only be true on a finalized message, so it needs no guard. */
 .event-row:not(.event-row--streaming):hover .message-actions,
 .event-row:not(.event-row--streaming):focus-within .message-actions,
+.message-actions:not([data-streaming="true"]):hover,
 .message-actions[data-active="true"] {
   opacity: 1;
   pointer-events: auto;
-}
-
-/* Revealed buttons overlay whitespace (and, on tight assistant runs, the
-   top of the next row) — an opaque backdrop keeps them legible there. */
-.event-row:not(.event-row--streaming):hover .message-actions .message-actions__btn,
-.event-row:not(.event-row--streaming):focus-within
-  .message-actions
-  .message-actions__btn,
-.message-actions[data-active="true"] .message-actions__btn {
-  background: var(--background);
 }
 
 .message-actions__btn {
@@ -81,9 +73,7 @@
 
 .message-actions__btn:hover {
   color: var(--text-strong);
-  /* Mix over the opaque backdrop, not transparent — the strip overlays
-     content, so the button must stay opaque on hover. */
-  background: color-mix(in srgb, var(--foreground) 6%, var(--background)) !important;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
 .message-actions__btn:focus-visible {

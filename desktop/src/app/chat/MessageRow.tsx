@@ -653,9 +653,9 @@ export const AssistantMessageRow = memo(
           {row.customSlot ? row.customSlot : null}
           {hasText && (
             // Mounted while streaming too (held invisible + inert via the
-            // `streaming` flag). The strip is a constant zero-height overlay
-            // (see message-actions.css), so finalizing the message adds no
-            // box — no layout jump. It only becomes hover/focus-revealable
+            // `streaming` flag). The strip reserves its full height from the
+            // start (see message-actions.css), so finalizing the message
+            // causes no layout jump. It only becomes hover/focus-revealable
             // once settled.
             <MessageActions
               text={text}
