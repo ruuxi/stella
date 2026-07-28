@@ -105,6 +105,14 @@
 .display-panel-topbar[data-display-open="false"] {
   clip-path: inset(0 0 0 100%);
   pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+/* App-region hit testing ignores paint clipping and pointer-events. Clear the
+   hidden header's descendant drag regions too, otherwise this later DOM
+   sibling turns the visible panel button beneath it into window chrome. */
+.display-panel-topbar[data-display-open="false"] * {
+  -webkit-app-region: no-drag;
 }
 
 .display-panel-topbar__tabs {

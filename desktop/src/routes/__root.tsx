@@ -64,7 +64,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
 import { DisplayPanelTopBar } from "@/shell/DisplayPanelTopBar";
-import { RadialSearchOverlay } from "@/shell/radial/RadialSearchOverlay";
+import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -360,6 +360,14 @@ function RootChrome() {
     ensureChatDisplayTab();
   }, []);
 
+  const handleContextMenuOpenPanel = useCallback(() => {
+    displayTabs.setPanelOpen(true);
+  }, []);
+
+  const handleContextMenuClosePanel = useCallback(() => {
+    displayTabs.setPanelOpen(false);
+  }, []);
+
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
     rightSidebarRef,
     isMiniWindow,
@@ -534,6 +542,11 @@ function RootChrome() {
 
       {!isFullWindow ? <ShellTopBar /> : null}
 
+      <StellaContextMenu
+        isOpen={panelOpen}
+        onOpen={handleContextMenuOpenPanel}
+        onClose={handleContextMenuClosePanel}
+      >
         <div className="content-area">
           <div
             className={`persistent-chat-surface${isOnChatRoute ? " persistent-chat-surface--active" : ""}`}
@@ -572,6 +585,7 @@ function RootChrome() {
             />
           ) : null}
         </div>
+      </StellaContextMenu>
 
       {isFullWindow ? <DisplayPanelTopBar /> : null}
 
@@ -585,8 +599,6 @@ function RootChrome() {
         onCancel={chat.annotation.cancel}
         onSelect={chat.annotation.submit}
       />
-
-      {isFullWindow ? <RadialSearchOverlay /> : null}
 
       <FullShellDialogs
         activeDialog={activeDialog ?? null}

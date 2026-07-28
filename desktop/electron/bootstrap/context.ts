@@ -12,7 +12,6 @@ import type { CredentialService } from "../services/credential-service.js";
 import type { ConnectorCredentialService } from "../services/connector-credential-service.js";
 import type { ConnectorConnectService } from "../services/connector-connect-service.js";
 import type { RadialGestureService } from "../services/radial-gesture-service.js";
-import type { ShellRadialGestureService } from "../services/shell-radial-gesture-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
@@ -94,7 +93,6 @@ export type BootstrapServices = {
   backupService: BackupService;
   captureService: CaptureService;
   radialGestureService: RadialGestureService;
-  shellRadialGestureService: ShellRadialGestureService;
   credentialService: CredentialService;
   connectorCredentialService: ConnectorCredentialService;
   connectorConnectService: ConnectorConnectService;

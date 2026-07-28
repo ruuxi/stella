@@ -22,8 +22,10 @@
  */
 
 import { getPlatform } from "@/platform/electron/platform";
-import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
-import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
+import {
+  displayTabs,
+  useDisplayPanelOpen,
+} from "@/features/workspace-display/tab-store";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarPrimaryNav } from "@/shell/sidebar/ShellTopBarNav";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
@@ -63,13 +65,12 @@ export function ShellTopBarFull({ onSignIn, onConnect }: ShellTopBarFullProps) {
       <div className="shell-topbar-full__right">
         {/* The panel has no persistent affordance while open — the display
             topbar owns close/expand — so this only offers the "summon"
-            direction. The radial dial is the primary way in; this is the
-            discoverable one. */}
+            direction. */}
         {!panelOpen ? (
           <button
             type="button"
             className="shell-topbar-icon-btn"
-            onClick={() => dispatchOpenWorkspacePanel()}
+            onClick={() => displayTabs.setPanelOpen(true)}
             aria-label="Open panel"
             title="Open panel"
           >

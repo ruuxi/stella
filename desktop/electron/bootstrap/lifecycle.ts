@@ -71,13 +71,6 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   );
   context.state.processRuntime.registerCleanup(
     "will-quit",
-    "shell-radial-gesture-service",
-    () => {
-      context.services.shellRadialGestureService.stop();
-    },
-  );
-  context.state.processRuntime.registerCleanup(
-    "will-quit",
     "local-chat-history-service",
     () => {
       context.services.localChatHistoryService.close();

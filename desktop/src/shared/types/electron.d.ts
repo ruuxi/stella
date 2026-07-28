@@ -349,7 +349,6 @@ export type ElectronRadialApi = {
         screenY?: number;
         compactFocused?: boolean;
         miniAlwaysOnTop?: boolean;
-        variant?: "system" | "shell";
       },
     ) => void,
   ) => () => void;
@@ -364,26 +363,6 @@ export type ElectronRadialApi = {
   onAddIcon: (
     callback: (event: unknown, data: { iconDataUrl: string | null }) => void,
   ) => () => void;
-};
-
-export type ElectronShellRadialApi = {
-  onQueryPress: (
-    callback: (
-      event: unknown,
-      data: { x: number; y: number; token: number },
-    ) => void,
-  ) => () => void;
-  respondPress: (token: number, claim: boolean) => void;
-  onCommit: (
-    callback: (event: unknown, data: { index: number }) => void,
-  ) => () => void;
-  beginDomGesture: () => void;
-  moveDomGesture: () => void;
-  endDomGesture: () => void;
-  cancelDomGesture: () => void;
-  leaveDomGesture: () => void;
-  onEnded: (callback: () => void) => () => void;
-  onSwallowedPress: (callback: () => void) => () => void;
 };
 
 export type ElectronOverlayApi = {
@@ -1938,7 +1917,6 @@ export type ElectronApi = {
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
-  shellRadial: ElectronShellRadialApi;
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;

@@ -5,11 +5,10 @@
  * This sits beside `tab-store` rather than inside it because the two answer
  * different questions. `tab-store` owns the *viewer registry*: which artifact
  * specs exist and how wide the panel is. This store owns the *sidebar's
- * navigation*: which of the four sections is showing, and for each section,
+ * navigation*: which section is showing, and for each section,
  * the sub-location the user last had open. Keeping them apart means a payload
  * arriving from an agent can register a viewer without deciding anything about
- * which section the user is looking at, and the radial dial can switch sections
- * without touching the viewer registry.
+ * which section the user is looking at.
  *
  * Per-section memory is the whole point of the split. Selecting a section never
  * resets it: reopening Files returns to the file you had open, reopening Apps
@@ -170,9 +169,8 @@ export const sidebarSections = {
 
   /**
    * Switch sections without touching the panel's open state. Use
-   * `selectSection` for anything driven by the dial or a tab click — this is
-   * for programmatic retargeting (an incoming artifact payload aiming at
-   * Files, say).
+   * `selectSection` for a tab click — this is for programmatic retargeting
+   * (an incoming artifact payload aiming at Files, say).
    */
   setActiveSection(section: SidebarSection): void {
     const resolved = resolveSidebarSection(section);
@@ -182,11 +180,12 @@ export const sidebarSections = {
   },
 
   /**
-   * The open / switch / close rule the radial dial and the tab rail share.
+   * The tab rail's open / switch / reset rule.
    *
-   * - panel closed          → open it on `section`
-   * - panel open on X, pick X → close the panel
-   * - panel open on X, pick Y → switch to Y, stay open
+   * - panel closed                     → open it on `section`
+   * - panel open on X's detail, pick X → return X to its default view
+   * - panel open on X's default, pick X → do nothing
+   * - panel open on X, pick Y          → switch to Y, stay open
    *
    * Neither branch touches per-section memory, so a close/reopen round trip
    * lands back on whatever sub-location the section was showing.
@@ -202,7 +201,9 @@ export const sidebarSections = {
     }
 
     if (snapshot.activeSection === section) {
-      displayTabs.setPanelOpen(false);
+      if (snapshot.locations[section] !== null) {
+        this.clearLocation(section);
+      }
       return;
     }
 

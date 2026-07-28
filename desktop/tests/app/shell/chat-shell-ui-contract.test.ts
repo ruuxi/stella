@@ -8,7 +8,7 @@ import {
   getActivityPillLabel,
   getDisplayedActivityPillState,
 } from "@/app/chat/ComposerActivityPill";
-import { isRadialGestureExempt } from "@/shell/radial/radial-gesture-target";
+import { isComposerContextMenuTarget } from "@/shell/context-menu/StellaContextMenu";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
 const SOURCE_ROOT = path.resolve(
@@ -94,9 +94,9 @@ describe("chat shell UI contracts", () => {
     form.appendChild(textarea);
     const outside = document.createElement("div");
 
-    expect(isRadialGestureExempt(textarea)).toBe(true);
-    expect(isRadialGestureExempt(form)).toBe(true);
-    expect(isRadialGestureExempt(outside)).toBe(false);
+    expect(isComposerContextMenuTarget(textarea)).toBe(true);
+    expect(isComposerContextMenuTarget(form)).toBe(true);
+    expect(isComposerContextMenuTarget(outside)).toBe(false);
   });
 
   it("moves suggestion UI into + and keeps search one click from the composer", () => {
@@ -112,29 +112,29 @@ describe("chat shell UI contracts", () => {
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
     );
-    const radialSearch = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/radial/RadialSearchOverlay.tsx"),
-      "utf8",
-    );
-
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
-    expect(activityPill).toContain("radialSearchStore.open()");
-    expect(radialSearch).toContain(
-      'placeholder="Search activity, files, and more"',
+    expect(activityPill).toContain(
+      'sidebarSections.openLocation("home", null)',
     );
   });
 
-  it("keeps search out of Home and includes apps in radial results", () => {
+  it("keeps workspace search in Home", () => {
     const home = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
-    const radialSearch = fs.readFileSync(
-      path.join(SOURCE_ROOT, "shell/radial/RadialSearchOverlay.tsx"),
+    expect(home).toContain("sidebar-search__field");
+    expect(home).toContain('placeholder="Search activity, files, and more"');
+  });
+
+  it("keeps the closed display header from swallowing top-bar clicks", () => {
+    const css = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/shell-topbar-full.css"),
       "utf8",
     );
-    expect(home).not.toContain("sidebar-search__field");
-    expect(radialSearch).toContain("includeUserApps");
+    expect(css).toMatch(
+      /\.display-panel-topbar\[data-display-open="false"\]\s+\*\s*\{[^}]*-webkit-app-region:\s*no-drag/,
+    );
   });
 });

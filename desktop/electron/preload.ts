@@ -499,7 +499,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       screenY?: number;
       compactFocused?: boolean;
       miniAlwaysOnTop?: boolean;
-      variant?: "system" | "shell";
     }>("radial:show"),
     onHide: onIpcSignal("radial:hide"),
     animDone: () => ipcRenderer.send("radial:animDone"),
@@ -510,37 +509,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerY: number;
     }>("radial:cursor"),
     onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>("radial:addIcon"),
-  },
-
-  // The shell's right-button radial dial. The dial itself lives in the
-  // always-on-top overlay window; the main process owns the gesture, fed by
-  // two sources — the renderer's own pointer events (ordinary DOM presses,
-  // no permission needed) and the global input hook (presses inside embedded
-  // content). The renderer additionally answers whether a hook press landed
-  // on an exempt target, and applies the committed wedge.
-  shellRadial: {
-    onQueryPress: onIpcWithEvent<{ x: number; y: number; token: number }>(
-      "shell-radial:query-press",
-    ),
-    respondPress: (token: number, claim: boolean) =>
-      ipcRenderer.send("shell-radial:press-response", { token, claim }),
-    onCommit: onIpcWithEvent<{ index: number }>("shell-radial:commit"),
-    // The DOM gesture source: a right-press the renderer itself received.
-    beginDomGesture: () => ipcRenderer.send("shell-radial:dom-begin"),
-    moveDomGesture: () => ipcRenderer.send("shell-radial:dom-move"),
-    endDomGesture: () => ipcRenderer.send("shell-radial:dom-up"),
-    cancelDomGesture: () => ipcRenderer.send("shell-radial:dom-cancel"),
-    // A renderer leave can be caused by the transparent overlay window
-    // appearing. Main compares the physical cursor with the app bounds before
-    // deciding whether this is a real exit.
-    leaveDomGesture: () => ipcRenderer.send("shell-radial:dom-leave"),
-    // Fired whenever the gesture resolves in main (commit, dismiss, cancel),
-    // so the renderer can drop its own gesture state even when the closing
-    // event never reached the DOM.
-    onEnded: onIpcSignal("shell-radial:ended"),
-    // A right-press inside embedded content was lost because the global
-    // input hook is not running (accessibility permission missing).
-    onSwallowedPress: onIpcSignal("shell-radial:swallowed-press"),
   },
 
   overlay: {

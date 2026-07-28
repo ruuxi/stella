@@ -4,7 +4,6 @@ import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
-import { ShellRadialGestureService } from "../services/shell-radial-gesture-service.js";
 import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ConnectorCredentialService } from "../services/connector-credential-service.js";
@@ -307,34 +306,11 @@ export const createBootstrapServices = (options: {
     },
   });
 
-  // The shell dial rides the same overlay window and global hook as the
-  // chord dial; its uiohook listeners only receive events once the mouse
-  // hook is started by radialGestureService, so starting here is safe even
-  // though that happens later.
-  const shellRadialGestureService = new ShellRadialGestureService({
-    getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
-    isSystemRadialActive: () => radialGestureService.isRadialActive(),
-    isHookRunning: () => radialGestureService.isHookRunning(),
-    shouldEnable: () =>
-      !uiStateService.state.suppressNativeRadialDuringOnboarding &&
-      (process.platform !== "darwin" ||
-        hasMacPermission("accessibility", false)),
-    overlay: {
-      showShellRadial: () =>
-        void state.overlayController?.showRadial({ variant: "shell" }),
-      hideRadial: () => state.overlayController?.hideRadial(),
-      updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
-      getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
-    },
-  });
-  shellRadialGestureService.start();
-
   return {
     authService,
     backupService,
     captureService,
     radialGestureService,
-    shellRadialGestureService,
     credentialService,
     connectorCredentialService,
     connectorConnectService,

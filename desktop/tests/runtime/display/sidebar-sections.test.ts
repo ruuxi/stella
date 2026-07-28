@@ -21,7 +21,7 @@ afterEach(() => {
   sidebarSections.reset();
 });
 
-describe("selectSection — open / switch / close", () => {
+describe("selectSection — open / switch / reset", () => {
   it("opens the panel to the selected section when closed", () => {
     expect(panelOpen()).toBe(false);
     sidebarSections.selectSection("files");
@@ -29,11 +29,10 @@ describe("selectSection — open / switch / close", () => {
     expect(activeSection()).toBe("files");
   });
 
-  it("closes the panel when the already-active section is selected again", () => {
+  it("does nothing when the active section is already at its default view", () => {
     sidebarSections.selectSection("files");
     sidebarSections.selectSection("files");
-    expect(panelOpen()).toBe(false);
-    // The section stays active so the next summon returns to it.
+    expect(panelOpen()).toBe(true);
     expect(activeSection()).toBe("files");
   });
 
@@ -44,34 +43,22 @@ describe("selectSection — open / switch / close", () => {
     expect(activeSection()).toBe("apps");
   });
 
-  it("reopens on the section it was closed from", () => {
+  it("returns the active section to its default view when drilled in", () => {
+    sidebarSections.openLocation("apps", "discipline");
     sidebarSections.selectSection("apps");
-    sidebarSections.selectSection("apps"); // close
-    expect(panelOpen()).toBe(false);
-    sidebarSections.selectSection("apps"); // reopen
     expect(panelOpen()).toBe(true);
     expect(activeSection()).toBe("apps");
-  });
-
-  it("round-trips every section", () => {
-    for (const section of SIDEBAR_SECTIONS) {
-      sidebarSections.selectSection(section);
-      expect(activeSection()).toBe(section);
-      expect(panelOpen()).toBe(true);
-      sidebarSections.selectSection(section);
-      expect(panelOpen()).toBe(false);
-    }
+    expect(locations().apps).toBeNull();
   });
 });
 
 describe("per-section memory", () => {
-  it("restores a section's sub-location across close and reopen", () => {
+  it("keeps a section's sub-location while switching away and back", () => {
     sidebarSections.selectSection("files");
     sidebarSections.setLocation("files", "pdf:/report.pdf");
 
-    sidebarSections.selectSection("files"); // close
-    expect(panelOpen()).toBe(false);
-    sidebarSections.selectSection("files"); // reopen
+    sidebarSections.selectSection("home");
+    sidebarSections.selectSection("files");
 
     expect(locations().files).toBe("pdf:/report.pdf");
   });
@@ -96,14 +83,11 @@ describe("per-section memory", () => {
     expect(locations().apps).toBe("discipline");
   });
 
-  it("clearLocation is the only way back to a section's list", () => {
+  it("selecting the active tab clears its location", () => {
     sidebarSections.openLocation("files", "canvas:html");
-    sidebarSections.selectSection("files"); // close
-    sidebarSections.selectSection("files"); // reopen
-    expect(locations().files).toBe("canvas:html");
-
-    sidebarSections.clearLocation("files");
+    sidebarSections.selectSection("files");
     expect(locations().files).toBeNull();
+    expect(panelOpen()).toBe(true);
   });
 });
 
@@ -138,15 +122,15 @@ describe("retired section ids", () => {
     expect(sidebarSections.getSnapshot().activeSection).toBe("home");
   });
 
-  it("routes selectSection's open/switch/close rule through the live id", () => {
+  it("routes selectSection's open/switch/reset rule through the live id", () => {
     sidebarSections.selectSection("tasks" as unknown as "home");
     expect(activeSection()).toBe("home");
     expect(panelOpen()).toBe(true);
 
-    // Selecting the same section again closes — and `tasks` *is* the same
-    // section as `home`, so this must close rather than switch.
+    // `tasks` resolves to the already-active default Home view, so the second
+    // selection is a no-op.
     sidebarSections.selectSection("tasks" as unknown as "home");
-    expect(panelOpen()).toBe(false);
+    expect(panelOpen()).toBe(true);
   });
 
   it("files a retired id's sub-location under its successor", () => {

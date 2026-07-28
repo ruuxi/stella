@@ -38,6 +38,7 @@ import {
 } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { matchesQuery } from "@/features/workspace-display/display-search-store";
+import { sidebarSections } from "@/features/workspace-display/sidebar-sections";
 import {
   loadOlderFeatureEntries,
   refreshFeatureSnapshot,

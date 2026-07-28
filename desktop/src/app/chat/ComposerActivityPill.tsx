@@ -16,7 +16,7 @@
  *     state before quietly reverting to "Search" — a minimum dwell so a quick
  *     task doesn't just flash its progress.
  *
- * Clicking it (in any state) opens the radial search overlay.
+ * Clicking it (in any state) opens the sidebar's Home search.
  */
 import {
   memo,
@@ -37,12 +37,11 @@ import {
   deriveTopLevelActivityWorkUnits,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
-import { useActiveSidebarSection } from "@/features/workspace-display/sidebar-sections";
-import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
-  radialSearchStore,
-  useRadialSearchOpen,
-} from "@/shell/radial/radial-search-store";
+  sidebarSections,
+  useActiveSidebarSection,
+} from "@/features/workspace-display/sidebar-sections";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import "./composer-activity-pill.css";
 
 export type PillState = "idle" | "running" | "done" | "error" | "canceled";
@@ -193,7 +192,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
 }: {
   state: PillState;
   runningCount: number;
-  /** Whether radial search is already open. */
+  /** Whether the sidebar is already showing Home. */
   open: boolean;
 }) {
   const label = getActivityPillLabel(state, runningCount);
@@ -216,7 +215,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
       className="composer-activity-pill"
       data-state={state}
       data-open={open || undefined}
-      onClick={() => radialSearchStore.open()}
+      onClick={() => sidebarSections.openLocation("home", null)}
       aria-label={state === "idle" ? "Search" : `${label} — open search`}
     >
       <span className="composer-activity-pill__glyph" aria-hidden="true">
@@ -230,7 +229,6 @@ const ActivityPillBody = memo(function ActivityPillBody({
 export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const panelOpen = useDisplayPanelOpen();
   const activeSection = useActiveSidebarSection();
-  const searchOpen = useRadialSearchOpen();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
   const tasks = chat.conversation.tasks;
@@ -253,7 +251,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={searchOpen}
+        open={panelOpen && activeSection === "home"}
       />
     </motion.div>
   );
