@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getReasoningEffort,
   loadLocalPreferences,
   normalizeImageGenerationPreferences,
   normalizeRealtimeVoicePreferences,
@@ -34,6 +35,25 @@ const writePreferences = (
 };
 
 describe("loadLocalPreferences", () => {
+  it("starts new users on low and keeps missing persisted preferences at the medium-producing default", () => {
+    const newUserHome = makeStellaDataDir();
+    expect(getReasoningEffort(newUserHome, "orchestrator")).toBe("low");
+    expect(getReasoningEffort(newUserHome, "general")).toBe("low");
+
+    const legacyHome = makeStellaDataDir();
+    writePreferences(legacyHome, {});
+    expect(getReasoningEffort(legacyHome, "orchestrator")).toBe("default");
+    expect(getReasoningEffort(legacyHome, "general")).toBe("default");
+
+    const customizedHome = makeStellaDataDir();
+    writePreferences(customizedHome, {
+      reasoningEfforts: { orchestrator: "high" },
+    });
+
+    expect(getReasoningEffort(customizedHome, "orchestrator")).toBe("high");
+    expect(getReasoningEffort(customizedHome, "general")).toBe("default");
+  });
+
   it("persists engine-scoped Stella state and normalizes Claude minimal", () => {
     const stellaDataDir = makeStellaDataDir();
     writePreferences(stellaDataDir, {

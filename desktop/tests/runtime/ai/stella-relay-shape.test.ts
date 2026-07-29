@@ -192,13 +192,13 @@ describe("Stella relay route shape", () => {
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
-  it("Stella standard mode resolves to the Muse chat-completions relay", () => {
+  it("Stella standard mode resolves to the Grok 4.5 chat-completions relay", () => {
     const route = makeRoute("stella/standard");
     const model = route!.model;
     expect(model.api).toBe("openai-completions");
     expect(model.provider).toBe("openrouter");
     expect((model as typeof model & { upstreamModelId?: string }).upstreamModelId)
-      .toBe("meta/muse-spark-1.1");
+      .toBe("openrouter/x-ai/grok-4.5");
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 });

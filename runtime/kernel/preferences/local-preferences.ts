@@ -195,7 +195,10 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   modelOverrides: {},
   assistantPropagatedAgents: [],
-  reasoningEfforts: {},
+  reasoningEfforts: {
+    orchestrator: "low",
+    general: "low",
+  },
   stellaConversationModelOverrides: {},
   stellaConversationReasoningEfforts: {},
   agentRuntimeEngine: "default",
