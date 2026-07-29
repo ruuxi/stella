@@ -25,6 +25,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
+  align-content: start;
 }
 
 /* The panel is resizable and can be expanded to fill the window, so the list
