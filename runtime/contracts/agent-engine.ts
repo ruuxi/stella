@@ -42,8 +42,8 @@ const AGENT_RUNTIME_ENGINE_LABELS: Record<AgentRuntimeEngine, string> = {
 
 /**
  * Per-spawn engine selection carried by spawn_agent's optional `model`
- * parameter. Plain model references explicitly select `default` (the
- * in-process Stella runtime); `codex[/<model>]` and
+ * parameter. `stella` and plain model references explicitly select `default`
+ * (the in-process Stella runtime); `codex[/<model>]` and
  * `claude-code[/<model>]` select an external engine. Scoped to a single
  * spawned agent run — never persisted to preferences.
  */

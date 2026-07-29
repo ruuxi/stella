@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   applyComposerModelMention,
+  COMPOSER_ENGINE_MENTION_OPTIONS,
   filterComposerModelMentionOptions,
   findComposerModelMentionTrigger,
-  type ComposerModelMentionOption,
+  resolveCurrentModelMentionValue,
 } from "@/app/chat/ComposerModelMentionMenu";
-import { findDelegatedModelMentions } from "../../../../runtime/contracts/model-mentions.js";
+import {
+  findDelegatedModelMentions,
+  normalizeDelegatedModelMention,
+} from "../../../../runtime/contracts/model-mentions.js";
 
-describe("composer model mentions", () => {
-  it("opens for a model token at the caret and replaces the whole token", () => {
+describe("composer engine mentions", () => {
+  it("opens for an engine token at the caret and replaces the whole token", () => {
     const value = "Please ask @chat";
     const trigger = findComposerModelMentionTrigger(value, value.length);
 
@@ -23,7 +27,7 @@ describe("composer model mentions", () => {
     });
   });
 
-  it("can replace an existing token when the caret is in the middle", () => {
+  it("can replace an existing engine token when the caret is in the middle", () => {
     const value = "@claude-code please review";
     const trigger = findComposerModelMentionTrigger(value, 7);
 
@@ -32,11 +36,9 @@ describe("composer model mentions", () => {
       end: 12,
       query: "claude",
     });
-    expect(
-      applyComposerModelMention(value, trigger!, "claude-code/opus"),
-    ).toEqual({
-      value: "@claude-code/opus please review",
-      caret: 17,
+    expect(applyComposerModelMention(value, trigger!, "claude-code")).toEqual({
+      value: "@claude-code please review",
+      caret: 12,
     });
   });
 
@@ -45,10 +47,10 @@ describe("composer model mentions", () => {
     expect(findComposerModelMentionTrigger(value, value.length)).toBeNull();
   });
 
-  it("finds inline routing mentions without swallowing surrounding punctuation", () => {
+  it("finds engine mentions without swallowing surrounding punctuation", () => {
     expect(
       findDelegatedModelMentions(
-        "Ask (@chatgpt), then have @claude-code/opus review it.",
+        "Ask (@chatgpt), then have @claude-code review it.",
       ),
     ).toEqual([
       {
@@ -58,136 +60,71 @@ describe("composer model mentions", () => {
         end: 13,
       },
       {
-        mention: "claude-code/opus",
-        spawnModel: "claude-code/opus",
+        mention: "claude-code",
+        spawnModel: "claude-code",
         start: 26,
-        end: 43,
+        end: 38,
       },
     ]);
   });
 
-  it("filters by friendly engine name and exact model route", () => {
-    const options: ComposerModelMentionOption[] = [
-      {
-        value: "chatgpt",
-        label: "ChatGPT",
-        description: "Use ChatGPT",
-        brand: "openai",
-        provider: "openai-codex",
-        kind: "Engine",
-        searchTerms: ["codex", "openai", "gpt"],
-      },
-      {
-        value: "claude-code/opus",
-        label: "Opus",
-        description: "Claude Code · opus",
-        brand: "anthropic",
-        provider: "claude-code",
-        kind: "Model",
-        available: true,
-      },
-    ];
-
+  it("offers the engine destinations while supporting fuzzy aliases", () => {
     expect(
-      filterComposerModelMentionOptions(options, "chat").map(
-        (option) => option.value,
-      ),
-    ).toEqual(["chatgpt"]);
+      COMPOSER_ENGINE_MENTION_OPTIONS.map((option) => option.value),
+    ).toEqual(["stella", "chatgpt", "claude-code", "xai"]);
     expect(
-      filterComposerModelMentionOptions(options, "claude-code/op").map(
-        (option) => option.value,
-      ),
-    ).toEqual(["claude-code/opus"]);
+      filterComposerModelMentionOptions(
+        COMPOSER_ENGINE_MENTION_OPTIONS,
+        "cld",
+      )[0]?.value,
+    ).toBe("claude-code");
+    expect(
+      filterComposerModelMentionOptions(
+        COMPOSER_ENGINE_MENTION_OPTIONS,
+        "codex",
+      )[0]?.value,
+    ).toBe("chatgpt");
   });
 
-  it("makes engine aliases win fuzzy Claude, Codex, and ChatGPT searches", () => {
-    const options: ComposerModelMentionOption[] = [
+  it("orders the current engine before the recent engine when the query is empty", () => {
+    const ranked = filterComposerModelMentionOptions(
+      COMPOSER_ENGINE_MENTION_OPTIONS,
+      "",
       {
-        value: "chatgpt",
-        label: "ChatGPT",
-        description: "Uses your selected model · gpt-5.6-sol",
-        brand: "openai",
-        provider: "openai-codex",
-        kind: "Engine",
-        searchTerms: ["codex", "openai", "gpt"],
+        currentValue: "claude-code",
+        recentValues: ["chatgpt"],
       },
-      {
-        value: "claude-code",
-        label: "Claude Code",
-        description: "Uses your selected model · opus",
-        brand: "anthropic",
-        provider: "claude-code",
-        kind: "Engine",
-        searchTerms: ["claude", "anthropic", "opus"],
-      },
-      {
-        value: "anthropic/claude-opus-4.8",
-        label: "Claude Opus 4.8",
-        description: "Anthropic · anthropic/claude-opus-4.8",
-        brand: "anthropic",
-        provider: "anthropic",
-        kind: "Model",
-      },
-    ];
+    );
 
-    expect(filterComposerModelMentionOptions(options, "claude")[0]?.value).toBe(
+    expect(ranked.map((option) => option.value)).toEqual([
       "claude-code",
-    );
-    expect(filterComposerModelMentionOptions(options, "cld")[0]?.value).toBe(
-      "claude-code",
-    );
-    expect(filterComposerModelMentionOptions(options, "codex")[0]?.value).toBe(
       "chatgpt",
-    );
+      "stella",
+      "xai",
+    ]);
   });
 
-  it("orders current, recent, and connected routes before the wider catalog", () => {
-    const options: ComposerModelMentionOption[] = [
-      {
-        value: "chatgpt",
-        label: "ChatGPT",
-        description: "Uses your selected model",
-        brand: "openai",
-        provider: "openai-codex",
-        kind: "Engine",
-      },
-      {
-        value: "openrouter/x-ai/grok-4.5",
-        label: "Grok 4.5",
-        description: "OpenRouter",
-        brand: "openrouter",
-        provider: "openrouter",
-        kind: "Model",
-      },
-      {
-        value: "anthropic/claude-sonnet-4.6",
-        label: "Claude Sonnet 4.6",
-        description: "Anthropic",
-        brand: "anthropic",
-        provider: "anthropic",
-        kind: "Model",
-      },
-      {
-        value: "xai/grok-4.5",
-        label: "Grok 4.5",
-        description: "xAI",
-        brand: "xai",
-        provider: "xai",
-        kind: "Model",
-      },
-    ];
-    const ranked = filterComposerModelMentionOptions(options, "", {
-      currentValue: "openrouter/x-ai/grok-4.5",
-      recentValues: ["anthropic/claude-sonnet-4.6"],
-      connectedProviders: new Set(["openrouter", "anthropic"]),
-    });
+  it("normalizes engine aliases but rejects pinned models and provider routes", () => {
+    expect(normalizeDelegatedModelMention("stella")).toBe("stella");
+    expect(normalizeDelegatedModelMention("xai")).toBe("xai/grok-4.5");
+    expect(normalizeDelegatedModelMention("grok")).toBe("xai/grok-4.5");
+    expect(normalizeDelegatedModelMention("chatgpt")).toBe("codex");
+    expect(normalizeDelegatedModelMention("codex")).toBe("codex");
+    expect(normalizeDelegatedModelMention("claude")).toBe("claude-code");
+    expect(normalizeDelegatedModelMention("claude-code")).toBe("claude-code");
+    expect(normalizeDelegatedModelMention("chatgpt/gpt-5.6-sol")).toBeNull();
+    expect(normalizeDelegatedModelMention("claude-code/opus")).toBeNull();
+    expect(
+      normalizeDelegatedModelMention("anthropic/claude-opus-4.8"),
+    ).toBeNull();
+  });
 
-    expect(ranked.slice(0, 2).map((option) => option.value)).toEqual([
-      "openrouter/x-ai/grok-4.5",
-      "anthropic/claude-sonnet-4.6",
-    ]);
-    expect(ranked.map((option) => option.value)).not.toContain("xai/grok-4.5");
-    expect(ranked[0]?.badge).toBe("Current");
-    expect(ranked[1]?.badge).toBe("Recent");
+  it("treats the default xAI route as the current xAI destination", () => {
+    expect(
+      resolveCurrentModelMentionValue({
+        agentRuntimeEngine: "default",
+        modelOverrides: { general: "xai/grok-4.5" },
+      }),
+    ).toBe("xai");
   });
 });

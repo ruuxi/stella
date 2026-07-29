@@ -209,26 +209,36 @@ describe("buildChatPromptMessages", () => {
     expect(hidden).toContain("The user wants codex for this request.");
   });
 
-  it("pins engine models and leaves direct provider routes intact", () => {
-    const chatGpt = buildChatPromptMessages({
+  it("routes engine aliases without treating model routes as mentions", () => {
+    const stella = buildChatPromptMessages({
+      userPrompt: "Please use @stella for this",
+    });
+    const xai = buildChatPromptMessages({
+      userPrompt: "Please use @xai for this",
+    });
+    const codex = buildChatPromptMessages({
+      userPrompt: "Please use @codex for this",
+    });
+    const claude = buildChatPromptMessages({
+      userPrompt: "@claude fix the failing tests",
+    });
+    const pinnedChatGpt = buildChatPromptMessages({
       userPrompt: "Please use @chatgpt/gpt-5.6-sol for this",
     });
-    const claudeCode = buildChatPromptMessages({
+    const pinnedClaude = buildChatPromptMessages({
       userPrompt: "@claude-code/opus fix the failing tests",
     });
     const directModel = buildChatPromptMessages({
       userPrompt: "@anthropic/claude-opus-4.8 review this",
     });
 
-    expect(chatGpt.promptMessages?.[0]?.text).toContain(
-      'target="codex/gpt-5.6-sol"',
-    );
-    expect(claudeCode.promptMessages?.[0]?.text).toContain(
-      'target="claude-code/opus"',
-    );
-    expect(directModel.promptMessages?.[0]?.text).toContain(
-      'target="anthropic/claude-opus-4.8"',
-    );
+    expect(stella.promptMessages?.[0]?.text).toContain('target="stella"');
+    expect(xai.promptMessages?.[0]?.text).toContain('target="xai/grok-4.5"');
+    expect(codex.promptMessages?.[0]?.text).toContain('target="codex"');
+    expect(claude.promptMessages?.[0]?.text).toContain('target="claude-code"');
+    expect(pinnedChatGpt.promptMessages).toBeUndefined();
+    expect(pinnedClaude.promptMessages).toBeUndefined();
+    expect(directModel.promptMessages).toBeUndefined();
   });
 
   it("routes an inline mention followed by sentence punctuation", () => {

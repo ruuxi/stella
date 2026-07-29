@@ -8,50 +8,30 @@
   color: var(--text-strong);
   background: var(--panel-surface-bg);
   border: 1px solid var(--panel-surface-border);
-  border-radius: 14px;
+  border-radius: 11px;
   box-shadow: var(--shadow-lg), var(--panel-surface-highlight);
   backdrop-filter: blur(22px) saturate(135%);
-}
-
-.composer-model-mention-menu__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 34px;
-  padding: 8px 10px 6px 12px;
-  color: var(--text-weak);
-  font-size: 11px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.02em;
-}
-
-.composer-model-mention-menu__hint {
-  color: var(--text-weaker);
-  font-size: 10px;
-  font-weight: var(--weight-normal);
-  letter-spacing: 0;
 }
 
 .composer-model-mention-menu__options {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 3px 5px 5px;
+  padding: 4px;
 }
 
 .composer-model-mention-menu__option {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   width: 100%;
-  min-height: 46px;
-  padding: 6px 8px;
+  min-height: 34px;
+  padding: 4px 6px;
   color: inherit;
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 9px;
+  border-radius: 7px;
 }
 
 .composer-model-mention-menu__option:hover,
@@ -67,57 +47,26 @@
 
 .composer-model-mention-menu__icon {
   display: inline-flex;
-  flex: 0 0 28px;
+  flex: 0 0 18px;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: color-mix(in oklch, var(--surface-raised) 86%, transparent);
-  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
-  border-radius: 8px;
-}
-
-.composer-model-mention-menu__copy {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  gap: 1px;
-}
-
-.composer-model-mention-menu__label,
-.composer-model-mention-menu__description {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 18px;
+  height: 18px;
 }
 
 .composer-model-mention-menu__label {
-  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   font-weight: var(--weight-medium);
 }
 
-.composer-model-mention-menu__description {
-  color: var(--text-weak);
-  font-size: 11px;
-}
-
-.composer-model-mention-menu__kind {
-  flex: 0 0 auto;
-  color: var(--text-weaker);
-  font-size: 10px;
-}
-
-.composer-model-mention-menu__empty,
-.composer-model-mention-menu__loading {
+.composer-model-mention-menu__empty {
   padding: 10px 12px;
   color: var(--text-weak);
   font-size: 12px;
-}
-
-.composer-model-mention-menu__loading {
-  padding-top: 6px;
-  color: var(--text-weaker);
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -26,7 +26,7 @@ describe("inline model mention presentation", () => {
   });
 
   it("highlights valid routes inline while preserving the exact transcript", async () => {
-    const text = "Ask @chatgpt, then @claude-code/opus.";
+    const text = "Ask @chatgpt, then @claude-code.";
     await act(async () => {
       root.render(
         <div className="event-item user">
@@ -41,11 +41,11 @@ describe("inline model mention presentation", () => {
     expect(container.textContent).toBe(text);
     expect(mentions.map((mention) => mention.textContent)).toEqual([
       "@chatgpt",
-      "@claude-code/opus",
+      "@claude-code",
     ]);
     expect(mentions.map((mention) => mention.dataset.modelRoute)).toEqual([
       "codex",
-      "claude-code/opus",
+      "claude-code",
     ]);
   });
 

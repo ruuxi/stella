@@ -11,21 +11,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { BrandIcon } from "@/ui/brand-icon";
-import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
-import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
-import { useClaudeCodeModelCatalog } from "@/global/settings/hooks/use-claude-code-model-catalog";
-import {
-  getStellaDisplayName,
-  type CatalogModel,
-} from "@/global/settings/lib/model-catalog";
-import {
-  DEFAULT_CHATGPT_MODEL,
-  DEFAULT_CLAUDE_CODE_MODEL,
-  listChatGptCatalogModels,
-  type LiveCodexModel,
-} from "@/global/settings/lib/engine-model-routing";
-import type { ClaudeCodeCatalogModel } from "@/global/settings/hooks/use-claude-code-model-catalog";
-import { useLlmCredentials } from "@/global/settings/hooks/use-llm-credentials";
 import {
   readRecentModels,
   recordRecentModel,
@@ -39,20 +24,13 @@ export type ComposerModelMentionTrigger = {
 };
 
 export type ComposerModelMentionOption = {
-  value: string;
+  value: "stella" | "chatgpt" | "claude-code" | "xai";
   label: string;
-  description: string;
   brand: string;
-  provider: string;
-  kind: "Engine" | "Model";
-  searchTerms?: readonly string[];
-  /** Available without a credential managed by useLlmCredentials. */
-  available?: boolean;
+  searchTerms: readonly string[];
 };
 
-export type RankedComposerModelMentionOption = ComposerModelMentionOption & {
-  badge: "Current" | "Recent" | "Connected" | "Available" | "Engine" | "Model";
-};
+export type RankedComposerModelMentionOption = ComposerModelMentionOption;
 
 export type ComposerModelMentionMenuHandle = {
   /**
@@ -69,75 +47,70 @@ type ComposerModelMentionMenuProps = {
   onDismiss: () => void;
 };
 
-const TOKEN_CHARACTER_PATTERN = /[A-Za-z0-9._:/-]/;
-const MAX_VISIBLE_OPTIONS = 16;
-
-type ModelMentionPreferences = {
-  modelOverrides: Record<string, string>;
+type EngineMentionPreferences = {
   agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
-  codexModel: string;
-  claudeCodeModel: string;
+  modelOverrides: Record<string, string>;
 };
 
-let cachedModelMentionPreferences: ModelMentionPreferences | null = null;
+const TOKEN_CHARACTER_PATTERN = /[A-Za-z0-9._-]/;
 
-function buildEngineOptions(
-  preferences: ModelMentionPreferences | null,
-): ComposerModelMentionOption[] {
-  const chatGptModel = preferences?.codexModel || DEFAULT_CHATGPT_MODEL;
-  const claudeCodeModel =
-    preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
-  return [
+export const COMPOSER_ENGINE_MENTION_OPTIONS: readonly ComposerModelMentionOption[] =
+  [
+    {
+      value: "stella",
+      label: "Stella",
+      brand: "stella",
+      searchTerms: ["default", "native", "built in"],
+    },
     {
       value: "chatgpt",
       label: "ChatGPT",
-      description: `Uses your selected model · ${chatGptModel}`,
       brand: "openai",
-      provider: "openai-codex",
-      kind: "Engine",
-      searchTerms: ["codex", "openai", "gpt", chatGptModel],
+      searchTerms: ["codex", "codex cli", "openai", "gpt"],
     },
     {
       value: "claude-code",
       label: "Claude Code",
-      description: `Uses your selected model · ${claudeCodeModel}`,
       brand: "anthropic",
-      provider: "claude-code",
-      kind: "Engine",
-      searchTerms: ["claude", "anthropic", claudeCodeModel],
+      searchTerms: ["claude", "anthropic"],
+    },
+    {
+      value: "xai",
+      label: "xAI",
+      brand: "xai",
+      searchTerms: ["grok", "grok 4.5"],
     },
   ];
-}
+
+let cachedEngineMentionPreferences: EngineMentionPreferences | null = null;
 
 export function resolveCurrentModelMentionValue(
-  preferences: ModelMentionPreferences | null,
-): string | null {
-  if (!preferences) return null;
-  if (preferences.agentRuntimeEngine === "codex_cli") return "chatgpt";
-  if (preferences.agentRuntimeEngine === "claude_code_local") {
+  preferences: EngineMentionPreferences | null,
+): ComposerModelMentionOption["value"] | null {
+  if (preferences?.agentRuntimeEngine === "default") {
+    const selectedModel =
+      preferences.modelOverrides.orchestrator ??
+      preferences.modelOverrides.general ??
+      "";
+    return selectedModel === "xai/grok-4.5" ? "xai" : "stella";
+  }
+  if (preferences?.agentRuntimeEngine === "codex_cli") return "chatgpt";
+  if (preferences?.agentRuntimeEngine === "claude_code_local") {
     return "claude-code";
   }
-  return (
-    preferences.modelOverrides.orchestrator ??
-    preferences.modelOverrides.general ??
-    null
-  );
+  return null;
 }
 
 function normalizeRecentMentionValue(value: string): string {
+  if (value === "default") return "stella";
   if (value === "codex" || value === "codex-cli") return "chatgpt";
-  if (value.startsWith("codex-cli/")) {
-    return `chatgpt/${value.slice("codex-cli/".length)}`;
-  }
-  if (value.startsWith("openai-codex/")) {
-    return `chatgpt/${value.slice("openai-codex/".length)}`;
-  }
+  if (value === "claude") return "claude-code";
   return value;
 }
 
 /**
  * Finds the @token currently being edited. A trigger must begin at a word
- * boundary, so email addresses do not unexpectedly open the model menu.
+ * boundary, so email addresses do not unexpectedly open the engine menu.
  */
 export function findComposerModelMentionTrigger(
   value: string,
@@ -177,102 +150,6 @@ export function applyComposerModelMention(
     value: `${before}${inserted}${after}`,
     caret: before.length + inserted.length,
   };
-}
-
-function toChatGptOption(
-  model: LiveCodexModel,
-  available: boolean,
-): ComposerModelMentionOption {
-  return {
-    value: `chatgpt/${model.id}`,
-    label: model.displayName?.trim() || model.id,
-    description: `ChatGPT · ${model.id}`,
-    brand: "openai",
-    provider: "openai-codex",
-    kind: "Model",
-    searchTerms: ["chatgpt", "codex", "openai", "gpt"],
-    available,
-  };
-}
-
-function toClaudeCodeOption(
-  model: ClaudeCodeCatalogModel,
-): ComposerModelMentionOption {
-  return {
-    value: `claude-code/${model.id}`,
-    label: model.displayName?.trim() || model.id,
-    description: `Claude Code · ${model.id}`,
-    brand: "anthropic",
-    provider: "claude-code",
-    kind: "Model",
-    searchTerms: ["claude", "anthropic", "claude code"],
-    available: true,
-  };
-}
-
-function toCatalogOption(model: CatalogModel): ComposerModelMentionOption {
-  return {
-    value: model.id,
-    label:
-      model.provider === "stella"
-        ? getStellaDisplayName(model)
-        : model.name || model.id,
-    description: `${model.providerName} · ${model.id}`,
-    brand: model.provider,
-    provider: model.provider,
-    kind: "Model",
-    searchTerms: [model.provider, model.providerName],
-    available:
-      model.provider === "stella" ||
-      model.provider === "local" ||
-      model.runtimeCredentialless === true ||
-      model.runtimeManagedAuth === true,
-  };
-}
-
-export function buildComposerModelMentionOptions(args: {
-  models: readonly CatalogModel[];
-  codexModels: readonly LiveCodexModel[] | null;
-  claudeCodeModels: readonly ClaudeCodeCatalogModel[] | null;
-  preferences?: ModelMentionPreferences | null;
-}): ComposerModelMentionOption[] {
-  const options = buildEngineOptions(args.preferences ?? null);
-
-  const liveChatGptModels = args.codexModels ?? [];
-  const hasLiveChatGptCatalog = liveChatGptModels.length > 0;
-  const chatGptModels = hasLiveChatGptCatalog
-    ? liveChatGptModels
-    : listChatGptCatalogModels(args.models).map((model) => ({
-        id: model.modelId,
-        displayName: model.name,
-      }));
-  options.push(
-    ...chatGptModels.map((model) =>
-      toChatGptOption(model, hasLiveChatGptCatalog),
-    ),
-  );
-
-  if (args.claudeCodeModels) {
-    options.push(...args.claudeCodeModels.map(toClaudeCodeOption));
-  }
-
-  options.push(
-    ...args.models
-      .filter(
-        (model) =>
-          model.provider !== "openai-codex" &&
-          model.allowedForAudience !== false,
-      )
-      .map(toCatalogOption),
-  );
-
-  const seen = new Set<string>();
-  return options.filter((option) => {
-    const key = option.value.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function normalizeSearchText(value: string): string {
@@ -331,16 +208,15 @@ export function scoreComposerModelMentionMatch(
   return Math.max(1, 520 - gaps * 12 - firstMatch * 3);
 }
 
-type ModelMentionRankingSignals = {
+type EngineMentionRankingSignals = {
   currentValue?: string | null;
   recentValues?: readonly string[];
-  connectedProviders?: ReadonlySet<string>;
 };
 
 export function filterComposerModelMentionOptions(
   options: readonly ComposerModelMentionOption[],
   query: string,
-  signals: ModelMentionRankingSignals = {},
+  signals: EngineMentionRankingSignals = {},
 ): RankedComposerModelMentionOption[] {
   const normalizedQuery = normalizeSearchText(query);
   const normalizedCurrent = signals.currentValue?.toLowerCase() ?? null;
@@ -350,21 +226,13 @@ export function filterComposerModelMentionOptions(
       index,
     ]),
   );
-  const connectedProviders = signals.connectedProviders ?? new Set<string>();
 
   return options
     .map((option, index) => {
       const normalizedValue = option.value.toLowerCase();
       const current = normalizedValue === normalizedCurrent;
       const recentIndex = recentOrder.get(normalizedValue);
-      const connected = connectedProviders.has(option.provider);
-      const available = option.available === true;
-      const searchable = [
-        option.label,
-        option.value,
-        option.description,
-        ...(option.searchTerms ?? []),
-      ];
+      const searchable = [option.label, option.value, ...option.searchTerms];
       const matchScore = normalizedQuery
         ? Math.max(
             ...searchable.map((text) =>
@@ -372,51 +240,24 @@ export function filterComposerModelMentionOptions(
             ),
           )
         : 1;
-      const promoted =
-        current ||
-        (recentIndex !== undefined &&
-          (connected || available || option.kind === "Engine")) ||
-        connected ||
-        available ||
-        option.kind === "Engine";
       const priority =
         (current ? 10_000 : 0) +
-        (recentIndex !== undefined ? 8_000 - recentIndex * 20 : 0) +
-        (connected ? 4_000 : 0) +
-        (available ? 2_000 : 0) +
-        (option.kind === "Engine" ? 3_000 : 0);
-      const badge: RankedComposerModelMentionOption["badge"] = current
-        ? "Current"
-        : recentIndex !== undefined && promoted
-          ? "Recent"
-          : connected
-            ? "Connected"
-            : available
-              ? "Available"
-              : option.kind;
+        (recentIndex !== undefined ? 8_000 - recentIndex * 20 : 0);
       return {
         ...option,
-        badge,
         index,
         matchScore,
         priority,
-        promoted,
       };
     })
-    .filter(
-      (option) =>
-        option.matchScore > 0 &&
-        (normalizedQuery.length > 0 || option.promoted),
-    )
+    .filter((option) => option.matchScore > 0)
     .sort((a, b) => {
-      if (normalizedQuery) {
-        if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore;
-        if (a.kind !== b.kind) return a.kind === "Engine" ? -1 : 1;
+      if (normalizedQuery && a.matchScore !== b.matchScore) {
+        return b.matchScore - a.matchScore;
       }
       if (a.priority !== b.priority) return b.priority - a.priority;
       return a.index - b.index;
-    })
-    .slice(0, MAX_VISIBLE_OPTIONS);
+    });
 }
 
 export const ComposerModelMentionMenu = forwardRef<
@@ -426,12 +267,8 @@ export const ComposerModelMentionMenu = forwardRef<
   { trigger, textarea, onSelect, onDismiss },
   ref,
 ) {
-  const { allModels } = useModelCatalog();
-  const codexCatalog = useCodexModelCatalog(true);
-  const claudeCodeCatalog = useClaudeCodeModelCatalog(true);
-  const credentials = useLlmCredentials();
   const [preferences, setPreferences] =
-    useState<ModelMentionPreferences | null>(cachedModelMentionPreferences);
+    useState<EngineMentionPreferences | null>(cachedEngineMentionPreferences);
   const [recentValues, setRecentValues] = useState(() => readRecentModels());
   const [activeIndex, setActiveIndex] = useState(0);
   const [position, setPosition] = useState<{
@@ -447,7 +284,7 @@ export const ComposerModelMentionMenu = forwardRef<
       const next =
         await window.electronAPI?.system?.getLocalModelPreferences?.();
       if (cancelled || !next) return;
-      cachedModelMentionPreferences = next;
+      cachedEngineMentionPreferences = next;
       setPreferences(next);
     };
     void loadPreferences().catch(() => undefined);
@@ -467,46 +304,18 @@ export const ComposerModelMentionMenu = forwardRef<
     };
   }, []);
 
-  const connectedProviders = useMemo(() => {
-    const next = new Set<string>(["stella", "local"]);
-    for (const credential of credentials.apiKeys) {
-      if (credential.status === "active") next.add(credential.provider);
-    }
-    for (const credential of credentials.oauthCredentials) {
-      if (credential.status === "active") next.add(credential.provider);
-    }
-    if (
-      claudeCodeCatalog.models !== null &&
-      claudeCodeCatalog.models.length > 0
-    ) {
-      next.add("claude-code");
-    }
-    return next;
-  }, [
-    claudeCodeCatalog.models,
-    credentials.apiKeys,
-    credentials.oauthCredentials,
-  ]);
   const currentValue = resolveCurrentModelMentionValue(preferences);
-
-  const options = useMemo(
-    () =>
-      buildComposerModelMentionOptions({
-        models: allModels,
-        codexModels: codexCatalog.models,
-        claudeCodeModels: claudeCodeCatalog.models,
-        preferences,
-      }),
-    [allModels, claudeCodeCatalog.models, codexCatalog.models, preferences],
-  );
   const filteredOptions = useMemo(
     () =>
-      filterComposerModelMentionOptions(options, trigger.query, {
-        currentValue,
-        recentValues,
-        connectedProviders,
-      }),
-    [connectedProviders, currentValue, options, recentValues, trigger.query],
+      filterComposerModelMentionOptions(
+        COMPOSER_ENGINE_MENTION_OPTIONS,
+        trigger.query,
+        {
+          currentValue,
+          recentValues,
+        },
+      ),
+    [currentValue, recentValues, trigger.query],
   );
   const selectOption = useCallback(
     (option: ComposerModelMentionOption) => {
@@ -538,11 +347,7 @@ export const ComposerModelMentionMenu = forwardRef<
     const updatePosition = () => {
       const rect = textarea.getBoundingClientRect();
       const viewportPadding = 12;
-      const desiredWidth = Math.max(320, Math.min(440, rect.width + 80));
-      const width = Math.min(
-        desiredWidth,
-        window.innerWidth - viewportPadding * 2,
-      );
+      const width = Math.min(184, window.innerWidth - viewportPadding * 2);
       const left = Math.min(
         Math.max(viewportPadding, rect.left),
         window.innerWidth - width - viewportPadding,
@@ -605,28 +410,16 @@ export const ComposerModelMentionMenu = forwardRef<
 
   if (!position) return null;
 
-  const loading =
-    codexCatalog.loading ||
-    claudeCodeCatalog.loading ||
-    credentials.loading ||
-    (allModels.length === 0 && filteredOptions.length <= 2);
-
   return createPortal(
     <div
       id="composer-model-mention-options"
       className="composer-model-mention-menu"
       data-model-mention-menu=""
       role="listbox"
-      aria-label="Models and engines"
+      aria-label="Engines"
       style={position}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <div className="composer-model-mention-menu__header">
-        <span>Route to a model</span>
-        <span className="composer-model-mention-menu__hint">
-          ↑↓ select · Enter add
-        </span>
-      </div>
       <div className="composer-model-mention-menu__options">
         {filteredOptions.map((option, index) => (
           <button
@@ -644,29 +437,16 @@ export const ComposerModelMentionMenu = forwardRef<
             onClick={() => selectOption(option)}
           >
             <span className="composer-model-mention-menu__icon">
-              <BrandIcon brand={option.brand} size={17} />
+              <BrandIcon brand={option.brand} size={14} />
             </span>
-            <span className="composer-model-mention-menu__copy">
-              <span className="composer-model-mention-menu__label">
-                {option.label}
-              </span>
-              <span className="composer-model-mention-menu__description">
-                {option.description}
-              </span>
-            </span>
-            <span className="composer-model-mention-menu__kind">
-              {option.badge}
+            <span className="composer-model-mention-menu__label">
+              {option.label}
             </span>
           </button>
         ))}
         {filteredOptions.length === 0 && (
           <div className="composer-model-mention-menu__empty">
-            No matching model
-          </div>
-        )}
-        {loading && (
-          <div className="composer-model-mention-menu__loading">
-            Refreshing available models…
+            No matching engine
           </div>
         )}
       </div>

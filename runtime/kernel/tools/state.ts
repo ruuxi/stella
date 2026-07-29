@@ -118,13 +118,14 @@ const splitSpawnReasoningSuffix = (
 
 const invalidSpawnReasoningSuffix = (suffix: string): Error =>
   new Error(
-    `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh. Open-ended gateway references keep colons verbatim; use default:<effort>, codex[/<model>]:<effort>, or claude-code[/<model>]:<effort> for unambiguous effort control.`,
+    `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh. Open-ended gateway references keep colons verbatim; use stella:<effort>, default:<effort>, codex[/<model>]:<effort>, or claude-code[/<model>]:<effort> for unambiguous effort control.`,
   );
 
 /**
  * Parses spawn_agent's optional `model` parameter:
  *
  *   - omitted / `default`            → the user's configured setup, untouched
+ *   - `stella`                        → Stella's in-process engine
  *   - `codex` / `claude-code`        → that engine with its configured model
  *   - `codex/<m>` / `claude-code/<m>`→ that engine with `<m>` pinned
  *   - anything else                  → plain model reference, resolved through
@@ -156,6 +157,7 @@ export const parseSpawnAgentModel = (
     ).toLowerCase();
     const baseIsKnownForm =
       suffixParts.model === "default" ||
+      suffixParts.model.toLowerCase() === "stella" ||
       Boolean(SPAWN_ENGINE_IDS[head]) ||
       isRegisteredModelReference(suffixParts.model) ||
       isRegisteredBareStellaModelReference(suffixParts.model) ||
@@ -170,6 +172,13 @@ export const parseSpawnAgentModel = (
   }
   if (modelReference === "default") {
     return { kind: "default", ...(reasoningEffort ? { reasoningEffort } : {}) };
+  }
+  if (modelReference.toLowerCase() === "stella") {
+    return {
+      kind: "engine",
+      engine: { engine: "default" },
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    };
   }
   const slash = modelReference.indexOf("/");
   // Engine ids are matched case-insensitively so `Codex/gpt-x` selects the

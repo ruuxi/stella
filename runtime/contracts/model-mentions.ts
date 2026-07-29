@@ -13,7 +13,7 @@ export type DelegatedModelMentionRange = DelegatedModelMention & {
 };
 
 const MODEL_MENTION_PATTERN =
-  /(^|[\s([{])@([A-Za-z0-9][A-Za-z0-9._:/-]*)(?=$|[\s)\]},.!?;])/g;
+  /(^|[\s([{])@([A-Za-z0-9][A-Za-z0-9-]*)(?=$|[\s)\]},.!?;])/g;
 
 /**
  * Composer-friendly aliases deliberately stay user-facing in the transcript,
@@ -21,32 +21,22 @@ const MODEL_MENTION_PATTERN =
  */
 export function normalizeDelegatedModelMention(mention: string): string | null {
   const trimmed = mention.trim();
-  if (!trimmed || !/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(trimmed)) {
+  if (!trimmed || !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(trimmed)) {
     return null;
   }
 
   const lower = trimmed.toLowerCase();
+  if (lower === "stella") return "stella";
+  if (lower === "xai" || lower === "grok") return "xai/grok-4.5";
   if (lower === "chatgpt") return "codex";
-  if (lower.startsWith("chatgpt/")) {
-    return `codex/${trimmed.slice("chatgpt/".length)}`;
-  }
-  if (lower === "codex") return "codex";
-  if (lower.startsWith("codex/")) {
-    return `codex/${trimmed.slice("codex/".length)}`;
-  }
-  if (lower === "claude-code") return "claude-code";
-  if (lower.startsWith("claude-code/")) {
-    return `claude-code/${trimmed.slice("claude-code/".length)}`;
-  }
-
-  // Normal provider/model routes are already accepted by spawn_agent.
-  return trimmed.includes("/") ? trimmed : null;
+  if (lower === "codex" || lower === "codex-cli") return "codex";
+  if (lower === "claude" || lower === "claude-code") return "claude-code";
+  return null;
 }
 
 /**
  * Returns the first valid routing mention in a message. Ordinary @mentions
- * and email addresses are ignored unless they use an engine alias or a
- * provider/model-shaped value.
+ * and email addresses are ignored unless they use a supported engine alias.
  */
 export function findDelegatedModelMention(
   text: string,

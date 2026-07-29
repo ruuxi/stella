@@ -150,6 +150,10 @@ describe("state tools", () => {
   it("keeps every no-suffix parse result byte-for-byte compatible", () => {
     expect(parseSpawnAgentModel(undefined)).toEqual({ kind: "default" });
     expect(parseSpawnAgentModel("default")).toEqual({ kind: "default" });
+    expect(parseSpawnAgentModel("stella")).toEqual({
+      kind: "engine",
+      engine: { engine: "default" },
+    });
     expect(parseSpawnAgentModel("stella/gpt-5.6-sol")).toEqual({
       kind: "model",
       model: "stella/gpt-5.6-sol",
@@ -258,6 +262,11 @@ describe("state tools", () => {
     });
     expect(parseSpawnAgentModel("default:high")).toEqual({
       kind: "default",
+      reasoningEffort: "high",
+    });
+    expect(parseSpawnAgentModel("stella:high")).toEqual({
+      kind: "engine",
+      engine: { engine: "default" },
       reasoningEffort: "high",
     });
     expect(parseSpawnAgentModel("codex:xhigh")).toEqual({
@@ -449,13 +458,20 @@ describe("state tools", () => {
 
     await handleSpawnAgent(
       ctx,
+      { description: "Stella work", prompt: "Fix the bug.", model: "stella" },
+      orchestratorToolContext,
+    );
+    await handleSpawnAgent(
+      ctx,
       { description: "Repo work", prompt: "Fix the bug.", model: "codex" },
       orchestratorToolContext,
     );
 
     expect(validated).toEqual([]);
     expect(created[0]?.model).toBeUndefined();
-    expect(created[0]?.spawnEngine).toEqual({ engine: "codex_cli" });
+    expect(created[0]?.spawnEngine).toEqual({ engine: "default" });
+    expect(created[1]?.model).toBeUndefined();
+    expect(created[1]?.spawnEngine).toEqual({ engine: "codex_cli" });
   });
 
   it("pins an engine-native model via engine/<model>", async () => {
