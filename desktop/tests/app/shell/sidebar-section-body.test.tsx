@@ -17,7 +17,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LEGACY_SIDEBAR_SECTION_IDS,
-  SIDEBAR_SECTIONS,
+  PANEL_SIDEBAR_SECTIONS,
   sidebarSections,
 } from "@/features/workspace-display/sidebar-sections";
 import { displayTabs } from "@/features/workspace-display/tab-store";
@@ -42,28 +42,30 @@ const { SidebarSectionBody, sidebarSectionBody } =
   await import("@/shell/sidebar-sections/SidebarSectionBody");
 
 describe("sidebarSectionBody", () => {
-  it("resolves every live section id to a component", () => {
-    for (const section of SIDEBAR_SECTIONS) {
-      expect(typeof sidebarSectionBody(section)).toBe("function");
+  it("resolves every panel section id to a component", () => {
+    for (const section of PANEL_SIDEBAR_SECTIONS) {
+      expect(sidebarSectionBody(section)).toBeDefined();
     }
   });
 
   it("resolves every retired section id to a component", () => {
     // `tasks` and `search` can still be sitting in persisted state from a
-    // build before the rename. They must land on Home, not on nothing.
+    // build before the rename. The panel must degrade to Files, not nothing;
+    // their Home content is owned by the standalone surface.
     expect(LEGACY_SIDEBAR_SECTION_IDS.length).toBeGreaterThan(0);
     for (const section of LEGACY_SIDEBAR_SECTION_IDS) {
-      expect(typeof sidebarSectionBody(section)).toBe("function");
+      expect(sidebarSectionBody(section)).toBeDefined();
     }
   });
 
-  it("falls back to Home for an id from no build at all", () => {
+  it("falls back to Files for an id the panel does not own", () => {
     for (const section of ["", "Home", "notes", "__proto__", "toString"]) {
-      expect(typeof sidebarSectionBody(section)).toBe("function");
+      expect(sidebarSectionBody(section)).toBeDefined();
     }
-    expect(sidebarSectionBody("notes")).toBe(sidebarSectionBody("home"));
-    expect(sidebarSectionBody("tasks")).toBe(sidebarSectionBody("home"));
-    expect(sidebarSectionBody("search")).toBe(sidebarSectionBody("home"));
+    expect(sidebarSectionBody("notes")).toBe(sidebarSectionBody("files"));
+    expect(sidebarSectionBody("tasks")).toBe(sidebarSectionBody("files"));
+    expect(sidebarSectionBody("search")).toBe(sidebarSectionBody("files"));
+    expect(sidebarSectionBody("home")).toBe(sidebarSectionBody("files"));
   });
 });
 
@@ -93,14 +95,14 @@ describe("SidebarSectionBody", () => {
 
   it("mounts one host per section without a render error", () => {
     act(() => root.render(<SidebarSectionBody />));
-    expect(hostedSections()).toEqual([...SIDEBAR_SECTIONS]);
+    expect(hostedSections()).toEqual([...PANEL_SIDEBAR_SECTIONS]);
   });
 
   it("keeps every host mounted and marks only the active one", () => {
     act(() => root.render(<SidebarSectionBody />));
     act(() => sidebarSections.selectSection("apps"));
 
-    expect(hostedSections()).toEqual([...SIDEBAR_SECTIONS]);
+    expect(hostedSections()).toEqual([...PANEL_SIDEBAR_SECTIONS]);
     const active = [...container.querySelectorAll(".sidebar-section")].filter(
       (el) => el.getAttribute("data-active") === "true",
     );
@@ -108,17 +110,17 @@ describe("SidebarSectionBody", () => {
     expect(active[0]?.getAttribute("data-section")).toBe("apps");
   });
 
-  it("renders Home when the store is holding a retired section id", () => {
+  it("renders Files when the store is holding standalone Home", () => {
     // The path a stale persisted value takes in: it typechecks at every hop,
     // so only a runtime assertion catches the body going missing.
     act(() => root.render(<SidebarSectionBody />));
     act(() => sidebarSections.setActiveSection("tasks" as unknown as "home"));
 
     expect(sidebarSections.getSnapshot().activeSection).toBe("home");
-    expect(hostedSections()).toEqual([...SIDEBAR_SECTIONS]);
+    expect(hostedSections()).toEqual([...PANEL_SIDEBAR_SECTIONS]);
     const active = [...container.querySelectorAll(".sidebar-section")].filter(
       (el) => el.getAttribute("data-active") === "true",
     );
-    expect(active[0]?.getAttribute("data-section")).toBe("home");
+    expect(active[0]?.getAttribute("data-section")).toBe("files");
   });
 });

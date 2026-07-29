@@ -1,9 +1,8 @@
 /* Full-window top bar — see `ShellTopBarFull.tsx`.
 
-   Transparent 38px strip. It is absolutely positioned inside `.content-area`,
-   so it spans the center column rather than the window. The display panel owns
-   its own top strip, while the account follows the center column's animated
-   right edge.
+   Transparent 38px strip positioned against `.full-body`, spanning both the
+   main column and standalone Activity surface. When the display panel opens,
+   its right edge follows the main column while the panel owns its own strip.
 
    It sits above the content (which reserves `--shell-topbar-height` of
    padding) rather than floating over it, because with the left sidebar gone
@@ -24,6 +23,25 @@
   -webkit-app-region: drag;
   user-select: none;
   pointer-events: auto;
+  transition:
+    right 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 120ms ease-out;
+}
+
+.shell-topbar-full[data-display-open="true"] {
+  right: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}
+
+:root[data-display-panel-expanded="true"]
+  .shell-topbar-full[data-display-open="true"],
+:root[data-display-panel-takeover="true"]
+  .shell-topbar-full[data-display-open="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+:root[data-shell-window-resizing="true"] .shell-topbar-full {
+  transition: none;
 }
 
 .shell-topbar-full__left {
@@ -175,6 +193,7 @@ body[data-display-expanding="true"] .display-panel-topbar,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .shell-topbar-full,
   .display-panel-topbar {
     transition: none;
   }

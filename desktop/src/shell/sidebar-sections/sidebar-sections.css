@@ -1,6 +1,7 @@
 /* Section hosts inside the display panel body — see `SidebarSectionBody.tsx`.
 
-   All four are mounted at once and stacked; only the active one is visible.
+   All three panel-owned sections are mounted at once and stacked; only the
+   active one is visible. Home/Activity is a separate shell surface.
 
    Hiding is `visibility` + `content-visibility`, never `display: none`.
    `display: none` destroys the subtree's layout boxes, and browsers do not
@@ -32,7 +33,7 @@
   flex: 1 1 auto;
 }
 
-/* Shared list/viewer scaffolding used by Files, Tasks and Apps. */
+/* Shared list/viewer scaffolding used by Files, Home activity and Apps. */
 
 .sidebar-section__scroll {
   flex: 1 1 auto;

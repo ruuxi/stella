@@ -21,8 +21,10 @@ import { uiState } from "@/platform/ui-state";
 import { displayTabs } from "./tab-store";
 
 export const SIDEBAR_SECTIONS = ["home", "files", "apps", "settings"] as const;
+export const PANEL_SIDEBAR_SECTIONS = ["files", "apps", "settings"] as const;
 
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
+export type PanelSidebarSection = (typeof PANEL_SIDEBAR_SECTIONS)[number];
 
 export const isSidebarSection = (value: unknown): value is SidebarSection =>
   typeof value === "string" &&
@@ -57,6 +59,10 @@ export const resolveSidebarSection = (value: unknown): SidebarSection => {
     return LEGACY_SECTION_ALIASES[value];
   return "home";
 };
+
+export const resolvePanelSidebarSection = (
+  section: SidebarSection,
+): PanelSidebarSection => (section === "home" ? "files" : section);
 
 /**
  * Per-section sub-location. `null` always means "show this section's default
@@ -199,6 +205,15 @@ export const sidebarSections = {
     const section = resolveSidebarSection(rawSection);
     const { panelOpen } = displayTabs.getLayoutSnapshot();
 
+    if (section === "home") {
+      this.setActiveSection("home");
+      displayTabs.setPanelOpen(false);
+      if (snapshot.locations.home !== null) {
+        this.clearLocation("home");
+      }
+      return;
+    }
+
     if (!panelOpen) {
       this.setActiveSection(section);
       displayTabs.setPanelOpen(true);
@@ -238,7 +253,7 @@ export const sidebarSections = {
   openLocation(section: SidebarSection, location: string | null): void {
     this.setLocation(section, location);
     this.setActiveSection(section);
-    displayTabs.setPanelOpen(true);
+    displayTabs.setPanelOpen(section !== "home");
   },
 
   reset(): void {

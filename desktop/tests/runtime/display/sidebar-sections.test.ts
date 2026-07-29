@@ -122,15 +122,17 @@ describe("retired section ids", () => {
     expect(sidebarSections.getSnapshot().activeSection).toBe("home");
   });
 
-  it("routes selectSection's open/switch/reset rule through the live id", () => {
-    sidebarSections.selectSection("tasks" as unknown as "home");
-    expect(activeSection()).toBe("home");
+  it("routes retired Home ids to the standalone surface", () => {
+    sidebarSections.selectSection("files");
     expect(panelOpen()).toBe(true);
 
-    // `tasks` resolves to the already-active default Home view, so the second
-    // selection is a no-op.
     sidebarSections.selectSection("tasks" as unknown as "home");
-    expect(panelOpen()).toBe(true);
+    expect(activeSection()).toBe("home");
+    expect(panelOpen()).toBe(false);
+
+    // Selecting standalone Home again remains closed.
+    sidebarSections.selectSection("tasks" as unknown as "home");
+    expect(panelOpen()).toBe(false);
   });
 
   it("files a retired id's sub-location under its successor", () => {
@@ -141,6 +143,14 @@ describe("retired section ids", () => {
 });
 
 describe("openLocation", () => {
+  it("shows a Home location outside the panel and closes the panel", () => {
+    sidebarSections.selectSection("files");
+    sidebarSections.openLocation("home", "thread:42");
+    expect(panelOpen()).toBe(false);
+    expect(activeSection()).toBe("home");
+    expect(locations().home).toBe("thread:42");
+  });
+
   it("targets a section, records the location, and opens the panel", () => {
     expect(panelOpen()).toBe(false);
     sidebarSections.openLocation("files", "image:/cat.png");

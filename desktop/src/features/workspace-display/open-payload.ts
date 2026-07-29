@@ -68,7 +68,7 @@ export const openDisplayPayloadTab = (
  */
 export const openAgentThreadTab = (args: AgentThreadTabArgs): void => {
   const spec = getAdapter().createAgentThreadTabSpec(args);
-  displayTabs.openTab(spec);
+  displayTabs.openTab(spec, { openPanel: false });
   sidebarSections.openLocation("home", spec.id);
 };
 

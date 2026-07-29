@@ -1,5 +1,5 @@
 /**
- * Renders whichever sidebar section is active.
+ * Renders whichever panel-owned sidebar section is active.
  *
  * Every section is mounted for the lifetime of the panel and hidden with
  * `display: none` rather than unmounted. That is load-bearing, not an
@@ -11,15 +11,14 @@
  */
 
 import type { ComponentType } from "react";
-import { SIDEBAR_SECTIONS } from "@/features/workspace-display/sidebar-sections";
 import {
-  resolveSidebarSection,
+  PANEL_SIDEBAR_SECTIONS,
+  resolvePanelSidebarSection,
   useActiveSidebarSection,
-  type SidebarSection,
+  type PanelSidebarSection,
 } from "@/features/workspace-display/sidebar-sections";
 import { AppsSection } from "./AppsSection";
 import { FilesSection } from "./FilesSection";
-import { HomeSection } from "./HomeSection";
 import { SettingsSection } from "./SettingsSection";
 import "./sidebar-sections.css";
 
@@ -27,8 +26,7 @@ import "./sidebar-sections.css";
  * Typed as a total `Record` rather than inferred: adding a section without a
  * body is then a compile error here instead of an `undefined` at render.
  */
-const SECTION_BODIES: Record<SidebarSection, ComponentType> = {
-  home: HomeSection,
+const SECTION_BODIES: Record<PanelSidebarSection, ComponentType> = {
   files: FilesSection,
   apps: AppsSection,
   settings: SettingsSection,
@@ -37,27 +35,21 @@ const SECTION_BODIES: Record<SidebarSection, ComponentType> = {
 /**
  * The body for a section id, never `undefined`.
  *
- * Two independent ways this can miss, both ending in the same place. The id
- * itself may be one no longer in the set — a persisted `tasks`/`search` that
- * outran its migration — which `resolveSidebarSection` degrades to `home`.
- * Or the entry may be present but hold `undefined`, which is what a module
- * graph caught mid-swap looks like: the dev server can hand this file its new
- * body while a just-created sibling is still resolving, and the import binding
- * reads as undefined for that render. Neither is worth taking the shell down
- * for — React treats an undefined element type as a render error, and this
- * component is above the panel's boundary, so the failure is the whole window.
+ * A retired/unknown id degrades to Files, the panel's default section. Home is
+ * handled by WorkspaceHomeSurface and never enters this map.
  */
 export const sidebarSectionBody = (section: string): ComponentType =>
-  SECTION_BODIES[resolveSidebarSection(section)] ?? HomeSection;
+  SECTION_BODIES[section as PanelSidebarSection] ?? FilesSection;
 
 export function SidebarSectionBody() {
   const activeSection = useActiveSidebarSection();
+  const activePanelSection = resolvePanelSidebarSection(activeSection);
 
   return (
     <>
-      {SIDEBAR_SECTIONS.map((section) => {
+      {PANEL_SIDEBAR_SECTIONS.map((section) => {
         const Body = sidebarSectionBody(section);
-        const active = section === activeSection;
+        const active = section === activePanelSection;
         return (
           <div
             key={section}

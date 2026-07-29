@@ -20,7 +20,8 @@
  * Apps are deliberately absent from the nav: they now open inside the right
  * sidebar's Apps section rather than the main content area, so a nav entry
  * pointing at the `/apps` route would compete with the sidebar for the same
- * job. Home is also omitted because its surface is the sidebar's first tab.
+ * job. Home is also omitted from route navigation because its activity surface
+ * is rendered independently by `WorkspaceHomeSurface`.
  */
 
 import { getPlatform } from "@/platform/electron/platform";
@@ -39,8 +40,8 @@ import { PanelRight, Settings } from "@/ui/icons";
 import "./shell-topbar-full.css";
 
 /**
- * Nav entries the full-window bar suppresses. Apps and Home both live in the
- * right sidebar now.
+ * Nav entries the full-window bar suppresses. Apps lives in the right sidebar;
+ * Home is rendered by the standalone workspace surface.
  */
 const OMITTED_NAV_IDS = ["apps", "chat"] as const;
 

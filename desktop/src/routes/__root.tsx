@@ -33,6 +33,11 @@ import type { RightSidebarHandle } from "@/shell/RightSidebar";
 const RightSidebar = lazy(() =>
   import("@/shell/RightSidebar").then((m) => ({ default: m.RightSidebar })),
 );
+const WorkspaceHomeSurface = lazy(() =>
+  import("@/shell/WorkspaceHomeSurface").then((m) => ({
+    default: m.WorkspaceHomeSurface,
+  })),
+);
 // These dialogs are rarely seen on first interaction (onboarding welcome,
 // nickname prompt, post-OAuth confirmation, billing upgrade) and each already
 // renders null until its own open/visibility state flips. In a dev-server-in-prod
@@ -566,19 +571,24 @@ function RootChrome() {
           >
             <Outlet />
           </div>
-          {/* Inside `.content-area`, not the window, so the main nav and
-              account span the center column and follow its panel transition.
-
-              Rendered last within the column so its `no-drag` carves are
-              applied after the
-              content area's top `-webkit-app-region: drag` strip — draggable
-              regions resolve in DOM order, not z-index, so a control painted
-              above but declared earlier still reads as draggable and swallows
-              its own clicks. */}
-          {isFullWindow ? (
-            <ShellTopBarFull onSignIn={showAuthDialog} />
-          ) : null}
         </div>
+
+        {/* The top bar spans the whole shell while Activity is visible, then
+            follows the main column's right edge when the display panel opens.
+            It is rendered after the content area's drag strip so its
+            `no-drag` controls remain interactive. */}
+        {isFullWindow ? (
+          <ShellTopBarFull onSignIn={showAuthDialog} />
+        ) : null}
+
+        {isFullWindow ? (
+          <Suspense fallback={null}>
+            <WorkspaceHomeSurface
+              hidden={panelOpen || shellBreakpoints.hideWorkspaceStrip}
+            />
+          </Suspense>
+        ) : null}
+
         {isFullWindow ? <DisplayPanelTopBar /> : null}
 
         <Suspense fallback={null}>

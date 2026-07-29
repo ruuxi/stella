@@ -205,6 +205,59 @@ describe("chat shell UI contracts", () => {
     expect(fullTopBar).toContain("<Settings size={14}");
   });
 
+  it("replaces the standalone Home activity surface with the open sidebar", () => {
+    const root = fs.readFileSync(
+      path.join(SOURCE_ROOT, "routes/__root.tsx"),
+      "utf8",
+    );
+    const homeSurface = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/WorkspaceHomeSurface.tsx"),
+      "utf8",
+    );
+    const homeSurfaceCss = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/workspace-home-surface.css"),
+      "utf8",
+    );
+    const sidebarBody = fs.readFileSync(
+      path.join(
+        SOURCE_ROOT,
+        "shell/sidebar-sections/SidebarSectionBody.tsx",
+      ),
+      "utf8",
+    );
+    const sidebarTabRail = fs.readFileSync(
+      path.join(
+        SOURCE_ROOT,
+        "shell/sidebar-sections/SidebarTabRail.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(root).toContain("<WorkspaceHomeSurface");
+    expect(root).toContain(
+      "hidden={panelOpen || shellBreakpoints.hideWorkspaceStrip}",
+    );
+    expect(homeSurface).toContain("<HomeSection />");
+    expect(homeSurface).toContain('className="workspace-home-surface"');
+    expect(homeSurface).toContain(
+      "const hasActivity = chat.conversation.tasks.length > 0",
+    );
+    expect(homeSurface).toContain(
+      "const surfaceHidden = hidden || !hasActivity",
+    );
+    expect(homeSurfaceCss).toContain(
+      "padding-top: var(--shell-topbar-height, 38px)",
+    );
+    expect(sidebarBody).toContain("PANEL_SIDEBAR_SECTIONS.map");
+    expect(sidebarBody).not.toContain("home: HomeSection");
+    expect(sidebarTabRail).toContain(
+      'const SIDEBAR_TAB_SECTIONS = ["files", "apps"] as const',
+    );
+    expect(sidebarTabRail).not.toContain(
+      'const SIDEBAR_TAB_SECTIONS = ["home"',
+    );
+  });
+
   it("keeps the right sidebar and its top bar borderless on the left", () => {
     const css = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/shell-junction.css"),
@@ -241,14 +294,14 @@ describe("chat shell UI contracts", () => {
       "utf8",
     );
     expect(sidebarTabRail).toContain(
-      "const active = panelOpen && section === activeSection",
+      "const active = panelOpen && section === activePanelSection",
     );
     expect(panelTopBar).toContain(
       'panelOpen && activeSection === "settings"',
     );
   });
 
-  it("keeps the account right-aligned inside the panel-animated main column", () => {
+  it("keeps the account right-aligned across the standalone activity surface", () => {
     const root = fs.readFileSync(
       path.join(SOURCE_ROOT, "routes/__root.tsx"),
       "utf8",
@@ -267,6 +320,10 @@ describe("chat shell UI contracts", () => {
     expect(fullTopBar).toContain("useDisplayPanelOpen");
     expect(css).toMatch(
       /\.shell-topbar-full__right\s*\{[^}]*display:\s*flex;[^}]*margin-left:\s*auto/,
+    );
+    expect(css).toContain('.shell-topbar-full[data-display-open="true"]');
+    expect(css).toContain(
+      "right: var(--display-panel-width, clamp(380px, 34vw, 520px))",
     );
     expect(css).not.toContain(".shell-topbar-persistent-right");
     expect(css).not.toContain(".shell-topbar-full__account-slot");
@@ -295,20 +352,17 @@ describe("chat shell UI contracts", () => {
     );
   });
 
-  it("keeps Home out of the full top bar and opens Settings in the sidebar", () => {
+  it("keeps Home out of route navigation and opens Settings in the sidebar", () => {
+    const root = fs.readFileSync(
+      path.join(SOURCE_ROOT, "routes/__root.tsx"),
+      "utf8",
+    );
     const fullTopBar = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/ShellTopBarFull.tsx"),
       "utf8",
     );
     const panelTopBar = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/DisplayPanelTopBar.tsx"),
-      "utf8",
-    );
-    const sidebarTabRail = fs.readFileSync(
-      path.join(
-        SOURCE_ROOT,
-        "shell/sidebar-sections/SidebarTabRail.tsx",
-      ),
       "utf8",
     );
     const account = fs.readFileSync(
@@ -321,9 +375,7 @@ describe("chat shell UI contracts", () => {
     );
 
     expect(fullTopBar).toContain('["apps", "chat"]');
-    expect(sidebarTabRail).toContain(
-      '["home", "files", "apps"] as const',
-    );
+    expect(root).toContain("<WorkspaceHomeSurface");
     expect(panelTopBar).toContain(
       'sidebarSections.openLocation("settings", null)',
     );

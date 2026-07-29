@@ -127,8 +127,9 @@ export const RightSidebar = forwardRef<
   const asideRef = useRef<HTMLElement | null>(null);
 
   // The panel carries the shell's whole index now that the left sidebar is
-  // gone — Tasks, Files, Search and Apps all live here — so it takes up width
-  // only while open, but its section host stays mounted either way.
+  // gone. Home/Activity now lives in its own sibling surface; this panel owns
+  // Files, Apps and Settings, takes up width only while open, and keeps those
+  // section hosts mounted either way.
   const shellVisible = panelOpen;
 
   useImperativeHandle(
@@ -412,10 +413,10 @@ export const RightSidebar = forwardRef<
         />
       ) : null}
       <div className="right-sidebar-inner right-sidebar-panel__frame">
-        {/* All four sections stay mounted; only the active one displays, and
-            the host itself survives the panel closing. Files' canvas iframes
-            and Apps' running user apps both lose their state to an unmount,
-            so neither a tab switch nor a close may remove them. */}
+        {/* All panel-owned sections stay mounted; only the active one displays,
+            and the host itself survives the panel closing. Files' canvas
+            iframes and Apps' running user apps both lose their state to an
+            unmount, so neither a tab switch nor a close may remove them. */}
         <div className="right-sidebar-panel__body">
           <div
             className={`right-sidebar__active${

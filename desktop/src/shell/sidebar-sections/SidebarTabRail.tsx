@@ -1,11 +1,14 @@
 /**
- * The right sidebar's primary tab rail: Home, Files, Apps.
+ * The right sidebar's tab rail: Files and Apps.
  *
  * Clicking the active tab returns a drilled-in section to its default view;
  * clicking it while already at that view does nothing.
+ *
+ * Activity lives outside the sidebar as a standalone surface.
  */
 
 import {
+  resolvePanelSidebarSection,
   sidebarSections,
   useActiveSidebarSection,
   type SidebarSection,
@@ -22,7 +25,7 @@ import {
 import type { ComponentType } from "react";
 import "./sidebar-tab-rail.css";
 
-const PRIMARY_SIDEBAR_SECTIONS = ["home", "files", "apps"] as const;
+const SIDEBAR_TAB_SECTIONS = ["files", "apps"] as const;
 
 export const SIDEBAR_SECTION_META: Record<
   SidebarSection,
@@ -36,13 +39,14 @@ export const SIDEBAR_SECTION_META: Record<
 
 export function SidebarTabRail() {
   const activeSection = useActiveSidebarSection();
+  const activePanelSection = resolvePanelSidebarSection(activeSection);
   const panelOpen = useDisplayPanelOpen();
 
   return (
     <div className="sidebar-tab-rail" role="tablist" aria-label="Sidebar">
-      {PRIMARY_SIDEBAR_SECTIONS.map((section) => {
+      {SIDEBAR_TAB_SECTIONS.map((section) => {
         const { label, Icon } = SIDEBAR_SECTION_META[section];
-        const active = panelOpen && section === activeSection;
+        const active = panelOpen && section === activePanelSection;
         return (
           <button
             key={section}

@@ -74,7 +74,7 @@ function HomeOverview() {
   }, [focusRequest, searchOpen]);
 
   useEffect(() => {
-    if (searchOpen && (!panelOpen || activeSection !== "home")) {
+    if (searchOpen && (panelOpen || activeSection !== "home")) {
       displaySearchStore.close();
     }
   }, [activeSection, panelOpen, searchOpen]);
