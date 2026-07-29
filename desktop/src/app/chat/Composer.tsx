@@ -3,7 +3,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import {
   ComposerContextRow,
@@ -16,7 +16,6 @@ import {
   ComposerMicButton,
   ComposerStopButton,
   ComposerSubmitButton,
-  ComposerTextarea,
 } from "@/features/chat/ComposerPrimitives";
 import {
   deriveComposerState,
@@ -33,6 +32,15 @@ import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
+import {
+  applyComposerModelMention,
+  ComposerModelMentionMenu,
+  findComposerModelMentionTrigger,
+  type ComposerModelMentionMenuHandle,
+  type ComposerModelMentionOption,
+  type ComposerModelMentionTrigger,
+} from "./ComposerModelMentionMenu";
+import { ComposerModelMentionTextarea } from "./ModelMentionText";
 import "./full-shell.composer.css";
 
 type ComposerProps = {
@@ -78,7 +86,12 @@ function ComposerImpl({
   const formRef = useRef<HTMLFormElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const shellContentRef = useRef<HTMLDivElement | null>(null);
+  const modelMentionMenuRef = useRef<ComposerModelMentionMenuHandle | null>(
+    null,
+  );
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [modelMentionTrigger, setModelMentionTrigger] =
+    useState<ComposerModelMentionTrigger | null>(null);
   const {
     screenshot: previewScreenshot,
     previewIndex: previewScreenshotIndex,
@@ -162,6 +175,43 @@ function ComposerImpl({
     return () => cancelAnimationFrame(raf);
   }, [message]);
 
+  useEffect(() => {
+    if (!suggestionsActive || !message) {
+      setModelMentionTrigger(null);
+    }
+  }, [message, suggestionsActive]);
+
+  const refreshModelMentionTrigger = useCallback(
+    (value: string, caret: number | null) => {
+      if (!suggestionsActive) {
+        setModelMentionTrigger(null);
+        return;
+      }
+      setModelMentionTrigger(findComposerModelMentionTrigger(value, caret));
+    },
+    [suggestionsActive],
+  );
+
+  const selectModelMention = useCallback(
+    (option: ComposerModelMentionOption) => {
+      if (!modelMentionTrigger) return;
+      const next = applyComposerModelMention(
+        message,
+        modelMentionTrigger,
+        option.value,
+      );
+      setMessage(next.value);
+      setModelMentionTrigger(null);
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        textarea?.focus();
+        textarea?.setSelectionRange(next.caret, next.caret);
+        updateComposerTextareaExpansion(textarea, setComposerExpanded);
+      });
+    },
+    [message, modelMentionTrigger, setMessage],
+  );
+
   const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
   const contextSuggestions = useComposerContextSuggestions(
     suggestionsActive,
@@ -219,13 +269,24 @@ function ComposerImpl({
               />
             ) : (
               <>
-                <ComposerTextarea
+                <ComposerModelMentionTextarea
                   ref={textareaRef}
                   className="composer-input"
                   placeholder={placeholder}
                   value={message}
+                  aria-autocomplete="list"
+                  aria-expanded={Boolean(modelMentionTrigger)}
+                  aria-controls={
+                    modelMentionTrigger
+                      ? "composer-model-mention-options"
+                      : undefined
+                  }
                   onChange={(event) => {
                     setMessage(event.target.value);
+                    refreshModelMentionTrigger(
+                      event.target.value,
+                      event.target.selectionStart,
+                    );
                     requestAnimationFrame(() => {
                       updateComposerTextareaExpansion(
                         textareaRef.current,
@@ -234,11 +295,29 @@ function ComposerImpl({
                     });
                   }}
                   onKeyDown={(event) => {
+                    if (
+                      modelMentionMenuRef.current?.handleKeyDown(event) === true
+                    ) {
+                      return;
+                    }
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       submitComposer();
                     }
                   }}
+                  onClick={(event) => {
+                    refreshModelMentionTrigger(
+                      event.currentTarget.value,
+                      event.currentTarget.selectionStart,
+                    );
+                  }}
+                  onSelect={(event) => {
+                    refreshModelMentionTrigger(
+                      event.currentTarget.value,
+                      event.currentTarget.selectionStart,
+                    );
+                  }}
+                  onBlur={() => setModelMentionTrigger(null)}
                   onPaste={(event) => {
                     handleComposerPaste(event, setChatContext);
                   }}
@@ -312,6 +391,15 @@ function ComposerImpl({
           screenshot={previewScreenshot}
           index={previewScreenshotIndex}
           onClose={() => setPreviewScreenshotIndex(null)}
+        />
+      )}
+      {modelMentionTrigger && suggestionsActive && (
+        <ComposerModelMentionMenu
+          ref={modelMentionMenuRef}
+          trigger={modelMentionTrigger}
+          textarea={textareaRef.current}
+          onSelect={selectModelMention}
+          onDismiss={() => setModelMentionTrigger(null)}
         />
       )}
     </div>

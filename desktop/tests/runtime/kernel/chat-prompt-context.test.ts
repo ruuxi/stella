@@ -197,4 +197,55 @@ describe("buildChatPromptMessages", () => {
       "final image is a screenshot",
     );
   });
+
+  it("turns a ChatGPT composer mention into a short routing hint", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "@chatgpt Refactor this component",
+    });
+
+    expect(result.visibleUserPrompt).toBe("@chatgpt Refactor this component");
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    expect(hidden).toContain('<model-mention target="codex"');
+    expect(hidden).toContain("The user wants codex for this request.");
+  });
+
+  it("pins engine models and leaves direct provider routes intact", () => {
+    const chatGpt = buildChatPromptMessages({
+      userPrompt: "Please use @chatgpt/gpt-5.6-sol for this",
+    });
+    const claudeCode = buildChatPromptMessages({
+      userPrompt: "@claude-code/opus fix the failing tests",
+    });
+    const directModel = buildChatPromptMessages({
+      userPrompt: "@anthropic/claude-opus-4.8 review this",
+    });
+
+    expect(chatGpt.promptMessages?.[0]?.text).toContain(
+      'target="codex/gpt-5.6-sol"',
+    );
+    expect(claudeCode.promptMessages?.[0]?.text).toContain(
+      'target="claude-code/opus"',
+    );
+    expect(directModel.promptMessages?.[0]?.text).toContain(
+      'target="anthropic/claude-opus-4.8"',
+    );
+  });
+
+  it("routes an inline mention followed by sentence punctuation", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "Can you ask @chatgpt, then summarize the answer?",
+    });
+
+    expect(result.promptMessages?.[0]?.text).toContain(
+      '<model-mention target="codex"',
+    );
+  });
+
+  it("does not treat ordinary @mentions or email addresses as model routing", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "Ask @rahul or email rahul@example.com",
+    });
+
+    expect(result.promptMessages).toBeUndefined();
+  });
 });

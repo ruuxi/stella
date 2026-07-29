@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ModelMentionText } from "./ModelMentionText";
 
 interface UserMessageBodyProps {
   text: string;
@@ -50,7 +51,7 @@ export function UserMessageBody({ text }: UserMessageBodyProps) {
   return (
     <div className="event-user-body" data-expanded={expanded}>
       <div ref={bodyRef} className="event-body">
-        {text}
+        <ModelMentionText text={text} />
       </div>
       {showToggle && (
         <button

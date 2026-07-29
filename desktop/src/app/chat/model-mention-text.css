@@ -1,0 +1,48 @@
+.model-mention-inline {
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.composer-model-mention-field {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.composer-model-mention-mirror {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.composer-model-mention-textarea {
+  position: relative;
+  width: 100%;
+  color: transparent;
+  caret-color: var(--text-strong);
+}
+
+.composer-model-mention-textarea::selection {
+  color: transparent;
+}
+
+.event-item.user .model-mention-inline {
+  color: var(--chat-text-color);
+  background: color-mix(in srgb, var(--chat-text-color) 18%, transparent);
+  padding-inline: 4px;
+  margin-inline: 1px;
+  border-radius: 5px;
+}

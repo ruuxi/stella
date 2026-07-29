@@ -21,7 +21,9 @@
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
   box-shadow: var(--shadow-sm), var(--panel-surface-highlight);
   overflow: clip;
-  transition: box-shadow 200ms ease, border-color 200ms ease;
+  transition:
+    box-shadow 200ms ease,
+    border-color 200ms ease;
 }
 
 /* Anchor for the above-composer stack (assistant reply peek + suggestion
@@ -139,6 +141,10 @@
   width: 100%;
   min-height: 36px;
   padding: 10px 16px 2px;
+}
+
+.composer-form.expanded .composer-model-mention-field {
+  width: 100%;
   order: -1;
 }
 
