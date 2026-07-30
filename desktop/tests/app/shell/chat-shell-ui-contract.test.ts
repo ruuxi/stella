@@ -276,21 +276,30 @@ describe("chat shell UI contracts", () => {
     );
   });
 
-  it("keeps the right sidebar and its top bar borderless on the left", () => {
+  it("draws one straight divider across the right sidebar and its top bar", () => {
     const css = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/shell-junction.css"),
+      "utf8",
+    );
+    const topbarCss = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/shell-topbar-full.css"),
       "utf8",
     );
     const rightSidebarCss = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/right-sidebar.css"),
       "utf8",
     );
-    expect(css).not.toMatch(
-      /\.right-sidebar\.right-sidebar-panel\.right-sidebar--shell-visible\s*\{[^}]*border-left:/,
+    const activityCss = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/workspace-home-surface.css"),
+      "utf8",
     );
-    expect(css).not.toMatch(
-      /\.display-panel-topbar\[data-display-open="true"\][^{]*\{[^}]*border-left:/,
+    expect(css).toMatch(
+      /\.right-sidebar\.right-sidebar-panel\.right-sidebar--shell-visible\s*\{[^}]*border-left:\s*1px solid var\(--shell-junction-border\);[^}]*border-radius:\s*0/,
     );
+    expect(topbarCss).toMatch(
+      /\.display-panel-topbar\[data-display-open="true"\]\[data-display-expanded="false"\]\s*\{[^}]*border-left:\s*1px solid\s+var\(--shell-junction-border, var\(--border-base\)\)/,
+    );
+    expect(activityCss).not.toContain("border-left");
     expect(rightSidebarCss).toMatch(
       /\.right-sidebar__resize-handle::before\s*\{[^}]*width:\s*2px;[^}]*background:\s*var\(--border-strong\)/,
     );
@@ -342,6 +351,12 @@ describe("chat shell UI contracts", () => {
     expect(css).toContain('.shell-topbar-full[data-display-open="true"]');
     expect(css).toContain(
       "right: var(--display-panel-width, clamp(380px, 34vw, 520px))",
+    );
+    expect(css).toContain(
+      'body[data-display-resizing="true"] .shell-topbar-full,',
+    );
+    expect(css).toMatch(
+      /body\[data-display-resizing="true"\] \.shell-topbar-full,[\s\S]*?:root\[data-shell-window-resizing="true"\] \.shell-topbar-full\s*\{\s*transition:\s*none;/,
     );
     expect(css).not.toContain(".shell-topbar-persistent-right");
     expect(css).not.toContain(".shell-topbar-full__account-slot");

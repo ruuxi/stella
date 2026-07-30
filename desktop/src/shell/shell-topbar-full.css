@@ -40,6 +40,11 @@
   pointer-events: none;
 }
 
+/* The panel width variable is written once per drag frame. Remove the
+   open/close easing while that live gesture is active so the account cluster
+   follows the panel edge on the same frame instead of trailing behind it. */
+body[data-display-resizing="true"] .shell-topbar-full,
+body[data-display-expanding="true"] .shell-topbar-full,
 :root[data-shell-window-resizing="true"] .shell-topbar-full {
   transition: none;
 }
@@ -131,6 +136,11 @@
   -webkit-app-region: no-drag;
 }
 
+.display-panel-topbar[data-display-open="true"][data-display-expanded="false"] {
+  border-left: 1px solid
+    var(--shell-junction-border, var(--border-base));
+}
+
 .display-panel-topbar[data-platform="win"] {
   right: 0;
   width: calc(
@@ -180,6 +190,7 @@ body[data-display-expanding="true"] .display-panel-topbar,
   left: 6px;
   right: 6px;
   width: auto;
+  border-left: none;
   transition: none;
 }
 

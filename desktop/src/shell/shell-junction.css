@@ -35,6 +35,7 @@
   align-self: stretch;
   margin: var(--shell-topbar-height, 38px) 6px 0 4px;
   border: none;
+  border-left: 1px solid var(--shell-junction-border);
   border-radius: 0;
   box-sizing: border-box;
   box-shadow: none;
