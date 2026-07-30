@@ -55,6 +55,8 @@ const billingMatchers = [
   'managed-model limits reached',
 ] as const
 
+const chatGptUsageLimitMatcher = 'you have hit your chatgpt usage limit'
+
 const rateLimitMatchers = [
   'rate limit exceeded',
   'too many requests',
@@ -118,6 +120,7 @@ export const isStellaLimitOrAuthReason = (
   return (
     includesAny(normalized, signInRequiredMatchers) ||
     includesAny(normalized, billingMatchers) ||
+    normalized.includes(chatGptUsageLimitMatcher) ||
     includesAny(normalized, rateLimitMatchers) ||
     normalized.includes(claudeCodeLoginRequiredMatcher) ||
     includesAny(normalized, authMatchers)
@@ -192,6 +195,18 @@ export const resolveStellaProviderErrorToast = (
       variant: 'error',
       duration: 8000,
       action: signInAction,
+      secondaryAction: BYOK_TOAST_ACTION,
+    }
+  }
+
+  if (normalized.includes(chatGptUsageLimitMatcher)) {
+    return {
+      title: 'ChatGPT usage limit reached',
+      description:
+        'Your ChatGPT Pro usage limit has been reached. Choose another model now, or try again after it resets.',
+      variant: 'error',
+      duration: 10000,
+      action: chooseModelAction,
       secondaryAction: BYOK_TOAST_ACTION,
     }
   }

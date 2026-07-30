@@ -78,4 +78,20 @@ describe("llm route failure → toast", () => {
       duration: 10000,
     });
   });
+
+  it("surfaces the ChatGPT Pro usage limit with a model-switch action", () => {
+    const reason =
+      "You have hit your ChatGPT usage limit (pro plan). Try again in ~7868 min.";
+
+    expect(isStellaLimitOrAuthReason(reason)).toBe(true);
+    expect(resolveStellaProviderErrorToast(reason)).toMatchObject({
+      title: "ChatGPT usage limit reached",
+      description:
+        "Your ChatGPT Pro usage limit has been reached. Choose another model now, or try again after it resets.",
+      variant: "error",
+      duration: 10000,
+      action: expect.objectContaining({ label: "Choose model" }),
+      secondaryAction: expect.any(Object),
+    });
+  });
 });
