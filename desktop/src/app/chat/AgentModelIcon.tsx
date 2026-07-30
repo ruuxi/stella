@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { AgentModelConfigSnapshot } from "../../../../runtime/contracts/agent-engine.js";
 import { BrandIcon } from "@/ui/brand-icon";
 import "./agent-model-icon.css";
@@ -51,6 +52,11 @@ export function AgentModelIcon({
       data-brand={presentation.brand}
       title={presentation.model}
       aria-label={presentation.model}
+      style={
+        {
+          "--agent-model-icon-size": `${size}px`,
+        } as CSSProperties
+      }
     >
       <BrandIcon brand={presentation.brand} size={size} />
     </span>

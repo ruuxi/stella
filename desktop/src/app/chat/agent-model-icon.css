@@ -1,7 +1,13 @@
 .agent-model-icon {
   display: inline-flex;
+  flex: 0 0 var(--agent-model-icon-size, 14px);
   align-items: center;
   justify-content: center;
+  inline-size: var(--agent-model-icon-size, 14px);
+  min-inline-size: var(--agent-model-icon-size, 14px);
+  block-size: var(--agent-model-icon-size, 14px);
+  line-height: 0;
+  overflow: visible;
   color: var(--text-weak);
   filter: grayscale(1);
   opacity: 0.68;
@@ -9,6 +15,17 @@
     color 120ms ease,
     filter 120ms ease,
     opacity 120ms ease;
+}
+
+.agent-model-icon > svg,
+.agent-model-icon > img {
+  display: block;
+  flex: 0 0 auto;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+  overflow: visible;
 }
 
 :is(button, [role="button"]):hover .agent-model-icon,

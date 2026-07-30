@@ -33,6 +33,10 @@ const CARD_CSS_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../src/app/chat/agent-completion-card.css",
 );
+const MODEL_ICON_CSS_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../src/app/chat/agent-model-icon.css",
+);
 
 const filelessSection = (summary: string): AgentCompletionSection => ({
   agentId: "a1",
@@ -93,6 +97,28 @@ describe("AgentCompletionCard fileless summary rendering", () => {
     const modelIcon = container.querySelector(".agent-model-icon");
     expect(modelIcon?.getAttribute("data-brand")).toBe("openai");
     expect(modelIcon?.getAttribute("title")).toBe("gpt-5.6-sol");
+    expect(
+      (modelIcon as HTMLElement | null)?.style.getPropertyValue(
+        "--agent-model-icon-size",
+      ),
+    ).toBe("14px");
+  });
+
+  it("keeps the provider glyph in an intrinsic non-shrinking box", () => {
+    const css = fs.readFileSync(MODEL_ICON_CSS_PATH, "utf8");
+    const iconBlock = css.slice(
+      css.indexOf(".agent-model-icon {"),
+      css.indexOf("}", css.indexOf(".agent-model-icon {")),
+    );
+    expect(iconBlock).toContain(
+      "flex: 0 0 var(--agent-model-icon-size, 14px);",
+    );
+    expect(iconBlock).toContain(
+      "min-inline-size: var(--agent-model-icon-size, 14px);",
+    );
+    expect(iconBlock).toContain("overflow: visible;");
+    expect(css).toContain(".agent-model-icon > svg");
+    expect(css).toContain(".agent-model-icon > img");
   });
 
   it("emits bold/code/link as data-streamdown nodes — the shape the scoped CSS must target", async () => {
