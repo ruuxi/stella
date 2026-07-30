@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "启动或停止 Stella 的实时语音智能体。"
       },
-      "radial": {
-        "label": "环形拨盘",
-        "description": "打开用于捕捉、聊天、语音和快捷操作的扇形菜单。",
-        "ariaLabel": "环形拨盘快捷键"
-      },
-      "mini": {
-        "label": "迷你窗口",
-        "description": "双击一个修饰键以打开或关闭迷你聊天。",
-        "ariaLabel": "迷你窗口快捷键"
-      },
       "targets": {
         "dictation": "听写",
         "voice": "语音智能体"
@@ -149,20 +139,13 @@
         "updatedDescription": "按 {keys} 即可开始{target}。",
         "clearedDescription": "在你设置新的快捷键之前，{action}已停用。",
         "unavailableTitle": "快捷键不可用",
-        "failedTitle": "更新快捷键失败",
-        "radialUpdatedTitle": "已更新环形拨盘快捷键",
-        "radialUpdatedDescription": "按住 {key} 即可打开环形拨盘。",
-        "miniUpdatedTitle": "已更新迷你窗口快捷键",
-        "miniDisabledDescription": "双击已停用。",
-        "miniUpdatedDescription": "双击 {modifier} 即可打开迷你窗口。"
+        "failedTitle": "更新快捷键失败"
       },
       "errors": {
         "load": "加载快捷键失败。",
         "unavailable": "此窗口中无法使用快捷键。",
         "unavailableShortcut": "该快捷键不可用。",
-        "update": "更新快捷键失败。",
-        "radialUpdate": "更新环形拨盘快捷键失败。",
-        "miniUpdate": "更新迷你窗口快捷键失败。"
+        "update": "更新快捷键失败。"
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "选择 Stella 的说话风格和个性语音。",
         "permissions": "在 macOS 上授予辅助功能、屏幕录制和麦克风访问权限。",
-        "shortcuts": "更改 Stella 打开、监听以及启动环形拨盘或语音的方式。",
         "memory": "管理屏幕记忆，更新或清除 Stella 记住的内容。",
         "backup": "自动加密备份、恢复点和按需快照。",
         "account": "退出登录、删除你的数据或永久删除你的账户。",
@@ -477,7 +459,6 @@
       "browser": "让 Stella 了解您。",
       "theme": "Stella 应该是什么样子？",
       "personality": "Stella 应该怎么说话？",
-      "summon": "随时随地召唤 Stella。",
       "voice": "用说的，而不是用打的。",
       "memory": "帮 Stella 记住。",
       "enter": "Stella 已经快准备好了。"

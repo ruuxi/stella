@@ -29,7 +29,7 @@ import { truncateChipLabel } from "@/features/chat/composer-context";
 // ---------------------------------------------------------------------------
 
 type ComposerContextRowProps = {
-  variant?: "full" | "mini";
+  variant?: "full" | "compact";
   chatContext: ChatContext | null;
   selectedText: string | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;

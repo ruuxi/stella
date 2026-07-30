@@ -33,13 +33,11 @@ For broad Stella UI changes, these are the main surfaces to inspect:
 `UserMessageBody.tsx`, `Markdown.tsx`.
 - **Composer**: `desktop/src/app/chat/Composer.tsx` +
 `features/chat/ComposerPrimitives.tsx`.
-- **Compact chat surface**: `desktop/src/shell/ChatSidebar.tsx`.
 - **Display sidebar + tabs** (media, canvas, activity):
 `desktop/src/shell/DisplaySidebar.tsx`, `shell/display/`.
 - **Menus / dialogs / buttons**: `desktop/src/ui/` (`dropdown-menu`,
 `dialog`, `popover`, `pill`, `button`, `select`),
-`desktop/src/shell/context-menu/StellaContextMenu.tsx`,
-`desktop/src/shell/overlay/RadialDial.tsx`.
+`desktop/src/shell/context-menu/StellaContextMenu.tsx`.
 - **Other app routes**: `desktop/src/app/{settings,store,social,pets,apps,media}/`,
 each with its own `App.tsx` + css.
 

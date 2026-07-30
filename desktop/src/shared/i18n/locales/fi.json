@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Käynnistää tai pysäyttää Stellan reaaliaikaisen ääniagentin."
       },
-      "radial": {
-        "label": "Säteittäisvalitsin",
-        "description": "Avaa kiilavalikon kaappaukseen, chattiin, ääneen ja pikatoimintoihin.",
-        "ariaLabel": "Säteittäisvalitsimen pikanäppäin"
-      },
-      "mini": {
-        "label": "Pikkuikkuna",
-        "description": "Napauta muokkausnäppäintä kahdesti avataksesi tai sulkeaksesi pikkuchatin.",
-        "ariaLabel": "Pikkuikkunan pikanäppäin"
-      },
       "targets": {
         "dictation": "sanelu",
         "voice": "ääniagentti"
@@ -149,20 +139,13 @@
         "updatedDescription": "Paina {keys} aloittaaksesi: {target}.",
         "clearedDescription": "{action} on poissa käytöstä, kunnes asetat uuden pikanäppäimen.",
         "unavailableTitle": "Pikanäppäin ei käytettävissä",
-        "failedTitle": "Pikanäppäimen päivitys epäonnistui",
-        "radialUpdatedTitle": "Säteittäisvalitsimen pikanäppäin päivitetty",
-        "radialUpdatedDescription": "Pidä {key} pohjassa avataksesi säteittäisvalitsimen.",
-        "miniUpdatedTitle": "Pikkuikkunan pikanäppäin päivitetty",
-        "miniDisabledDescription": "Kaksoisnapautus on poissa käytöstä.",
-        "miniUpdatedDescription": "Napauta {modifier} kahdesti avataksesi pikkuikkunan."
+        "failedTitle": "Pikanäppäimen päivitys epäonnistui"
       },
       "errors": {
         "load": "Pikanäppäimien lataaminen epäonnistui.",
         "unavailable": "Pikanäppäimet eivät ole käytettävissä tässä ikkunassa.",
         "unavailableShortcut": "Kyseinen pikanäppäin ei ole käytettävissä.",
-        "update": "Pikanäppäimen päivitys epäonnistui.",
-        "radialUpdate": "Säteittäisvalitsimen pikanäppäimen päivitys epäonnistui.",
-        "miniUpdate": "Pikkuikkunan pikanäppäimen päivitys epäonnistui."
+        "update": "Pikanäppäimen päivitys epäonnistui."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Valitse Stellan puhetyyli ja persoonallisuusääni.",
         "permissions": "Myönnä macOS:ssä käyttöoikeudet saavutettavuuteen, näytön tallennukseen ja mikrofoniin.",
-        "shortcuts": "Muuta, miten Stella avautuu, kuuntelee ja käynnistää säteittäisvalitsimen tai äänen.",
         "memory": "Hallitse näyttömuistia, päivitä tai tyhjennä se, mitä Stella on muistanut.",
         "backup": "Automaattiset salatut varmuuskopiot, palautuspisteet ja pyynnöstä otettavat tilannevedokset.",
         "account": "Kirjaudu ulos, poista tietosi tai poista tilisi pysyvästi.",
@@ -477,7 +459,6 @@
       "browser": "Anna Stellan oppia tuntemaan sinut.",
       "theme": "Miltä Stellan pitäisi näyttää?",
       "personality": "Miten Stellan pitäisi puhua?",
-      "summon": "Kutsu Stella mistä tahansa.",
       "voice": "Puhu kirjoittamisen sijaan.",
       "memory": "Auta Stellaa muistamaan.",
       "enter": "Stella on melkein valmis."

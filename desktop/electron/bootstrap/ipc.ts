@@ -182,8 +182,6 @@ export const registerBootstrapIpcHandlers = (
       }
     },
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
-    syncNativeRadialGesture: () =>
-      scheduleGlobalInputHooksAfterAppReady(context),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -328,18 +326,11 @@ export const registerBootstrapIpcHandlers = (
       }
     },
     stopGlobalInputHooksForPermissionReset: () => {
-      services.radialGestureService.stop();
-      services.selectionWatcherService.stop();
+      services.globalInputHook.stop();
       state.globalInputHooksStarted = false;
       state.globalInputHooksStartScheduled = false;
     },
-    setRadialTriggerKey: (triggerKey) => {
-      services.radialGestureService.setRadialTriggerKey(triggerKey);
-    },
-    setMiniDoubleTapModifier: (modifier) => {
-      services.radialGestureService.setMiniDoubleTapModifier(modifier);
-    },
-    ensureRadialGestureOnMac: () => {
+    ensureGlobalInputHooksOnMac: () => {
       scheduleGlobalInputHooksAfterAppReady(context);
     },
   });
@@ -537,7 +528,7 @@ export const registerBootstrapIpcHandlers = (
       syncWakewordPause();
     },
   });
-  services.radialGestureService.setDictationPushToTalkHandlers(
+  services.globalInputHook.setDictationPushToTalkHandlers(
     dictationPushToTalk,
   );
 
@@ -552,9 +543,7 @@ export const registerBootstrapIpcHandlers = (
 
   // ── Wake-word listener ──────────────────────────────────────────────
   // Spawns the native `wakeword_listener` helper. On a "Hey Stella"
-  // detection it activates the realtime voice agent (the same surface
-  // the keybind / radial wedge / pet mic button reach via
-  // `togglePetVoice`). Mic buttons stay dictation-only — voice is
+  // detection it activates the realtime voice agent. Mic buttons stay dictation-only — voice is
   // wake-word-gated. Auto-pauses while a voice session is active so
   // the assistant cannot trigger itself.
   services.uiStateService.onVoiceActiveChanged((active) => {

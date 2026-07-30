@@ -367,7 +367,7 @@ type WorkerState = {
   /**
    * Persistent ring buffer for streaming run events. Every event we emit
    * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
-   * reconnecting host (post-Electron-restart, post-mini-window-open, etc.)
+   * reconnecting host (for example, after an Electron restart)
    * can replay anything past its `lastSeq` without losing in-flight work.
    * See runtime/kernel/storage/run-event-log.ts.
    */

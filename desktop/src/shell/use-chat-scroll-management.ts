@@ -164,7 +164,7 @@ type ChatScrollManagementOptions = {
   hasOlderEvents?: boolean
   isLoadingOlder?: boolean
   onLoadOlder?: () => boolean | void
-  /** Sidebar/mini use the compact trailing-region min-height. */
+  /** Compact chat surfaces use the compact trailing-region min-height. */
   surface?: ChatScrollSurface
 }
 

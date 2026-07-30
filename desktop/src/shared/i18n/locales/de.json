@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Startet oder stoppt Stellas Live-Sprachagenten."
       },
-      "radial": {
-        "label": "Radialmenü",
-        "description": "Öffnet das Kreismenü für Aufnahme, Chat, Sprache und Schnellaktionen.",
-        "ariaLabel": "Tastenkürzel für das Radialmenü"
-      },
-      "mini": {
-        "label": "Mini-Fenster",
-        "description": "Tippe zweimal auf eine Modifikatortaste, um den Mini-Chat zu öffnen oder zu schließen.",
-        "ariaLabel": "Tastenkürzel für das Mini-Fenster"
-      },
       "targets": {
         "dictation": "das Diktat",
         "voice": "den Sprachagenten"
@@ -149,20 +139,13 @@
         "updatedDescription": "Drücke {keys}, um {target} zu starten.",
         "clearedDescription": "{action} ist deaktiviert, bis du ein neues Tastenkürzel festlegst.",
         "unavailableTitle": "Tastenkürzel nicht verfügbar",
-        "failedTitle": "Aktualisieren des Tastenkürzels fehlgeschlagen",
-        "radialUpdatedTitle": "Tastenkürzel für das Radialmenü aktualisiert",
-        "radialUpdatedDescription": "Halte {key} gedrückt, um das Radialmenü zu öffnen.",
-        "miniUpdatedTitle": "Tastenkürzel für das Mini-Fenster aktualisiert",
-        "miniDisabledDescription": "Doppeltippen ist deaktiviert.",
-        "miniUpdatedDescription": "Tippe zweimal auf {modifier}, um das Mini-Fenster zu öffnen."
+        "failedTitle": "Aktualisieren des Tastenkürzels fehlgeschlagen"
       },
       "errors": {
         "load": "Tastenkürzel konnten nicht geladen werden.",
         "unavailable": "Tastenkürzel sind in diesem Fenster nicht verfügbar.",
         "unavailableShortcut": "Dieses Tastenkürzel ist nicht verfügbar.",
-        "update": "Tastenkürzel konnte nicht aktualisiert werden.",
-        "radialUpdate": "Tastenkürzel für das Radialmenü konnte nicht aktualisiert werden.",
-        "miniUpdate": "Tastenkürzel für das Mini-Fenster konnte nicht aktualisiert werden."
+        "update": "Tastenkürzel konnte nicht aktualisiert werden."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Wähle Stellas Sprechstil und Persönlichkeitsstimme.",
         "permissions": "Erteile unter macOS Zugriff auf Bedienungshilfen, Bildschirmaufnahme und Mikrofon.",
-        "shortcuts": "Ändere, wie Stella sich öffnet, zuhört und das Radialmenü oder die Sprache startet.",
         "memory": "Verwalte die Bildschirm-Erinnerung, aktualisiere oder lösche, was sich Stella gemerkt hat.",
         "backup": "Automatische verschlüsselte Backups, Wiederherstellungspunkte und Snapshots auf Abruf.",
         "account": "Abmelden, deine Daten löschen oder dein Konto dauerhaft löschen.",
@@ -477,7 +459,6 @@
       "browser": "Lass Stella dich kennenlernen.",
       "theme": "Wie soll Stella aussehen?",
       "personality": "Wie soll Stella sprechen?",
-      "summon": "Ruf Stella von überall.",
       "voice": "Sprich, statt zu tippen.",
       "memory": "Hilf Stella, sich zu erinnern.",
       "enter": "Stella ist fast bereit."

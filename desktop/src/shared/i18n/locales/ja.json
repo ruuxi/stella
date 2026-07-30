@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Stella のライブ音声エージェントを開始または停止します。"
       },
-      "radial": {
-        "label": "ラジアルダイヤル",
-        "description": "キャプチャ・チャット・音声・クイック操作のためのウェッジメニューを開きます。",
-        "ariaLabel": "ラジアルダイヤルのショートカット"
-      },
-      "mini": {
-        "label": "ミニウィンドウ",
-        "description": "修飾キーを 2 回押すと、ミニチャットを開いたり閉じたりできます。",
-        "ariaLabel": "ミニウィンドウのショートカット"
-      },
       "targets": {
         "dictation": "音声入力",
         "voice": "音声エージェント"
@@ -149,20 +139,13 @@
         "updatedDescription": "{keys} を押すと {target} を開始します。",
         "clearedDescription": "新しいショートカットを設定するまで {action} は無効です。",
         "unavailableTitle": "ショートカットを利用できません",
-        "failedTitle": "ショートカットの更新に失敗しました",
-        "radialUpdatedTitle": "ラジアルダイヤルのショートカットを更新しました",
-        "radialUpdatedDescription": "{key} を押し続けるとラジアルダイヤルが開きます。",
-        "miniUpdatedTitle": "ミニウィンドウのショートカットを更新しました",
-        "miniDisabledDescription": "ダブルタップは無効です。",
-        "miniUpdatedDescription": "{modifier} を 2 回押すとミニウィンドウが開きます。"
+        "failedTitle": "ショートカットの更新に失敗しました"
       },
       "errors": {
         "load": "ショートカットを読み込めませんでした。",
         "unavailable": "このウィンドウではショートカットを利用できません。",
         "unavailableShortcut": "そのショートカットは利用できません。",
-        "update": "ショートカットを更新できませんでした。",
-        "radialUpdate": "ラジアルダイヤルのショートカットを更新できませんでした。",
-        "miniUpdate": "ミニウィンドウのショートカットを更新できませんでした。"
+        "update": "ショートカットを更新できませんでした。"
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Stella の話し方とパーソナリティの声を選びます。",
         "permissions": "macOS でアクセシビリティ・画面収録・マイクへのアクセスを許可します。",
-        "shortcuts": "Stella の起動・待ち受け方や、ラジアルダイヤルや音声の開始方法を変更します。",
         "memory": "画面メモリを管理し、Stella が覚えた内容を更新または消去します。",
         "backup": "自動の暗号化バックアップ、復元ポイント、オンデマンドのスナップショット。",
         "account": "サインアウト、データの削除、またはアカウントの完全な削除を行います。",
@@ -477,7 +459,6 @@
       "browser": "Stella にあなたを知ってもらいましょう。",
       "theme": "Stella の見た目はどうしますか？",
       "personality": "Stella の話し方はどうしますか？",
-      "summon": "どこからでも Stella を呼び出せます。",
       "voice": "入力ではなく声で話しかける。",
       "memory": "Stella の記憶を手伝ってください。",
       "enter": "Stella の準備はもうすぐ整います。"

@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Inicia ou para o agente de voz ao vivo da Stella."
       },
-      "radial": {
-        "label": "Seletor radial",
-        "description": "Abre o menu radial para captura, chat, voz e ações rápidas.",
-        "ariaLabel": "Atalho do seletor radial"
-      },
-      "mini": {
-        "label": "Janela mini",
-        "description": "Toque duas vezes em uma tecla modificadora para abrir ou fechar o chat mini.",
-        "ariaLabel": "Atalho da janela mini"
-      },
       "targets": {
         "dictation": "o ditado",
         "voice": "o agente de voz"
@@ -149,20 +139,13 @@
         "updatedDescription": "Pressione {keys} para iniciar {target}.",
         "clearedDescription": "{action} está desativado até você definir um novo atalho.",
         "unavailableTitle": "Atalho indisponível",
-        "failedTitle": "Falha ao atualizar o atalho",
-        "radialUpdatedTitle": "Atalho do seletor radial atualizado",
-        "radialUpdatedDescription": "Segure {key} para abrir o seletor radial.",
-        "miniUpdatedTitle": "Atalho da janela mini atualizado",
-        "miniDisabledDescription": "O toque duplo está desativado.",
-        "miniUpdatedDescription": "Toque duas vezes em {modifier} para abrir a janela mini."
+        "failedTitle": "Falha ao atualizar o atalho"
       },
       "errors": {
         "load": "Falha ao carregar os atalhos.",
         "unavailable": "Os atalhos não estão disponíveis nesta janela.",
         "unavailableShortcut": "Esse atalho não está disponível.",
-        "update": "Falha ao atualizar o atalho.",
-        "radialUpdate": "Falha ao atualizar o atalho do seletor radial.",
-        "miniUpdate": "Falha ao atualizar o atalho da janela mini."
+        "update": "Falha ao atualizar o atalho."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Escolha o estilo de fala e a voz de personalidade da Stella.",
         "permissions": "Conceda acesso a acessibilidade, captura de tela e microfone no macOS.",
-        "shortcuts": "Altere como a Stella abre, ouve e inicia o seletor radial ou a voz.",
         "memory": "Gerencie a memória de tela, atualize ou apague o que a Stella lembrou.",
         "backup": "Backups criptografados automáticos, pontos de restauração e snapshots sob demanda.",
         "account": "Saia, exclua seus dados ou exclua permanentemente sua conta.",
@@ -477,7 +459,6 @@
       "browser": "Deixe a Stella te conhecer.",
       "theme": "Como a Stella deve aparecer?",
       "personality": "Como a Stella deve falar?",
-      "summon": "Chame a Stella de qualquer lugar.",
       "voice": "Fale em vez de digitar.",
       "memory": "Ajude a Stella a lembrar.",
       "enter": "A Stella está quase pronta."

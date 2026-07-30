@@ -48,7 +48,7 @@ const activateNotificationRoute = (
     }, 250);
     return;
   }
-  context.state.windowManager.showWindow("full");
+  context.state.windowManager.showWindow();
 };
 
 export const configureNotificationActivationHandling = (

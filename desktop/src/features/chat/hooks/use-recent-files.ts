@@ -86,8 +86,8 @@ function dedupeAndCap(items: ChatContextFile[]): ChatContextFile[] {
 function subscribe(onChange: Listener): () => void {
   subscribers.add(onChange);
 
-  // Cross-window propagation: another renderer (e.g. the mini chat
-  // window) writing the same key fires a `storage` event here.
+  // Cross-window propagation: another renderer writing the same key fires a
+  // `storage` event here.
   const handleStorage = (event: StorageEvent) => {
     if (event.key !== STORAGE_KEY) return;
     cached = null;

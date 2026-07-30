@@ -79,15 +79,6 @@ describe("every bridged channel reaches the phone with a shape", () => {
     expect(uncovered).toEqual([]);
   });
 
-  it("does not allowlist channels that no handler answers", () => {
-    // `miniBridge:*` sat in the manifest for a long time with no `ipcMain`
-    // handler anywhere, so every call 404'd mid-flight.
-    const channels = MOBILE_BRIDGE_REQUEST_CAPABILITIES.map(
-      (capability) => capability.channel,
-    );
-    expect(channels).not.toContain("miniBridge:request");
-  });
-
   it("keeps the phone-only exceptions honest", () => {
     // An exception that is no longer needed should be deleted, not left to
     // mask a channel that has since gained a real contract.

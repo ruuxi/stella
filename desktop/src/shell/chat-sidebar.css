@@ -6,10 +6,8 @@
   min-height: 0;
 }
 
-/* In the mini window the chat panel takes up the full content area instead
-   of being a constrained side rail. The content area (home, workspace,
-   etc.) hides while the panel chat is open so the chat surface owns the
-   remaining width next to the icon rail. */
+/* Keep the chat panel usable when the shell narrows below its normal rail
+   width. */
 @media (max-width: 600px) {
   .chat-sidebar-inner {
     min-width: 0;
@@ -146,9 +144,9 @@
   width: 100%;
 }
 
-/* Mini variant of the attached chip strip — tighter padding to match the
+/* Compact attached chip strip — tighter padding to match the
  * sidebar form's compact toolbar density. */
-.composer-attached-strip--mini {
+.composer-attached-strip--compact {
   padding: 6px 10px 0;
 }
 

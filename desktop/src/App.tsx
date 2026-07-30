@@ -24,8 +24,6 @@ const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 // Bundle savings from lazy-loading these were negligible (every dep is in the
 // eager chunk anyway), and the cost of missing the event is high.
 function App() {
-  const isMiniWindow = document.documentElement.dataset.stellaWindow === "mini";
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       window.sessionStorage.removeItem(AUTO_REPAIR_SIGNATURE_KEY);
@@ -34,7 +32,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isMiniWindow) return;
     if (readPetOpenPreference()) {
       window.electronAPI?.pet?.setOpen?.(true);
     }
@@ -42,22 +39,18 @@ function App() {
       writePetOpenPreference(open);
     });
     return () => cleanup?.();
-  }, [isMiniWindow]);
+  }, []);
 
   return (
     <>
       <AuthDeepLinkHandler />
       <div className="app window-full">
         <ChatStoreProvider>
-          {isMiniWindow ? null : (
-            <>
-              <AppBootstrap />
-              <PhoneAccessBridge />
-              <CredentialRequestLayer />
-              <ConnectorCredentialRequestLayer />
-              <SocialInviteLayer />
-            </>
-          )}
+          <AppBootstrap />
+          <PhoneAccessBridge />
+          <CredentialRequestLayer />
+          <ConnectorCredentialRequestLayer />
+          <SocialInviteLayer />
           <FullShell />
         </ChatStoreProvider>
       </div>

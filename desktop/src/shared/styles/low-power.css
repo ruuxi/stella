@@ -113,11 +113,6 @@ html[data-low-power]
   animation: none !important;
 }
 
-/* Radial voice result demo */
-html[data-low-power] .radial-result-voice__bars span {
-  animation: none !important;
-}
-
 /* NOTE: the store / social / display-sidebar empty-state illustrations
    (CanvasIllustration, AppCreationIllustration, CollaborationIllustration,
    Store/Media/Trash) are intentionally NOT throttled here. They're a handful

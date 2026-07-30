@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Stella'nın canlı ses aracısını başlatır veya durdurur."
       },
-      "radial": {
-        "label": "Radyal kadran",
-        "description": "Yakalama, sohbet, ses ve hızlı işlemler için dilim menüsünü açar.",
-        "ariaLabel": "Radyal kadran kısayolu"
-      },
-      "mini": {
-        "label": "Mini pencere",
-        "description": "Mini sohbeti açmak veya kapatmak için bir değiştirici tuşa iki kez dokunun.",
-        "ariaLabel": "Mini pencere kısayolu"
-      },
       "targets": {
         "dictation": "dikteyi",
         "voice": "ses aracısını"
@@ -149,20 +139,13 @@
         "updatedDescription": "{target} başlatmak için {keys} tuşlarına basın.",
         "clearedDescription": "Yeni bir kısayol ayarlayana kadar {action} devre dışı.",
         "unavailableTitle": "Kısayol kullanılamıyor",
-        "failedTitle": "Kısayol güncellenemedi",
-        "radialUpdatedTitle": "Radyal kadran kısayolu güncellendi",
-        "radialUpdatedDescription": "Radyal kadranı açmak için {key} tuşunu basılı tutun.",
-        "miniUpdatedTitle": "Mini pencere kısayolu güncellendi",
-        "miniDisabledDescription": "İki kez dokunma devre dışı.",
-        "miniUpdatedDescription": "Mini pencereyi açmak için {modifier} tuşuna iki kez dokunun."
+        "failedTitle": "Kısayol güncellenemedi"
       },
       "errors": {
         "load": "Kısayollar yüklenemedi.",
         "unavailable": "Kısayollar bu pencerede kullanılamıyor.",
         "unavailableShortcut": "Bu kısayol kullanılamıyor.",
-        "update": "Kısayol güncellenemedi.",
-        "radialUpdate": "Radyal kadran kısayolu güncellenemedi.",
-        "miniUpdate": "Mini pencere kısayolu güncellenemedi."
+        "update": "Kısayol güncellenemedi."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Stella'nın konuşma tarzını ve kişilik sesini seçin.",
         "permissions": "macOS'te erişilebilirlik, ekran kaydı ve mikrofon erişimi verin.",
-        "shortcuts": "Stella'nın açılma, dinleme ve radyal kadranı veya sesi başlatma şeklini değiştirin.",
         "memory": "Ekran belleğini yönetin, Stella'nın hatırladıklarını güncelleyin veya silin.",
         "backup": "Otomatik şifreli yedekler, geri yükleme noktaları ve istek üzerine anlık görüntüler.",
         "account": "Çıkış yapın, verilerinizi silin veya hesabınızı kalıcı olarak silin.",
@@ -477,7 +459,6 @@
       "browser": "Stella'nın sizi tanımasına izin verin.",
       "theme": "Stella nasıl görünmeli?",
       "personality": "Stella nasıl konuşmalı?",
-      "summon": "Stella'yı her yerden çağır.",
       "voice": "Yazmak yerine konuşun.",
       "memory": "Stella'nın hatırlamasına yardım edin.",
       "enter": "Stella neredeyse hazır."

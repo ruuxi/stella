@@ -3,9 +3,8 @@
  * and imported by it, so any window that renders <ShiftingGradient/> gets
  * these rules automatically — no dependency on a globally-loaded stylesheet.
  *
- * (Content that should paint *above* the gradient owns its own
- * `position: relative; z-index: 1` at the consuming surface, e.g. the
- * full shell's `.full-body`/`.composer` or the mini's `.mini-chat-content`.)
+ * Content that should paint above the gradient owns its own
+ * `position: relative; z-index: 1` at the consuming surface.
  */
 .shifting-gradient {
   position: fixed;
@@ -15,8 +14,7 @@
   pointer-events: none;
 }
 
-/* Fills the nearest positioned ancestor instead of the viewport (sidebars,
-   the mini window, etc.). */
+/* Fills the nearest positioned ancestor instead of the viewport. */
 .shifting-gradient--contained {
   position: absolute;
   inset: 0;

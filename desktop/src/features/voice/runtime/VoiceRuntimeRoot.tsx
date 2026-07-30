@@ -56,8 +56,8 @@ export function VoiceRuntimeRoot() {
    * connection costs nothing — but it removes the ~1s cold-start cost
    * between "Hey Stella" and Stella starting to listen for real.
    *
-   * When voice activates (via wake word, keybind, or the radial
-   * wedge), we flip `inputActive=true` and the existing session takes
+   * When voice activates (via wake word or keybind), we flip
+   * `inputActive=true` and the existing session takes
    * over. When voice ends, we drop back to pre-warm rather than
    * tearing down the connection.
    */

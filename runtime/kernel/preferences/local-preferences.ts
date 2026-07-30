@@ -12,16 +12,6 @@ import {
   writePrivateFileSync,
 } from "../shared/private-fs.js";
 import {
-  DEFAULT_RADIAL_TRIGGER_CODE,
-  normalizeRadialTriggerCode,
-  type RadialTriggerCode,
-} from "../../contracts/radial-trigger.js";
-import {
-  DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
-  normalizeMiniDoubleTapModifier,
-  type MiniDoubleTapModifier,
-} from "../../contracts/mini-double-tap.js";
-import {
   coerceRealtimeVoiceProvider,
   type RealtimeVoicePreferences,
   type RealtimeVoiceSelections,
@@ -117,14 +107,10 @@ export type LocalPreferences = {
   realtimeVoice: RealtimeVoicePreferences;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
-  /** Hold key used to open the radial dial. */
-  radialTriggerKey: RadialTriggerCode;
   /** Global accelerator used for OS-wide and in-app dictation. Empty disables it. */
   dictationShortcut: string;
   /** Global accelerator used to open the voice agent. Empty disables it. */
   voiceRtcShortcut: string;
-  /** Modifier key double-tap used to toggle the mini window. Off disables it. */
-  miniDoubleTapModifier: MiniDoubleTapModifier;
   /** Prevents the computer from sleeping while Stella is running. */
   preventComputerSleep: boolean;
   /** Allows Stella computer use to continue through the macOS lock screen. */
@@ -211,10 +197,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
   syncMode: "off",
-  radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
   dictationShortcut: "Alt",
   voiceRtcShortcut: "CommandOrControl+Shift+D",
-  miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
   lockedComputerUseEnabled: false,
   soundNotificationsEnabled: true,
@@ -284,7 +268,6 @@ export const loadLocalPreferences = (
       ),
       realtimeVoice: normalizeRealtimeVoicePreferences(parsed.realtimeVoice),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
-      radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
       dictationShortcut:
         typeof parsed.dictationShortcut === "string"
           ? parsed.dictationShortcut
@@ -293,9 +276,6 @@ export const loadLocalPreferences = (
         typeof parsed.voiceRtcShortcut === "string"
           ? parsed.voiceRtcShortcut
           : DEFAULT_PREFERENCES.voiceRtcShortcut,
-      miniDoubleTapModifier: normalizeMiniDoubleTapModifier(
-        parsed.miniDoubleTapModifier,
-      ),
       preventComputerSleep: parsed.preventComputerSleep === true,
       lockedComputerUseEnabled: parsed.lockedComputerUseEnabled === true,
       soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,

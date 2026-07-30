@@ -6,16 +6,11 @@ import {
   useState,
   type Dispatch,
 } from "react";
-import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
 import { InworldDictationSession } from "@/features/dictation/services/inworld-dictation";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
-import {
-  SelectionChipOverlay,
-  type SelectionChipState,
-} from "@/shell/overlay/SelectionChipOverlay";
 import "./overlays.css";
 
 /**
@@ -33,40 +28,24 @@ import "./overlays.css";
 
 type WindowBounds = { x: number; y: number; width: number; height: number };
 type WindowHighlightTone = "default" | "subtle";
-type RegionCaptureMode = "capture" | "window-attach";
 
 type OverlayState = {
-  radialVisible: boolean;
-  radialPosition: { x: number; y: number } | null;
-  radialCompactFocused: boolean;
-  radialMiniAlwaysOnTop: boolean;
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
-  regionCaptureMode: RegionCaptureMode;
   dictationVisible: boolean;
   dictationPosition: { x: number; y: number } | null;
-  selectionChip: SelectionChipState | null;
 };
 
 type OverlayAction =
-  | {
-      type: "radial:show";
-      position?: { x: number; y: number };
-      compactFocused?: boolean;
-      miniAlwaysOnTop?: boolean;
-    }
-  | { type: "radial:hide" }
   | {
       type: "overlay:windowHighlight";
       bounds: WindowBounds | null;
       tone?: WindowHighlightTone;
     }
-  | { type: "region"; active: boolean; mode?: RegionCaptureMode }
+  | { type: "region"; active: boolean }
   | { type: "dictation:show"; position: { x: number; y: number } }
-  | { type: "dictation:hide" }
-  | { type: "selectionChip:show"; chip: SelectionChipState }
-  | { type: "selectionChip:hide"; requestId?: number };
+  | { type: "dictation:hide" };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -76,17 +55,11 @@ function isSamePosition(
 }
 
 const initialState: OverlayState = {
-  radialVisible: false,
-  radialPosition: null,
-  radialCompactFocused: false,
-  radialMiniAlwaysOnTop: false,
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
-  regionCaptureMode: "capture",
   dictationVisible: false,
   dictationPosition: null,
-  selectionChip: null,
 };
 
 function overlayReducer(
@@ -94,35 +67,6 @@ function overlayReducer(
   action: OverlayAction,
 ): OverlayState {
   switch (action.type) {
-    case "radial:show": {
-      const nextPosition = action.position ?? state.radialPosition;
-      const nextCompactFocused = action.compactFocused ?? false;
-      const nextMiniAlwaysOnTop = action.miniAlwaysOnTop ?? false;
-      if (
-        state.radialVisible &&
-        isSamePosition(state.radialPosition, nextPosition) &&
-        state.radialCompactFocused === nextCompactFocused &&
-        state.radialMiniAlwaysOnTop === nextMiniAlwaysOnTop
-      ) {
-        return state;
-      }
-      return {
-        ...state,
-        radialVisible: true,
-        radialPosition: nextPosition,
-        radialCompactFocused: nextCompactFocused,
-        radialMiniAlwaysOnTop: nextMiniAlwaysOnTop,
-      };
-    }
-    case "radial:hide":
-      return state.radialVisible
-        ? {
-            ...state,
-            radialVisible: false,
-            radialCompactFocused: false,
-            radialMiniAlwaysOnTop: false,
-          }
-        : state;
     case "overlay:windowHighlight":
       return {
         ...state,
@@ -132,16 +76,11 @@ function overlayReducer(
           : "default",
       };
     case "region":
-      return state.regionCaptureActive === action.active &&
-        (!action.active ||
-          state.regionCaptureMode === (action.mode ?? "capture"))
+      return state.regionCaptureActive === action.active
         ? state
         : {
             ...state,
             regionCaptureActive: action.active,
-            regionCaptureMode: action.active
-              ? (action.mode ?? "capture")
-              : "capture",
           };
     case "dictation:show":
       if (
@@ -159,17 +98,6 @@ function overlayReducer(
       return state.dictationVisible
         ? { ...state, dictationVisible: false }
         : state;
-    case "selectionChip:show":
-      return { ...state, selectionChip: action.chip };
-    case "selectionChip:hide":
-      if (!state.selectionChip) return state;
-      if (
-        typeof action.requestId === "number" &&
-        state.selectionChip.requestId !== action.requestId
-      ) {
-        return state;
-      }
-      return { ...state, selectionChip: null };
     default:
       return state;
   }
@@ -194,71 +122,6 @@ const pointInRect = (point: { x: number; y: number }, rect: InteractiveRect) =>
 // voice show/hide, screen guide) into a single hook.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
-  const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.radial.onShow(
-      (
-        _event: unknown,
-        data: {
-          centerX: number;
-          centerY: number;
-          x?: number;
-          y?: number;
-          screenX?: number;
-          screenY?: number;
-          compactFocused?: boolean;
-          miniAlwaysOnTop?: boolean;
-        },
-      ) => {
-        if (radialHideTimerRef.current) {
-          clearTimeout(radialHideTimerRef.current);
-          radialHideTimerRef.current = null;
-        }
-        if (
-          typeof data.screenX === "number" &&
-          typeof data.screenY === "number"
-        ) {
-          dispatch({
-            type: "radial:show",
-            position: { x: data.screenX, y: data.screenY },
-            compactFocused: data.compactFocused,
-            miniAlwaysOnTop: data.miniAlwaysOnTop,
-          });
-        } else {
-          dispatch({
-            type: "radial:show",
-            compactFocused: data.compactFocused,
-            miniAlwaysOnTop: data.miniAlwaysOnTop,
-          });
-        }
-      },
-    );
-    const cleanupHide = api.radial.onHide(() => {
-      // Do not immediately set radialVisible=false. RadialDial plays a close
-      // animation; hide after a short delay to let it complete.
-      if (radialHideTimerRef.current) {
-        clearTimeout(radialHideTimerRef.current);
-      }
-      radialHideTimerRef.current = setTimeout(() => {
-        radialHideTimerRef.current = null;
-        dispatch({ type: "radial:hide" });
-      }, 300);
-    });
-
-    return () => {
-      if (radialHideTimerRef.current) {
-        clearTimeout(radialHideTimerRef.current);
-        radialHideTimerRef.current = null;
-      }
-      cleanupShow();
-      cleanupHide();
-    };
-  }, [dispatch]);
-
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -278,11 +141,10 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
           tone: payload?.tone,
         });
       }),
-      api.overlay.onStartRegionCapture?.((payload) => {
+      api.overlay.onStartRegionCapture?.(() => {
         dispatch({
           type: "region",
           active: true,
-          mode: payload?.mode ?? "capture",
         });
       }),
       api.overlay.onEndRegionCapture?.(() => {
@@ -296,22 +158,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
       }),
       api.overlay.onHideDictation?.(() => {
         dispatch({ type: "dictation:hide" });
-      }),
-      api.overlay.onShowSelectionChip?.((data) => {
-        dispatch({
-          type: "selectionChip:show",
-          chip: {
-            requestId: data.requestId,
-            text: data.text,
-            rect: data.rect,
-          },
-        });
-      }),
-      api.overlay.onHideSelectionChip?.((data) => {
-        dispatch({
-          type: "selectionChip:hide",
-          requestId: data?.requestId,
-        });
       }),
     ];
 
@@ -331,22 +177,13 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
 // ---------------------------------------------------------------------------
 function useOverlayHitTesting(
   state: OverlayState,
-  selectionChipBounds: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
     regionCaptureActive,
-    radialVisible,
     dictationVisible,
     dictationPosition,
-    selectionChip,
   } = state;
-  const selectionChipActive = Boolean(selectionChip);
 
   useEffect(() => {
     if (regionCaptureActive) {
@@ -354,12 +191,7 @@ function useOverlayHitTesting(
       return;
     }
 
-    if (radialVisible) {
-      // Radial owns its own hit-testing inside the renderer.
-      return;
-    }
-
-    if (!dictationVisible && !selectionChipActive) {
+    if (!dictationVisible) {
       updateInteractive(false);
       return;
     }
@@ -376,15 +208,6 @@ function useOverlayHitTesting(
           height: DICTATION_OVERLAY_SIZE.height,
         });
       }
-      if (selectionChipActive && selectionChipBounds) {
-        rects.push({
-          left: selectionChipBounds.left,
-          top: selectionChipBounds.top,
-          width: selectionChipBounds.width,
-          height: selectionChipBounds.height,
-        });
-      }
-
       updateInteractive(
         rects.some((rect) => pointInRect({ x: e.clientX, y: e.clientY }, rect)),
       );
@@ -394,29 +217,20 @@ function useOverlayHitTesting(
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
     regionCaptureActive,
-    radialVisible,
     dictationVisible,
     dictationPosition,
-    selectionChipActive,
-    selectionChipBounds,
     updateInteractive,
   ]);
 
   useEffect(() => {
-    const anythingActive =
-      radialVisible ||
-      regionCaptureActive ||
-      dictationVisible ||
-      selectionChipActive;
+    const anythingActive = regionCaptureActive || dictationVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
     }
   }, [
-    radialVisible,
     regionCaptureActive,
     dictationVisible,
-    selectionChipActive,
     updateInteractive,
   ]);
 }
@@ -627,12 +441,6 @@ function DictationOverlay({
 export function OverlayRoot() {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
   const interactiveRef = useRef<boolean | null>(null);
-  const [selectionChipBounds, setSelectionChipBounds] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null>(null);
 
   useOverlayIPC(dispatch);
   const dictation = useOverlayDictation();
@@ -651,17 +459,11 @@ export function OverlayRoot() {
   useEffect(() => {
     interactiveRef.current = null;
   }, [
-    state.radialVisible,
     state.regionCaptureActive,
     state.dictationVisible,
-    state.selectionChip,
   ]);
 
-  useOverlayHitTesting(state, selectionChipBounds, updateInteractive);
-
-  const handleSelectionChipClick = useCallback((requestId: number) => {
-    window.electronAPI?.overlay?.selectionChipClicked?.(requestId);
-  }, []);
+  useOverlayHitTesting(state, updateInteractive);
 
   return (
     <div
@@ -677,8 +479,8 @@ export function OverlayRoot() {
         <div
           className={
             state.windowHighlightTone === "subtle"
-              ? "radial-window-ring radial-window-ring--subtle"
-              : "radial-window-ring"
+              ? "capture-window-ring capture-window-ring--subtle"
+              : "capture-window-ring"
           }
           style={{
             left: state.windowHighlightBounds.x,
@@ -689,29 +491,6 @@ export function OverlayRoot() {
         />
       )}
 
-      {/* Radial Dial: always mounted; visibility is managed via IPC.
-          When not visible, position off-screen so the compositor's stale
-          backing-store frame doesn't flash at the old position when the
-          overlay window transitions from hidden → visible. */}
-      <div
-        className="radial-shell"
-        style={{
-          position: "absolute",
-          zIndex: 2,
-          left: state.radialVisible ? (state.radialPosition?.x ?? 0) : -9999,
-          top: state.radialVisible ? (state.radialPosition?.y ?? 0) : -9999,
-          width: 280,
-          height: 280,
-          pointerEvents: state.radialVisible ? "auto" : "none",
-        }}
-      >
-        <RadialDial
-          closeChatWedge={
-            state.radialCompactFocused || state.radialMiniAlwaysOnTop
-          }
-        />
-      </div>
-
       {state.regionCaptureActive && (
         <div
           style={{
@@ -721,7 +500,7 @@ export function OverlayRoot() {
             pointerEvents: "auto",
           }}
         >
-          <RegionCapture mode={state.regionCaptureMode} />
+          <RegionCapture />
         </div>
       )}
 
@@ -735,12 +514,6 @@ export function OverlayRoot() {
       />
 
       <MorphTransition />
-
-      <SelectionChipOverlay
-        chip={state.selectionChip}
-        onChipBoundsChange={setSelectionChipBounds}
-        onClick={handleSelectionChipClick}
-      />
     </div>
   );
 }

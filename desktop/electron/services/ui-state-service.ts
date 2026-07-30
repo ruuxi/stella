@@ -13,10 +13,8 @@ export type UiStateServiceDeps = {
 export class UiStateService {
   readonly state: UiState = {
     mode: 'chat',
-    window: 'full',
     conversationId: null,
     isVoiceRtcActive: false,
-    suppressNativeRadialDuringOnboarding: false,
   }
 
   private deps: UiStateServiceDeps | null = null

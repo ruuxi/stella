@@ -227,7 +227,6 @@ const SHELL_SNAPSHOT_ROOTS = [
 ]
 const SHELL_SNAPSHOT_EXPLICIT_FILES = [
   'desktop/index.html',
-  'desktop/mini.html',
   'desktop/overlay.html',
   'desktop/pet.html',
 ]

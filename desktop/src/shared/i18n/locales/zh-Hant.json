@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "啟動或停止 Stella 的即時語音代理。"
       },
-      "radial": {
-        "label": "環形轉盤",
-        "description": "開啟用於擷取、聊天、語音和快速操作的扇形選單。",
-        "ariaLabel": "環形轉盤捷徑"
-      },
-      "mini": {
-        "label": "迷你視窗",
-        "description": "點兩下一個修飾鍵以開啟或關閉迷你聊天。",
-        "ariaLabel": "迷你視窗捷徑"
-      },
       "targets": {
         "dictation": "聽寫",
         "voice": "語音代理"
@@ -149,20 +139,13 @@
         "updatedDescription": "按 {keys} 即可開始{target}。",
         "clearedDescription": "在你設定新的捷徑之前，{action}已停用。",
         "unavailableTitle": "捷徑無法使用",
-        "failedTitle": "更新捷徑失敗",
-        "radialUpdatedTitle": "已更新環形轉盤捷徑",
-        "radialUpdatedDescription": "按住 {key} 即可開啟環形轉盤。",
-        "miniUpdatedTitle": "已更新迷你視窗捷徑",
-        "miniDisabledDescription": "點兩下已停用。",
-        "miniUpdatedDescription": "點兩下 {modifier} 即可開啟迷你視窗。"
+        "failedTitle": "更新捷徑失敗"
       },
       "errors": {
         "load": "載入捷徑失敗。",
         "unavailable": "此視窗中無法使用捷徑。",
         "unavailableShortcut": "該捷徑無法使用。",
-        "update": "更新捷徑失敗。",
-        "radialUpdate": "更新環形轉盤捷徑失敗。",
-        "miniUpdate": "更新迷你視窗捷徑失敗。"
+        "update": "更新捷徑失敗。"
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "選擇 Stella 的說話風格和個性語音。",
         "permissions": "在 macOS 上授予輔助使用、螢幕錄製和麥克風存取權。",
-        "shortcuts": "變更 Stella 開啟、監聽以及啟動環形轉盤或語音的方式。",
         "memory": "管理螢幕記憶，更新或清除 Stella 記住的內容。",
         "backup": "自動加密備份、還原點和隨需快照。",
         "account": "登出、刪除你的資料或永久刪除你的帳號。",
@@ -477,7 +459,6 @@
       "browser": "讓 Stella 認識您。",
       "theme": "Stella 該長什麼樣子？",
       "personality": "Stella 該怎麼說話？",
-      "summon": "隨時隨地召喚 Stella。",
       "voice": "用說的，不要用打字。",
       "memory": "幫 Stella 記住。",
       "enter": "Stella 即將準備就緒。"

@@ -13,7 +13,6 @@ import {
   useOnboardingState,
 } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/bootstrap/bootstrap-state";
-import { useWindowType } from "@/shared/hooks/use-window-type";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
@@ -151,9 +150,7 @@ function OnboardingExperience({
 }
 
 export const FullShell = () => {
-  const windowType = useWindowType();
-  const isMiniWindow = windowType === "mini";
-  const { state, updateState } = useUiState();
+  const { state } = useUiState();
   const activeConversationId = state.conversationId;
   const { gradientMode, gradientColor } = useTheme();
   const { completed: onboardingDone, hydrated: onboardingHydrated } =
@@ -163,16 +160,13 @@ export const FullShell = () => {
   // RouterProvider mount is deferred to a separate macrotask by the
   // setTimeout(0) effect below. The splash stays up until `appReady`, so there
   // is no flash. The onboarding -> app transition still defers via the
-  // `onEnteredApp` path. (Mini windows are excluded; they gate on
-  // `isMiniWindow` in `appReady` directly.)
   const [hasEnteredApp, setHasEnteredApp] = useState(
-    () => !isMiniWindow && readLocalOnboardingCompleted(),
+    () => readLocalOnboardingCompleted(),
   );
   const { runtimeStatus, retryRuntimeBootstrap } = useBootstrapState();
 
   const onboardingResolved = onboardingHydrated || onboardingDone;
-  const appReady =
-    onboardingResolved && onboardingDone && (isMiniWindow || hasEnteredApp);
+  const appReady = onboardingResolved && onboardingDone && hasEnteredApp;
   const needsOnboarding = onboardingHydrated && !onboardingDone;
 
   useEffect(() => {
@@ -187,15 +181,8 @@ export const FullShell = () => {
   // background bootstraps only unlock cloud state, chat history, sends, and
   // local tools once their own state arrives.
   useEffect(() => {
-    if (isMiniWindow) return;
     window.electronAPI?.ui.setAppReady?.(appReady);
-  }, [appReady, isMiniWindow]);
-
-  useEffect(() => {
-    updateState({
-      suppressNativeRadialDuringOnboarding: !appReady,
-    });
-  }, [appReady, updateState]);
+  }, [appReady]);
 
   // Keep the static launch splash up for returning users until React has
   // mounted the real shell. First-run onboarding dismisses it after its chunk

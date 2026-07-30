@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Download, RefreshCw, X } from "@/ui/icons";
 import { showToast } from "@/ui/toast";
-import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDesktopUpdate } from "@/global/updates/use-desktop-update";
 import {
   applyDesktopUpdate,
@@ -39,7 +38,6 @@ const usePendingRuntimeRestart = (): boolean => {
 };
 
 export const ShellTopBarUpdatePill = () => {
-  const isMiniWindow = useWindowType() === "mini";
   const pendingRuntimeRestart = usePendingRuntimeRestart();
   const {
     installManifest,
@@ -141,7 +139,6 @@ export const ShellTopBarUpdatePill = () => {
     });
   }, []);
 
-  if (isMiniWindow) return null;
   if (!updateAvailable || !currentRelease) {
     // No desktop update to offer, but a runtime restart may be queued behind
     // in-flight work — show a quiet, non-interactive note so the deferral is

@@ -472,8 +472,8 @@ static int GetPngEncoderClsid(CLSID* clsid)
 }
 
 // ── Fast capture path (base64, no temp file) ────────────────────────────
-// The desktop's hot capture paths (radial-dial "Capture" wedge, composer "+"
-// → Capture) want a window/region screenshot as fast as possible. The legacy
+// The desktop's hot composer capture path wants a window/region screenshot as
+// fast as possible. The legacy
 // `--screenshot=path` path PNG-encodes to disk, which the host then re-reads
 // and re-encodes — three image passes plus disk I/O. These helpers instead
 // BitBlt/PrintWindow into an in-memory bitmap, JPEG-encode it (far cheaper
@@ -953,7 +953,7 @@ static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
 // Read-only captures are also served: `--shot <x> <y>` returns the window at a
 // point with an inline base64 JPEG, and `--region=x,y,w,h` returns a base64
 // JPEG of a screen rect — both as single-line JSON (base64 has no tab/newline),
-// so the radial/menu capture paths cost a pipe write instead of a spawn. Only
+// so the composer capture paths cost a pipe write instead of a spawn. Only
 // `--set-bounds` (which mutates window state) stays a one-shot spawn.
 static std::string serveHandleTokens(const std::vector<std::string>& tokens)
 {

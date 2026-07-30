@@ -227,10 +227,6 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
     "Native traffic-light buttons are desktop-only chrome.",
   ),
   unsupported(
-    "window.setMiniAlwaysOnTop",
-    "Mini-window pinning is desktop-window state.",
-  ),
-  unsupported(
     "capture.screenshot",
     "Mobile WebView taps should not trigger raw desktop screenshots.",
   ),
@@ -278,11 +274,6 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
 
   invoke("capture.getContext", IPC_CHAT_CONTEXT_GET),
   event("capture.onContext", IPC_CHAT_CONTEXT_UPDATED),
-
-  // `miniBridge:request`/`:update` are deliberately absent: no `ipcMain`
-  // handler has ever been registered for them, so allowlisting them only
-  // promised the phone a capability that answers 404. The shim now reports
-  // them as unavailable instead of failing mid-call.
 
   invoke("theme.listInstalled", IPC_THEME_LIST_INSTALLED),
 

@@ -252,10 +252,6 @@ const LazyInlineGeneratedImageCardWithJob = lazy(() =>
   })),
 );
 
-const isMiniRenderer = (): boolean =>
-  typeof document !== "undefined" &&
-  document.documentElement.dataset.stellaWindow === "mini";
-
 const needsRemoteJobLookup = ({
   payload,
   materializeJob = true,
@@ -268,7 +264,7 @@ const needsRemoteJobLookup = ({
   );
 
 export const InlineGeneratedImageCard = (props: InlineGeneratedImageCardProps) => {
-  if (isMiniRenderer() || !needsRemoteJobLookup(props)) {
+  if (!needsRemoteJobLookup(props)) {
     return <InlineGeneratedImageCardLocal {...props} />;
   }
 
@@ -342,7 +338,6 @@ export const InlineGeneratedImageCardFrame = ({
     job?.status === "failed" ||
     job?.status === "canceled" ||
     job?.status === "unknown";
-  const canOpenDisplayPanel = !isMiniRenderer();
   const frameStyle = {
     "--inline-generated-image-aspect-ratio": previewAspectRatio(
       effectivePayload,
@@ -351,9 +346,9 @@ export const InlineGeneratedImageCardFrame = ({
   } as CSSProperties;
 
   const handleClick = useCallback(() => {
-    if (!canOpenDisplayPanel || !isImage || filePaths.length === 0) return;
+    if (!isImage || filePaths.length === 0) return;
     openDisplayPayloadTab(effectivePayload);
-  }, [canOpenDisplayPanel, effectivePayload, filePaths.length, isImage]);
+  }, [effectivePayload, filePaths.length, isImage]);
 
   if (!isImage) return null;
 
@@ -385,14 +380,7 @@ export const InlineGeneratedImageCardFrame = ({
       type="button"
       className={buttonClassName}
       onClick={handleClick}
-      title={
-        jobFailed
-          ? "Image generation failed"
-          : canOpenDisplayPanel
-            ? "Open in panel"
-            : "Image"
-      }
-      aria-disabled={canOpenDisplayPanel ? undefined : true}
+      title={jobFailed ? "Image generation failed" : "Open in panel"}
       aria-label={
         sharedStripPending
           ? undefined

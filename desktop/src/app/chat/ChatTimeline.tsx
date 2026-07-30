@@ -145,7 +145,7 @@ type ChatTimelineProps = {
  * Chat vertical-rhythm contract — the BETWEEN-rows half.
  *
  * These constants are THE definition of inter-row spacing for every
- * chat surface (full chat, sidebar, mini, orb — they all mount this
+ * chat surface (full chat, sidebar, and orb all mount this
  * timeline). They render as virtualized separator heights below each
  * row. The WITHIN-row half (message -> cards -> action strip) is
  * `--chat-item-part-gap` in full-shell.chat.css.

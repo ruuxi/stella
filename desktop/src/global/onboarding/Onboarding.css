@@ -1,7 +1,7 @@
 /* ===== Onboarding — 3-phase flow ===== */
 /* Phase 1: Center (start, intro) */
 /* Phase 2: Split (capabilities, shapeshift, theme, personality, import,
- *          permissions, browser, extension, engine, summon, voice,
+ *          permissions, browser, extension, engine, voice,
  *          memory, enter) */
 /* Phase 3: Complete */
 
@@ -419,7 +419,7 @@
    * (permissions, theme, browser, personality) read as balanced instead of
    * floating near the top with empty space below. `safe center` keeps the
    * stage scrollable from the top if its content ever exceeds the pane.
-   * Full-stage demo phases (capabilities, shapeshift, summon, memory)
+   * Full-stage demo phases (capabilities, shapeshift, memory)
    * override this further down. */
   justify-content: safe center;
   align-items: flex-start;
@@ -508,11 +508,10 @@
   max-width: none;
 }
 
-/* Shapeshift + summon: full-width demo stages, same pattern as
+/* Shapeshift: full-width demo stage, same pattern as
  * capabilities — the creature is hidden for these (CREATURE_HIDDEN_PHASES)
  * so the demo owns the canvas. */
-.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-right,
-.onboarding-dialogue[data-phase="summon"] .onboarding-split-right {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-right {
   width: 100%;
   min-width: 100%;
   margin-left: 0;
@@ -523,8 +522,7 @@
   transform: none;
 }
 
-.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-stage,
-.onboarding-dialogue[data-phase="summon"] .onboarding-split-stage {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-stage {
   align-items: center;
   justify-content: flex-start;
   max-width: none;
@@ -533,13 +531,11 @@
   gap: 14px;
 }
 
-.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-title,
-.onboarding-dialogue[data-phase="summon"] .onboarding-split-title {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-title {
   text-align: center;
 }
 
-.onboarding-dialogue[data-phase="shapeshift"] .onboarding-step-content,
-.onboarding-dialogue[data-phase="summon"] .onboarding-step-content {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-step-content {
   align-items: center;
   max-width: none;
 }
@@ -560,8 +556,7 @@
 }
 
 .onboarding-dialogue[data-phase="capabilities"] .onboarding-act-label,
-.onboarding-dialogue[data-phase="shapeshift"] .onboarding-act-label,
-.onboarding-dialogue[data-phase="summon"] .onboarding-act-label {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-act-label {
   text-align: center;
   margin-bottom: -6px;
 }
@@ -2384,7 +2379,7 @@
 /* ═══ Short-viewport rescale ═══
  *
  * On short windows several phases (permissions, theme, browser, capabilities,
- * shapeshift, summon, memory) stack a heavy "above" surface — a fixed-aspect
+ * shapeshift, memory) stack a heavy "above" surface — a fixed-aspect
  * frame, a tall mock canvas, or a column of cards — that pushes
  * the Continue button below the fold or against fixed chrome (`.onboarding-
  * phase-nav`). The split pane has `overflow-y: auto`, but requiring users to

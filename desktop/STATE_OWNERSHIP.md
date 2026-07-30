@@ -24,7 +24,6 @@ initial sync.
 | Field                                        | Source of truth         | Written by                                                      | Read by                                              |
 | -------------------------------------------- | ----------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
 | `mode` (`chat` | `voice`)                    | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, Main (overlay logic)               |
-| `window` (`full` | `mini`)                   | Main (`UiStateService`) | Renderer via `setState` + `window:show`, Main via IPC handler   | Renderer context, WindowManager                      |
 | `conversationId`                             | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, VoiceRuntimeRoot                    |
 | `isVoiceRtcActive`                           | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync                        |
 

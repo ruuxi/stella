@@ -6,7 +6,7 @@
  * the preload bridge (electron/preload.ts) and handler (electron/ipc/*.ts)
  * using that constant — never raw strings.
  */
-import type { UiState, WindowMode } from "./ui";
+import type { UiState } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-stream.js";
 import type {
@@ -112,8 +112,6 @@ import type {
   BackupSummary as SharedBackupSummary,
   RestoreBackupResult as SharedRestoreBackupResult,
 } from "../contracts/backup";
-import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
-import type { MiniDoubleTapModifier as SharedMiniDoubleTapModifier } from "@/shared/lib/mini-double-tap";
 import type {
   ThirdPartyMigrationPreview,
   ThirdPartyMigrationReport,
@@ -172,9 +170,6 @@ export type BackupNowResult = SharedBackupNowResult;
 export type BackupStatusSnapshot = SharedBackupStatusSnapshot;
 export type BackupSummary = SharedBackupSummary;
 export type RestoreBackupResult = SharedRestoreBackupResult;
-export type RadialTriggerCode = SharedRadialTriggerCode;
-export type MiniDoubleTapModifier = SharedMiniDoubleTapModifier;
-export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -191,9 +186,7 @@ export type ElectronWindowApi = {
   maximize: () => void;
   close: () => void;
   isMaximized: () => Promise<boolean>;
-  isMiniAlwaysOnTop: () => Promise<boolean>;
-  setMiniAlwaysOnTop: (enabled: boolean) => Promise<boolean>;
-  show: (target: WindowMode) => void;
+  show: () => void;
   setNativeButtonsVisible: (visible: boolean) => void;
 };
 
@@ -282,8 +275,6 @@ export type ElectronCaptureApi = {
       } | null;
     } | null,
   ) => void;
-  submitWindowAttachClick: (point: { x: number; y: number }) => void;
-  cancelWindowAttach: () => void;
   submitRegionClick: (point: { x: number; y: number }) => void;
   pageDataUrl: () => Promise<string | null>;
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
@@ -311,55 +302,13 @@ export type ElectronCaptureApi = {
   }>;
   cancelRegion: () => void;
   /**
-   * Composer "+ menu" capture entry point. Mirrors the radial dial's
-   * "capture" wedge: minimizes the active Stella window, opens the region
+   * Composer "+ menu" capture entry point. Minimizes the active Stella
+   * window, opens the region
    * overlay (click=window, drag=region), merges the result into
    * `chatContext`, then restores the window. Resolves with `{ cancelled }`
    * if the user dismissed the overlay (Esc / right-click).
    */
   beginRegionCapture: () => Promise<{ ok: true } | { cancelled: true }>;
-  beginWindowAttach: () => Promise<
-    | {
-        ok: true;
-        window: {
-          app: string;
-          title: string;
-          bounds: { x: number; y: number; width: number; height: number };
-        };
-        miniBounds: { x: number; y: number; width: number; height: number };
-      }
-    | { cancelled: true }
-    | { ok: false; reason: string; message: string }
-  >;
-};
-
-export type ElectronRadialApi = {
-  onShow: (
-    callback: (
-      event: unknown,
-      data: {
-        centerX: number;
-        centerY: number;
-        x?: number;
-        y?: number;
-        screenX?: number;
-        screenY?: number;
-        compactFocused?: boolean;
-        miniAlwaysOnTop?: boolean;
-      },
-    ) => void,
-  ) => () => void;
-  onHide: (callback: () => void) => () => void;
-  animDone: () => void;
-  onCursor: (
-    callback: (
-      event: unknown,
-      data: { x: number; y: number; centerX: number; centerY: number },
-    ) => void,
-  ) => () => void;
-  onAddIcon: (
-    callback: (event: unknown, data: { iconDataUrl: string | null }) => void,
-  ) => () => void;
 };
 
 export type ElectronOverlayApi = {
@@ -375,9 +324,7 @@ export type ElectronOverlayApi = {
   }) => void;
   hideWindowHighlight: () => void;
   previewWindowHighlightAtPoint: (point: { x: number; y: number }) => void;
-  onStartRegionCapture: (
-    callback: (data: { mode?: "capture" | "window-attach" }) => void,
-  ) => () => void;
+  onStartRegionCapture: (callback: () => void) => () => void;
   onEndRegionCapture: (callback: () => void) => () => void;
   onWindowHighlight: (
     callback: (
@@ -405,17 +352,6 @@ export type ElectronOverlayApi = {
     }) => void,
   ) => () => void;
   onHideScreenGuide: (callback: () => void) => () => void;
-  onShowSelectionChip: (
-    callback: (data: {
-      requestId: number;
-      text: string;
-      rect: { x: number; y: number; width: number; height: number };
-    }) => void,
-  ) => () => void;
-  onHideSelectionChip: (
-    callback: (data: { requestId?: number } | null) => void,
-  ) => () => void;
-  selectionChipClicked: (requestId: number) => void;
   onDisplayChange: (
     callback: (data: {
       origin: { x: number; y: number };
@@ -830,14 +766,6 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;
-  getRadialTriggerKey: () => Promise<RadialTriggerCode>;
-  setRadialTriggerKey: (
-    triggerKey: RadialTriggerCode,
-  ) => Promise<{ triggerKey: RadialTriggerCode }>;
-  getMiniDoubleTapModifier: () => Promise<MiniDoubleTapModifier>;
-  setMiniDoubleTapModifier: (
-    modifier: MiniDoubleTapModifier,
-  ) => Promise<{ modifier: MiniDoubleTapModifier }>;
   getPreventComputerSleep: () => Promise<boolean>;
   setPreventComputerSleep: (enabled: boolean) => Promise<{ enabled: boolean }>;
   getLockedComputerUseStatus: () => Promise<LockedComputerUseStatus>;
@@ -1891,7 +1819,6 @@ export type ElectronApi = {
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
-  radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
@@ -2077,9 +2004,6 @@ type ElectronPetApi = {
   sendMessage: (text: string) => void;
   /** Receive `pet:sendMessage` payloads (full window only). */
   onSendMessage: (callback: (text: string) => void) => () => void;
-  /** Toggle the mini chat window from a pet click. Main opens it just
-   *  to the left of the pet sprite, or hides it if already showing. */
-  toggleMiniWindow: () => void;
 };
 
 declare global {

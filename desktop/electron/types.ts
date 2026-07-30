@@ -2,11 +2,10 @@ import type { WindowInfo } from "./window-capture.js";
 import type { ChatContext } from "../../runtime/contracts/index.js";
 import type {
   UiMode,
-  WindowMode,
   UiState,
 } from "../src/shared/contracts/ui.js";
 
-export type { UiMode, WindowMode, UiState };
+export type { UiMode, UiState };
 
 export type ScreenshotCapture = {
   dataUrl: string;

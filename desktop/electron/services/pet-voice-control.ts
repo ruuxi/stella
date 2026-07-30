@@ -34,9 +34,8 @@ export const cleanupPetVoiceSession = ({
  * Voice no longer has its own creature overlay — instead, we always
  * open the floating pet (whose sprite animates listening / speaking
  * from `voice:runtimeState`) and toggle the realtime voice session.
- * Every activation path (the global keybind, the radial dial's voice
- * wedge, and the pet's own mic action button) routes through this
- * function so the behaviour stays identical.
+ * Every activation path routes through this function so behavior stays
+ * identical.
  */
 export const togglePetVoice = (deps: PetVoiceControlDeps) => {
   const { uiStateService: ui, getPetController, windowManager } = deps;

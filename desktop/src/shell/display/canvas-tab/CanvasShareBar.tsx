@@ -7,9 +7,8 @@
  *  - Shared links: a small panel listing the account's active shares
  *    (`listMine`) with copy + revoke.
  *
- * The whole bar renders nothing when the canvas-share context is absent
- * (e.g. the mini window, which has no Convex provider), so the sandboxed
- * canvas renderer never reaches for Convex outside a provider.
+ * The whole bar renders nothing when the canvas-share context is absent, so
+ * the sandboxed canvas renderer never reaches for Convex outside a provider.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Globe, LoaderCircle, Trash2 } from "@/ui/icons";
@@ -280,7 +279,7 @@ export const CanvasShareBar = ({ item }: { item: CanvasHtmlItem }) => {
     }
   }, [share, item.filePath, item.title]);
 
-  // No canvas-share context (mini window / no provider) → no share UI.
+  // No canvas-share context means there is no share UI.
   if (!share) return null;
 
   return (

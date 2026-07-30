@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Starter eller stopper Stellas direkte stemmeagent."
       },
-      "radial": {
-        "label": "Radialhjul",
-        "description": "Åbner kilemenuen til optagelse, chat, stemme og hurtige handlinger.",
-        "ariaLabel": "Genvej til radialhjul"
-      },
-      "mini": {
-        "label": "Minivindue",
-        "description": "Tryk to gange på en modifikationstast for at åbne eller lukke minichatten.",
-        "ariaLabel": "Genvej til minivindue"
-      },
       "targets": {
         "dictation": "diktering",
         "voice": "stemmeagenten"
@@ -149,20 +139,13 @@
         "updatedDescription": "Tryk på {keys} for at starte {target}.",
         "clearedDescription": "{action} er deaktiveret, indtil du angiver en ny genvej.",
         "unavailableTitle": "Genvej ikke tilgængelig",
-        "failedTitle": "Kunne ikke opdatere genvejen",
-        "radialUpdatedTitle": "Genvej til radialhjul opdateret",
-        "radialUpdatedDescription": "Hold {key} nede for at åbne radialhjulet.",
-        "miniUpdatedTitle": "Genvej til minivindue opdateret",
-        "miniDisabledDescription": "Dobbelttryk er deaktiveret.",
-        "miniUpdatedDescription": "Tryk to gange på {modifier} for at åbne minivinduet."
+        "failedTitle": "Kunne ikke opdatere genvejen"
       },
       "errors": {
         "load": "Kunne ikke indlæse genveje.",
         "unavailable": "Genveje er ikke tilgængelige i dette vindue.",
         "unavailableShortcut": "Den genvej er ikke tilgængelig.",
-        "update": "Kunne ikke opdatere genvejen.",
-        "radialUpdate": "Kunne ikke opdatere genvejen til radialhjulet.",
-        "miniUpdate": "Kunne ikke opdatere genvejen til minivinduet."
+        "update": "Kunne ikke opdatere genvejen."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Vælg Stellas talestil og personlighedsstemme.",
         "permissions": "Giv adgang til tilgængelighed, skærmoptagelse og mikrofon på macOS.",
-        "shortcuts": "Skift, hvordan Stella åbnes, lytter og starter radialhjulet eller stemmen.",
         "memory": "Administrer skærmhukommelse, opdater eller slet det, Stella har husket.",
         "backup": "Automatiske krypterede sikkerhedskopier, gendannelsespunkter og øjebliksbilleder efter behov.",
         "account": "Log ud, slet dine data, eller slet din konto permanent.",
@@ -477,7 +459,6 @@
       "browser": "Lad Stella lære dig at kende.",
       "theme": "Hvordan skal Stella se ud?",
       "personality": "Hvordan skal Stella tale?",
-      "summon": "Tilkald Stella hvor som helst.",
       "voice": "Tal i stedet for at skrive.",
       "memory": "Hjælp Stella med at huske.",
       "enter": "Stella er næsten klar."

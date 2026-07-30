@@ -13,7 +13,7 @@ import {
 import { getComposerAppSelections } from "@/features/chat/composer-context";
 import "./composer-context.css";
 
-type ComposerContextVariant = "full" | "mini";
+type ComposerContextVariant = "full" | "compact";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 type SetSelectedText = Dispatch<SetStateAction<string | null>>;
@@ -38,7 +38,7 @@ type SelectedTextContextSectionProps = {
 /* The chip visuals live entirely in the shared components
  * (`ContextPill`, `ImageAttachmentChip`, `FileAttachmentChip`) so the
  * composer and the sent message row cannot drift apart. The variant maps
- * below only add layout constraints (the mini composer's tighter width
+ * below only add layout constraints (the compact composer's tighter width
  * cap) plus the pending-capture shimmer's size classes. */
 const captureVariantClassNames = {
   full: {
@@ -48,12 +48,12 @@ const captureVariantClassNames = {
     pendingInnerClassName:
       "chat-composer-context-pending-inner composer-context-pending-inner",
   },
-  mini: {
+  compact: {
     containerClassName: null,
     pendingClassName:
-      "chat-composer-context-chip chat-composer-context-chip--pending mini-context-chip mini-context-chip--pending",
+      "chat-composer-context-chip chat-composer-context-chip--pending compact-context-chip compact-context-chip--pending",
     pendingInnerClassName:
-      "chat-composer-context-pending-inner mini-context-pending-inner",
+      "chat-composer-context-pending-inner compact-context-pending-inner",
   },
 } as const;
 
@@ -62,9 +62,9 @@ const pillVariantClassNames = {
     containerClassName: null,
     chipClassName: undefined,
   },
-  mini: {
+  compact: {
     containerClassName: null,
-    chipClassName: "context-pill--mini",
+    chipClassName: "context-pill--compact",
   },
 } as const;
 
@@ -92,7 +92,7 @@ export function ComposerWindowContextSection({
         : chatWindow.app,
   } as const;
 
-  if (variant === "mini") {
+  if (variant === "compact") {
     return <WindowContextChip {...sharedProps} />;
   }
 

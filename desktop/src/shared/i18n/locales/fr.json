@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Démarre ou arrête l'agent vocal en direct de Stella."
       },
-      "radial": {
-        "label": "Cadran radial",
-        "description": "Ouvre le menu radial pour la capture, le chat, la voix et les actions rapides.",
-        "ariaLabel": "Raccourci du cadran radial"
-      },
-      "mini": {
-        "label": "Fenêtre mini",
-        "description": "Appuyez deux fois sur une touche de modification pour ouvrir ou fermer le chat mini.",
-        "ariaLabel": "Raccourci de la fenêtre mini"
-      },
       "targets": {
         "dictation": "la dictée",
         "voice": "l'agent vocal"
@@ -149,20 +139,13 @@
         "updatedDescription": "Appuyez sur {keys} pour démarrer {target}.",
         "clearedDescription": "{action} est désactivé jusqu'à ce que vous définissiez un nouveau raccourci.",
         "unavailableTitle": "Raccourci indisponible",
-        "failedTitle": "Échec de la mise à jour du raccourci",
-        "radialUpdatedTitle": "Raccourci du cadran radial mis à jour",
-        "radialUpdatedDescription": "Maintenez {key} pour ouvrir le cadran radial.",
-        "miniUpdatedTitle": "Raccourci de la fenêtre mini mis à jour",
-        "miniDisabledDescription": "La double pression est désactivée.",
-        "miniUpdatedDescription": "Appuyez deux fois sur {modifier} pour ouvrir la fenêtre mini."
+        "failedTitle": "Échec de la mise à jour du raccourci"
       },
       "errors": {
         "load": "Échec du chargement des raccourcis.",
         "unavailable": "Les raccourcis ne sont pas disponibles dans cette fenêtre.",
         "unavailableShortcut": "Ce raccourci n'est pas disponible.",
-        "update": "Échec de la mise à jour du raccourci.",
-        "radialUpdate": "Échec de la mise à jour du raccourci du cadran radial.",
-        "miniUpdate": "Échec de la mise à jour du raccourci de la fenêtre mini."
+        "update": "Échec de la mise à jour du raccourci."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Choisissez le style d'élocution et la voix de personnalité de Stella.",
         "permissions": "Accordez l'accès à l'accessibilité, à la capture d'écran et au microphone sur macOS.",
-        "shortcuts": "Modifiez la façon dont Stella s'ouvre, écoute et démarre le cadran radial ou la voix.",
         "memory": "Gérez la mémoire d'écran, mettez à jour ou effacez ce que Stella a mémorisé.",
         "backup": "Sauvegardes chiffrées automatiques, points de restauration et instantanés à la demande.",
         "account": "Déconnectez-vous, supprimez vos données ou supprimez définitivement votre compte.",
@@ -477,7 +459,6 @@
       "browser": "Laissez Stella apprendre à vous connaître.",
       "theme": "À quoi Stella doit-elle ressembler ?",
       "personality": "Comment Stella doit-elle parler ?",
-      "summon": "Invoquez Stella où que vous soyez.",
       "voice": "Parlez plutôt que d'écrire.",
       "memory": "Aidez Stella à se souvenir.",
       "enter": "Stella est presque prête."

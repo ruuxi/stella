@@ -1,6 +1,6 @@
 /* ──────────────────────────────────────────────────────────────────────
  * Onboarding demo shell — the one faithful Stella-window mock shared by
- * the capabilities, shapeshift, and summon demos. Visibility is driven
+ * the capabilities and shapeshift demos. Visibility is driven
  * by `use-choreography` cues through data attributes; this file only
  * describes how each state looks and how states transition.
  * ────────────────────────────────────────────────────────────────────── */

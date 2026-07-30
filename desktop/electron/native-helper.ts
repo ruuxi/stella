@@ -37,20 +37,9 @@ const lastFailureLogAt = new Map<string, number>()
 // of one per call.
 const CIRCUIT_FAILURE_THRESHOLD = 3
 const CIRCUIT_COOLDOWN_MS = 60_000
-const WIN32_SLOW_SUCCESS_COOLDOWN_MS = 60_000
-const WIN32_SLOW_SUCCESS_THRESHOLD_MS = 1_000
-// Helpers whose one-shot spawns get extra per-helper in-flight backpressure on
-// Windows. `recent_apps` and `window_info` are intentionally NOT here: both now
-// run through the persistent `--serve` daemon (native-helper-daemon.ts) on their
-// hot paths, so they reach this one-shot path only as a rare fallback that the
-// global spawn governor + circuit breaker already cover. `selected_text` stays:
-// it deliberately has no daemon (its UIA/clipboard work can hang, so it relies
-// on a kill-the-process watchdog) and still spawns per qualifying selection.
-const WIN32_HIGH_RISK_HELPERS = new Set(['selected_text'])
 
 type HelperCircuit = { consecutiveFailures: number; openUntil: number }
 const circuits = new Map<string, HelperCircuit>()
-const inFlightWin32Helpers = new Set<string>()
 
 // Global Win32 spawn governor. Every helper invocation is a full
 // `CreateProcess`, which on Windows is scanned by Defender and shows up as
@@ -145,26 +134,6 @@ export const runNativeHelperDetailed = async (
     // Circuit open — skip the spawn entirely until the cooldown elapses.
     return circuitOpenResult(circuit)
   }
-  const shouldBackpressure =
-    process.platform === 'win32' && WIN32_HIGH_RISK_HELPERS.has(helperName)
-  if (shouldBackpressure && inFlightWin32Helpers.has(helperName)) {
-    return {
-      stdout: null,
-      skipped: true,
-      skippedReason: 'in-flight',
-      error: null,
-      killed: false,
-      timedOut: false,
-      durationMs: 0,
-      circuitOpenMs: 0,
-    }
-  }
-  // Mark in-flight at enqueue time (not at spawn time) so a duplicate call
-  // sheds while this one waits behind the governor, not only while it runs.
-  if (shouldBackpressure) {
-    inFlightWin32Helpers.add(helperName)
-  }
-
   const useGovernor = process.platform === 'win32'
   if (useGovernor) {
     await acquireWin32SpawnSlot()
@@ -172,7 +141,6 @@ export const runNativeHelperDetailed = async (
   // The circuit may have opened while we waited for a spawn slot; re-check so a
   // freshly-broken helper doesn't get spawned anyway after queueing.
   if (circuit.openUntil > Date.now()) {
-    if (shouldBackpressure) inFlightWin32Helpers.delete(helperName)
     if (useGovernor) releaseWin32SpawnSlot()
     return circuitOpenResult(circuit)
   }
@@ -239,15 +207,6 @@ export const runNativeHelperDetailed = async (
         }
         circuit.consecutiveFailures = 0
         circuit.openUntil = 0
-        if (
-          shouldBackpressure &&
-          durationMs >= WIN32_SLOW_SUCCESS_THRESHOLD_MS
-        ) {
-          circuit.openUntil = Math.max(
-            circuit.openUntil,
-            now + WIN32_SLOW_SUCCESS_COOLDOWN_MS,
-          )
-        }
         if (durationMs >= SLOW_HELPER_LOG_THRESHOLD_MS) {
           getFileLogger()?.process('native.helper.slow', {
             helper: helperName,
@@ -270,7 +229,6 @@ export const runNativeHelperDetailed = async (
     )
     })
   } finally {
-    if (shouldBackpressure) inFlightWin32Helpers.delete(helperName)
     if (useGovernor) releaseWin32SpawnSlot()
   }
 }

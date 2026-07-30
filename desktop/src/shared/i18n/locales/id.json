@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Memulai atau menghentikan agen suara langsung Stella."
       },
-      "radial": {
-        "label": "Tombol radial",
-        "description": "Membuka menu irisan untuk tangkapan, obrolan, suara, dan tindakan cepat.",
-        "ariaLabel": "Pintasan tombol radial"
-      },
-      "mini": {
-        "label": "Jendela mini",
-        "description": "Ketuk dua kali tombol pengubah untuk membuka atau menutup obrolan mini.",
-        "ariaLabel": "Pintasan jendela mini"
-      },
       "targets": {
         "dictation": "dikte",
         "voice": "agen suara"
@@ -149,20 +139,13 @@
         "updatedDescription": "Tekan {keys} untuk memulai {target}.",
         "clearedDescription": "{action} dinonaktifkan hingga Anda menetapkan pintasan baru.",
         "unavailableTitle": "Pintasan tidak tersedia",
-        "failedTitle": "Gagal memperbarui pintasan",
-        "radialUpdatedTitle": "Pintasan tombol radial diperbarui",
-        "radialUpdatedDescription": "Tahan {key} untuk membuka tombol radial.",
-        "miniUpdatedTitle": "Pintasan jendela mini diperbarui",
-        "miniDisabledDescription": "Ketuk dua kali dinonaktifkan.",
-        "miniUpdatedDescription": "Ketuk dua kali {modifier} untuk membuka jendela mini."
+        "failedTitle": "Gagal memperbarui pintasan"
       },
       "errors": {
         "load": "Gagal memuat pintasan.",
         "unavailable": "Pintasan tidak tersedia di jendela ini.",
         "unavailableShortcut": "Pintasan itu tidak tersedia.",
-        "update": "Gagal memperbarui pintasan.",
-        "radialUpdate": "Gagal memperbarui pintasan tombol radial.",
-        "miniUpdate": "Gagal memperbarui pintasan jendela mini."
+        "update": "Gagal memperbarui pintasan."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Pilih gaya bicara dan suara kepribadian Stella.",
         "permissions": "Berikan akses ke aksesibilitas, rekam layar, dan mikrofon di macOS.",
-        "shortcuts": "Ubah cara Stella terbuka, mendengarkan, dan memulai tombol radial atau suara.",
         "memory": "Kelola memori layar, perbarui atau hapus apa yang diingat Stella.",
         "backup": "Cadangan terenkripsi otomatis, titik pemulihan, dan snapshot sesuai permintaan.",
         "account": "Keluar, hapus data Anda, atau hapus akun Anda secara permanen.",
@@ -477,7 +459,6 @@
       "browser": "Biarkan Stella mengenal Anda.",
       "theme": "Bagaimana Stella seharusnya terlihat?",
       "personality": "Bagaimana Stella seharusnya berbicara?",
-      "summon": "Panggil Stella dari mana saja.",
       "voice": "Bicaralah, jangan mengetik.",
       "memory": "Bantu Stella mengingat.",
       "enter": "Stella hampir siap."

@@ -1,6 +1,4 @@
-import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
-import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { SwapText } from "./SwapText";
@@ -33,11 +31,8 @@ export function WorkingIndicator({
   className,
   animationActive = true,
 }: WorkingIndicatorProps) {
-  const { state } = useUiState();
-  const windowType = useWindowType();
   const windowFocused = useWindowFocus();
-  const animationPaused =
-    !animationActive || !windowFocused || state.window !== windowType;
+  const animationPaused = !animationActive || !windowFocused;
 
   const displayStatus = getWorkingIndicatorDisplayStatus({
     status,

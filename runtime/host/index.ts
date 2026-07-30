@@ -48,7 +48,6 @@ import {
   type HostAppBrowserContextSnapshot,
   type HostDisplayUpdateParams,
   type HostHeartbeatSignature,
-  type HostWindowTarget,
   type LocalCronJobRecord,
   type LocalHeartbeatConfigRecord,
   type RuntimeAgentEventPayload,
@@ -319,8 +318,8 @@ export type RuntimeHostHandlers = {
     alreadyGranted: boolean;
   }>;
   openExternal?: (url: string) => Promise<void> | void;
-  showWindow?: (target: HostWindowTarget) => Promise<void> | void;
-  focusWindow?: (target: HostWindowTarget) => Promise<void> | void;
+  showWindow?: () => Promise<void> | void;
+  focusWindow?: () => Promise<void> | void;
   runHmrTransition?: (payload: {
     /**
      * The run ids in the apply batch that this morph cover wraps. Used by
@@ -3643,19 +3642,15 @@ export class StellaRuntimeHost {
     );
     peer.registerRequestHandler(
       METHOD_NAMES.HOST_WINDOW_SHOW,
-      async (params) => {
-        await this.options.hostHandlers.showWindow?.(
-          params as HostWindowTarget,
-        );
+      async () => {
+        await this.options.hostHandlers.showWindow?.();
         return { ok: true };
       },
     );
     peer.registerRequestHandler(
       METHOD_NAMES.HOST_WINDOW_FOCUS,
-      async (params) => {
-        await this.options.hostHandlers.focusWindow?.(
-          params as HostWindowTarget,
-        );
+      async () => {
+        await this.options.hostHandlers.focusWindow?.();
         return { ok: true };
       },
     );

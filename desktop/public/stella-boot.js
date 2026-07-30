@@ -19,7 +19,6 @@
   };
 
   var params = new URLSearchParams(window.location.search);
-  root.dataset.stellaWindow = params.get("window") === "mini" ? "mini" : "full";
   var forceLowPower = params.get("lowPower") === "1";
 
   // The mobile app's WebView loads `/?mobile=1` and its injected shim sets

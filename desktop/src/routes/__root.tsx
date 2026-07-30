@@ -66,7 +66,6 @@ const SubscriptionUpgradeDialog = lazy(() =>
     default: m.SubscriptionUpgradeDialog,
   })),
 );
-import { ShellTopBar } from "@/shell/ShellTopBar";
 import { ShellTopBarFull } from "@/shell/ShellTopBarFull";
 import { DisplayPanelTopBar } from "@/shell/DisplayPanelTopBar";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -83,7 +82,6 @@ import {
   openHomeDisplayTab,
 } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
-import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
   STELLA_COMPOSE_TEXT_EVENT,
   type StellaOpenPanelChatDetail,
@@ -183,8 +181,6 @@ function RootChrome() {
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isOnChatRoute = pathname === "/chat";
-  const isMiniWindow = useWindowType() === "mini";
-  const isFullWindow = !isMiniWindow;
 
   const triggerDisplayBreakpointTransition = useCallback(() => {
     document.body.dataset.displayBreakpointTransition = "true";
@@ -209,18 +205,16 @@ function RootChrome() {
   );
 
   useEffect(() => {
-    if (isMiniWindow) return;
     window.electronAPI?.window.setNativeButtonsVisible?.(true);
-  }, [isMiniWindow]);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (isFullWindow) root.dataset.shellPanelChrome = "true";
-    else delete root.dataset.shellPanelChrome;
+    root.dataset.shellPanelChrome = "true";
     return () => {
       delete root.dataset.shellPanelChrome;
     };
-  }, [isFullWindow]);
+  }, []);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -274,7 +268,7 @@ function RootChrome() {
     [],
   );
 
-  // Route-aware default surface for a manual panel summon (right-click /
+  // Route-aware default surface for a manual panel open (right-click /
   // keyboard). Home never opens to a duplicate chat — it shows the Home
   // launcher; every other route opens the chat viewer. An already-active
   // artifact viewer (media / canvas / pdf / …) reopens as-is regardless of
@@ -369,7 +363,6 @@ function RootChrome() {
 
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
     rightSidebarRef,
-    isMiniWindow,
   });
 
   useDictationToggleBridge();
@@ -386,9 +379,8 @@ function RootChrome() {
   // from home flips an open Home launcher to Chat. Only the default
   // surfaces follow the route — an open artifact viewer (Media / Canvas /
   // PDF / …) is left untouched so navigation never yanks the user off it,
-  // and a closed panel stays closed (it picks the right surface on summon).
+  // and a closed panel stays closed (it picks the right surface when opened).
   useEffect(() => {
-    if (isMiniWindow) return;
     const { panelOpen, activeTabId } = displayTabs.getSnapshot();
     if (!panelOpen) return;
     const isDefaultSurface =
@@ -400,7 +392,7 @@ function RootChrome() {
     } else if (activeTabId !== CHAT_DISPLAY_TAB_ID) {
       displayTabs.activateTab(CHAT_DISPLAY_TAB_ID);
     }
-  }, [isOnChatRoute, isMiniWindow]);
+  }, [isOnChatRoute]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -510,11 +502,6 @@ function RootChrome() {
   }, [shellBreakpoints.displayPanelTakeover]);
 
   useEffect(() => {
-    if (isMiniWindow) {
-      panelExpandedBeforeTakeoverRef.current = null;
-      return;
-    }
-
     const { panelExpanded } = displayTabs.getSnapshot();
     if (shellBreakpoints.displayPanelTakeover) {
       if (panelExpandedBeforeTakeoverRef.current === null) {
@@ -534,7 +521,6 @@ function RootChrome() {
       displayTabs.setPanelExpanded(true);
     }
   }, [
-    isMiniWindow,
     panelExpanded,
     shellBreakpoints.displayPanelTakeover,
     triggerDisplayBreakpointTransition,
@@ -543,8 +529,6 @@ function RootChrome() {
   return (
     <>
       <MobileActivityNotificationsBridge />
-
-      {!isFullWindow ? <ShellTopBar /> : null}
 
       <StellaContextMenu
         isOpen={panelOpen}
@@ -577,19 +561,15 @@ function RootChrome() {
             follows the main column's right edge when the display panel opens.
             It is rendered after the content area's drag strip so its
             `no-drag` controls remain interactive. */}
-        {isFullWindow ? (
-          <ShellTopBarFull onSignIn={showAuthDialog} />
-        ) : null}
+        <ShellTopBarFull onSignIn={showAuthDialog} />
 
-        {isFullWindow ? (
-          <Suspense fallback={null}>
-            <WorkspaceHomeSurface
-              hidden={panelOpen || shellBreakpoints.hideWorkspaceStrip}
-            />
-          </Suspense>
-        ) : null}
+        <Suspense fallback={null}>
+          <WorkspaceHomeSurface
+            hidden={panelOpen || shellBreakpoints.hideWorkspaceStrip}
+          />
+        </Suspense>
 
-        {isFullWindow ? <DisplayPanelTopBar /> : null}
+        <DisplayPanelTopBar />
 
         <Suspense fallback={null}>
           <RightSidebar ref={rightSidebarRef} />

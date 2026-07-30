@@ -71,17 +71,6 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     options.captureService.cancelRegionCapture();
   });
 
-  ipcMain.on(
-    "windowAttach:click",
-    (_event, point: { x: number; y: number }) => {
-      options.captureService.commitWindowAttachPoint(point);
-    },
-  );
-
-  ipcMain.on("windowAttach:cancel", () => {
-    options.captureService.cancelWindowAttach();
-  });
-
   ipcMain.handle(
     "region:prepareSelection",
     async (_event, selection: RegionSelection) => {
@@ -154,9 +143,8 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     return image.toDataURL();
   });
 
-  // Composer "+ menu" entry point. Mirrors the radial dial's "capture" wedge:
-  // minimize, run the overlay, merge any capture, then restore the Stella
-  // window to its pre-capture visibility/focus state when capture is cancelled.
+  // Composer capture entry point: hide the full shell, run the overlay, merge
+  // any capture, then restore the shell's previous visibility/focus state.
   ipcMain.handle("capture:beginRegionCapture", async (event) => {
     if (!options.assertPrivilegedSender(event, "capture:beginRegionCapture")) {
       throw new Error("Blocked untrusted request.");
@@ -166,9 +154,8 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     }
 
     const wm = options.windowManager;
-    const targetWindowMode = wm.getLastFocusedWindowMode();
-    const targetWindowWasVisible = wm.isShellWindowVisible(targetWindowMode);
-    const targetWindowWasFocused = wm.isShellWindowFocused(targetWindowMode);
+    const targetWindowWasVisible = wm.isWindowVisible();
+    const targetWindowWasFocused = wm.isWindowFocused();
     wm.minimizeWindow();
 
     const result = await options.captureService.startRegionCapture();
@@ -176,9 +163,9 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     options.captureService.commitRegionCaptureResult(result);
 
     if (result !== null || targetWindowWasFocused) {
-      wm.showWindow(targetWindowMode);
+      wm.showWindow();
     } else if (targetWindowWasVisible) {
-      wm.restoreWindowVisibility(targetWindowMode);
+      wm.restoreWindowVisibility();
     }
 
     return result === null
@@ -186,43 +173,4 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
       : ({ ok: true } as const);
   });
 
-  ipcMain.handle("capture:beginWindowAttach", async (event) => {
-    if (!options.assertPrivilegedSender(event, "capture:beginWindowAttach")) {
-      throw new Error("Blocked untrusted request.");
-    }
-
-    const wm = options.windowManager;
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
-    const targetWindowMode =
-      wm.getShellWindowModeForWindow(senderWindow) ??
-      wm.getLastFocusedWindowMode();
-    const attachPointPromise = options.captureService.startWindowAttach();
-    const pickerWindowState = wm.hideShellWindowForExternalPicker(
-      targetWindowMode,
-      { skipMacFullscreenFullWindow: true },
-    );
-
-    const restorePickerWindow = () => {
-      if (!pickerWindowState.hidden) {
-        return;
-      }
-      if (pickerWindowState.wasFocused) {
-        wm.showWindow(pickerWindowState.mode);
-      } else if (pickerWindowState.wasVisible) {
-        wm.restoreWindowVisibility(pickerWindowState.mode);
-      }
-    };
-
-    const point = await attachPointPromise;
-    if (!point) {
-      restorePickerWindow();
-      return { cancelled: true } as const;
-    }
-
-    const result = await wm.attachMiniToExternalWindowAtPoint(point);
-    if (!result.ok) {
-      restorePickerWindow();
-    }
-    return result;
-  });
 };

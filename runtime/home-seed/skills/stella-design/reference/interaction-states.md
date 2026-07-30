@@ -111,7 +111,7 @@ Do not expose raw internal jargon as the main user-facing message.
 - Use buttons for actions and links for navigation.
 - Preserve heading order.
 - Give icon-only buttons accessible names.
-- Keep target sizes practical, especially in mini-window or narrow surfaces.
+- Keep target sizes practical, especially in narrow surfaces.
 - Do not remove focus outlines without a replacement.
 - Do not rely on hover-only functionality.
 - Use `aria-expanded`, `aria-selected`, `aria-current`, or `aria-invalid`

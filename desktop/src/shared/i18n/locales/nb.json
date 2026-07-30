@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Starter eller stopper Stellas direkte stemmeagent."
       },
-      "radial": {
-        "label": "Radialhjul",
-        "description": "Åpner kilemenyen for opptak, chat, stemme og hurtighandlinger.",
-        "ariaLabel": "Snarvei for radialhjul"
-      },
-      "mini": {
-        "label": "Minivindu",
-        "description": "Trykk to ganger på en modifikatortast for å åpne eller lukke minichatten.",
-        "ariaLabel": "Snarvei for minivindu"
-      },
       "targets": {
         "dictation": "diktering",
         "voice": "stemmeagenten"
@@ -149,20 +139,13 @@
         "updatedDescription": "Trykk {keys} for å starte {target}.",
         "clearedDescription": "{action} er deaktivert til du angir en ny snarvei.",
         "unavailableTitle": "Snarvei ikke tilgjengelig",
-        "failedTitle": "Kunne ikke oppdatere snarveien",
-        "radialUpdatedTitle": "Snarvei for radialhjul oppdatert",
-        "radialUpdatedDescription": "Hold inne {key} for å åpne radialhjulet.",
-        "miniUpdatedTitle": "Snarvei for minivindu oppdatert",
-        "miniDisabledDescription": "Dobbelttrykk er deaktivert.",
-        "miniUpdatedDescription": "Trykk to ganger på {modifier} for å åpne minivinduet."
+        "failedTitle": "Kunne ikke oppdatere snarveien"
       },
       "errors": {
         "load": "Kunne ikke laste inn snarveier.",
         "unavailable": "Snarveier er ikke tilgjengelige i dette vinduet.",
         "unavailableShortcut": "Den snarveien er ikke tilgjengelig.",
-        "update": "Kunne ikke oppdatere snarveien.",
-        "radialUpdate": "Kunne ikke oppdatere snarveien for radialhjulet.",
-        "miniUpdate": "Kunne ikke oppdatere snarveien for minivinduet."
+        "update": "Kunne ikke oppdatere snarveien."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Velg Stellas talestil og personlighetsstemme.",
         "permissions": "Gi tilgang til tilgjengelighet, skjermopptak og mikrofon på macOS.",
-        "shortcuts": "Endre hvordan Stella åpnes, lytter og starter radialhjulet eller stemmen.",
         "memory": "Administrer skjermminne, oppdater eller slett det Stella har husket.",
         "backup": "Automatiske krypterte sikkerhetskopier, gjenopprettingspunkter og øyeblikksbilder på forespørsel.",
         "account": "Logg av, slett dataene dine eller slett kontoen din permanent.",
@@ -477,7 +459,6 @@
       "browser": "La Stella bli kjent med deg.",
       "theme": "Hvordan skal Stella se ut?",
       "personality": "Hvordan skal Stella snakke?",
-      "summon": "Tilkall Stella fra hvor som helst.",
       "voice": "Snakk i stedet for å skrive.",
       "memory": "Hjelp Stella å huske.",
       "enter": "Stella er nesten klar."

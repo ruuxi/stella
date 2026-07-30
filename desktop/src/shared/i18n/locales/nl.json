@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Start of stopt de live spraakagent van Stella."
       },
-      "radial": {
-        "label": "Radiaalschijf",
-        "description": "Opent het radiale menu voor opname, chat, stem en snelle acties.",
-        "ariaLabel": "Sneltoets radiaalschijf"
-      },
-      "mini": {
-        "label": "Mini-venster",
-        "description": "Tik twee keer op een modificatietoets om de mini-chat te openen of te sluiten.",
-        "ariaLabel": "Sneltoets mini-venster"
-      },
       "targets": {
         "dictation": "dictee",
         "voice": "de spraakagent"
@@ -149,20 +139,13 @@
         "updatedDescription": "Druk op {keys} om {target} te starten.",
         "clearedDescription": "{action} is uitgeschakeld totdat je een nieuwe sneltoets instelt.",
         "unavailableTitle": "Sneltoets niet beschikbaar",
-        "failedTitle": "Bijwerken van sneltoets mislukt",
-        "radialUpdatedTitle": "Sneltoets radiaalschijf bijgewerkt",
-        "radialUpdatedDescription": "Houd {key} ingedrukt om de radiaalschijf te openen.",
-        "miniUpdatedTitle": "Sneltoets mini-venster bijgewerkt",
-        "miniDisabledDescription": "Dubbeltikken is uitgeschakeld.",
-        "miniUpdatedDescription": "Tik twee keer op {modifier} om het mini-venster te openen."
+        "failedTitle": "Bijwerken van sneltoets mislukt"
       },
       "errors": {
         "load": "Sneltoetsen laden mislukt.",
         "unavailable": "Sneltoetsen zijn niet beschikbaar in dit venster.",
         "unavailableShortcut": "Die sneltoets is niet beschikbaar.",
-        "update": "Sneltoets bijwerken mislukt.",
-        "radialUpdate": "Sneltoets van de radiaalschijf bijwerken mislukt.",
-        "miniUpdate": "Sneltoets van het mini-venster bijwerken mislukt."
+        "update": "Sneltoets bijwerken mislukt."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Kies Stella's spreekstijl en persoonlijkheidsstem.",
         "permissions": "Verleen toegang tot toegankelijkheid, schermopname en microfoon op macOS.",
-        "shortcuts": "Wijzig hoe Stella opent, luistert en de radiaalschijf of stem start.",
         "memory": "Beheer schermgeheugen, werk bij of wis wat Stella heeft onthouden.",
         "backup": "Automatische versleutelde back-ups, herstelpunten en momentopnamen op aanvraag.",
         "account": "Meld je af, verwijder je gegevens of verwijder je account definitief.",
@@ -477,7 +459,6 @@
       "browser": "Laat Stella je leren kennen.",
       "theme": "Hoe moet Stella eruitzien?",
       "personality": "Hoe moet Stella praten?",
-      "summon": "Roep Stella overal op.",
       "voice": "Praat in plaats van typen.",
       "memory": "Help Stella onthouden.",
       "enter": "Stella is bijna klaar."

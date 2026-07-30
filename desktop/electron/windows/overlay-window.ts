@@ -4,7 +4,6 @@ import {
   screen,
   type RenderProcessGoneDetails,
 } from 'electron'
-import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../../runtime/contracts/index.js'
 import type { MorphVisualTiming } from '../../src/shared/contracts/morph-timing.js'
 import { loadWindow } from './window-load.js'
@@ -130,9 +129,8 @@ class OverlayWindow {
       // `fullscreenable` MUST be false on macOS for `visibleOnFullScreen: true`
       // below to take effect. AppKit ignores the `FullScreenAuxiliary`
       // collection-behavior bit on any window that is itself fullscreen-able,
-      // which is what caused the radial to jump the user back to the original
-      // Space (blank, because the full shell had just moved to its own
-      // fullscreen Space) instead of drawing over the active fullscreen Space.
+      // which allows this utility overlay to render on the active fullscreen
+      // Space without displacing the full shell.
       fullscreenable: false,
       ...(process.platform === 'darwin'
         ? { hiddenInMissionControl: true }
@@ -151,8 +149,8 @@ class OverlayWindow {
     this.window.setTitle(STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES[0])
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
-    // The overlay is a transparent, screen-spanning utility layer (radial dial,
-    // region-capture chrome, morph "glim" transition, window highlights). It
+    // The overlay is a transparent, screen-spanning utility layer (region
+    // capture, dictation, morph transitions, and window highlights). It
     // must never show up in Stella's own screen captures — otherwise a capture
     // taken while the overlay is up records the overlay window itself. On
     // Windows the region-capture suspend (`fadeOut`) races DWM compositing, so
@@ -164,9 +162,7 @@ class OverlayWindow {
     if (process.platform === 'darwin') {
       // Keep the overlay attached to the active Space on macOS. Without this,
       // the hidden panel stays bound to whichever Space it first materialized
-      // on — when the radial is summoned from another Space, macOS jumps the
-      // user to that home Space (which looks blank because the overlay is
-      // fully transparent) instead of drawing the dial under the cursor.
+      // on, so utility surfaces can appear on whichever Space is active.
       // skipTransformProcessType keeps the process type stable so this call
       // doesn't promote us out of accessory/agent state.
       this.window.setVisibleOnAllWorkspaces(true, {
@@ -384,8 +380,8 @@ class OverlayWindow {
    * Perf: drop the second renderer process when the overlay has gone idle,
    * WITHOUT marking the controller dead. Unlike `destroy()`, this leaves
    * `this.destroyed` false so the next show entrypoint can rebuild the window
-   * via `ensureReady()` — mirroring the mini/store idle-destroy lifecycle that
-   * reclaims an unused resident renderer and re-warms it on demand. Hiding
+   * via `ensureReady()`, reclaiming an unused resident renderer and re-warming
+   * it on demand. Hiding
    * (fadeOut) alone keeps a transparent, screen-spanning, always-on-top
    * layered surface resident for the whole session; this actually frees it.
    */
@@ -438,16 +434,9 @@ class OverlayWindow {
  */
 export type MorphTransitionFlavor = 'hmr' | 'onboarding'
 
-export type SelectionChipPayload = {
-  text: string
-  rect: { x: number; y: number; width: number; height: number }
-  requestId: number
-}
-
 // Perf: after the overlay has been idle (no active feature) this long, drop
 // its renderer process. The next show entrypoint rebuilds it via
-// `ensureReady()`. Mirrors `MINI_IDLE_DESTROY_DELAY_MS` in
-// window-manager.ts so a chat-only session doesn't carry a resident second
+// `ensureReady()` so a chat-only session doesn't carry a resident second
 // renderer it never uses.
 const OVERLAY_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
 
@@ -463,28 +452,15 @@ export class OverlayWindowController {
   }
 
   // Active component tracking — overlay stays visible when any component is active.
-  private activeRadial = false
   private activeRegionCapture = false
   private activeDictation = false
   private activeScreenGuide = false
   private activeWindowHighlight = false
   private windowHighlightRequestId = 0
-  private activeSelectionChip = false
-  private currentSelectionChipRequestId: number | null = null
-  private selectionChipClickHandler: ((requestId: number) => void) | null = null
   // Perf: idle-reclaim timer for the overlay renderer (see
   // OVERLAY_IDLE_DESTROY_DELAY_MS). Armed when the overlay goes idle, cancelled
   // the moment any surface becomes active again.
   private idleDestroyTimer: ReturnType<typeof setTimeout> | null = null
-
-  private readonly handleRadialAnimDone = () => {
-    if (this.radialHideTimeout) {
-      clearTimeout(this.radialHideTimeout)
-      this.radialHideTimeout = null
-    }
-    this.activeRadial = false
-    this.hideOverlayIfIdle()
-  }
 
   private readonly handleOverlaySetInteractive = (
     _event: unknown,
@@ -544,14 +520,6 @@ export class OverlayWindowController {
       void this.setWindowHighlight(info?.bounds ?? null, 'default')
     })
   }
-  private readonly handleOverlaySelectionChipClicked = (
-    _event: unknown,
-    payload: { requestId: number } | null,
-  ) => {
-    const requestId = payload?.requestId
-    if (typeof requestId !== 'number') return
-    this.selectionChipClickHandler?.(requestId)
-  }
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
@@ -567,15 +535,6 @@ export class OverlayWindowController {
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,
     )
-    ipcMain.on(
-      'overlay:selectionChipClicked',
-      this.handleOverlaySelectionChipClicked,
-    )
-    ipcMain.on('radial:animDone', this.handleRadialAnimDone)
-  }
-
-  setSelectionChipClickHandler(handler: ((requestId: number) => void) | null) {
-    this.selectionChipClickHandler = handler
   }
 
   getWindow() {
@@ -649,12 +608,10 @@ export class OverlayWindowController {
 
   private get isAnyActive() {
     return (
-      this.activeRadial ||
       this.activeRegionCapture ||
       this.activeDictation ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
-      this.activeSelectionChip ||
       this.activeMorph
     )
   }
@@ -757,116 +714,15 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  // ─── Radial Dial ──────────────────────────────────────────────────────
-
-  private radialBounds: { x: number; y: number } | null = null
-  private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
-  private static readonly CLOSE_ANIM_FALLBACK = 350
-
-  async showRadial(options?: {
-    compactFocused?: boolean
-    miniAlwaysOnTop?: boolean
-  }) {
-    if (this.radialHideTimeout) {
-      clearTimeout(this.radialHideTimeout)
-      this.radialHideTimeout = null
-    }
-
-    this.activeRadial = true
-
-    // Perf: self-create the overlay on demand (it may have been idle-destroyed
-    // or never built). Replaces the old `if (!getWindow()) return` no-op so the
-    // radial still summons after an idle reclaim.
-    if (!(await this.ensureReady())) return
-    this.overlayWindow.show({ inactive: true })
-
-    const cursorDip = screen.getCursorScreenPoint()
-    const screenDipX = Math.round(cursorDip.x - RADIAL_SIZE / 2)
-    const screenDipY = Math.round(cursorDip.y - RADIAL_SIZE / 2)
-    this.radialBounds = { x: screenDipX, y: screenDipY }
-
-    const relativeX = cursorDip.x - screenDipX
-    const relativeY = cursorDip.y - screenDipY
-    const origin = this.overlayWindow.getOverlayOrigin()
-    const localX = screenDipX - origin.x
-    const localY = screenDipY - origin.y
-
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    const payload = {
-      x: relativeX,
-      y: relativeY,
-      centerX: RADIAL_SIZE / 2,
-      centerY: RADIAL_SIZE / 2,
-      screenX: localX,
-      screenY: localY,
-      compactFocused: options?.compactFocused ?? false,
-      miniAlwaysOnTop: options?.miniAlwaysOnTop ?? false,
-    }
-
-    this.overlayWindow.send('radial:show', payload)
-  }
-
-  hideRadial() {
-    if (!this.overlayWindow.getWindow()) return
-
-    this.overlayWindow.send('radial:hide')
-
-    if (!this.isAnyActive) {
-      this.overlayWindow.setIgnoreMouseEvents(true)
-    }
-    this.radialBounds = null
-
-    if (this.radialHideTimeout) clearTimeout(this.radialHideTimeout)
-    this.radialHideTimeout = setTimeout(() => {
-      this.radialHideTimeout = null
-      this.activeRadial = false
-      this.hideOverlayIfIdle()
-    }, OverlayWindowController.CLOSE_ANIM_FALLBACK)
-  }
-
-  /**
-   * Swap the Add wedge's Plus glyph for the icon of the app under the dial.
-   * Sent after the async window-info/icon lookup settles; the renderer resets
-   * to the Plus glyph on every `radial:show`, so stale icons never linger.
-   */
-  notifyRadialAddIcon(iconDataUrl: string | null) {
-    if (!this.activeRadial || !this.overlayWindow.getWindow()) return
-    this.overlayWindow.send('radial:addIcon', { iconDataUrl })
-  }
-
-  updateRadialCursor() {
-    if (!this.radialBounds) return
-
-    const cursorDip = screen.getCursorScreenPoint()
-    const bounds = this.radialBounds
-    const payload = {
-      x: cursorDip.x - bounds.x,
-      y: cursorDip.y - bounds.y,
-      centerX: RADIAL_SIZE / 2,
-      centerY: RADIAL_SIZE / 2,
-    }
-
-    if (!this.overlayWindow.getWindow()) return
-    this.overlayWindow.send('radial:cursor', payload)
-  }
-
-  getRadialBounds() {
-    return this.radialBounds
-  }
-
-  setRadialInteractive(interactive: boolean) {
-    this.overlayWindow.setIgnoreMouseEvents(!interactive)
-  }
-
   // ─── Region Capture ───────────────────────────────────────────────────
 
-  async startRegionCapture(options?: { mode?: 'capture' | 'window-attach' }) {
+  async startRegionCapture() {
     await this.showSurface({
       setActive: () => {
         this.activeRegionCapture = true
       },
       channel: 'overlay:startRegionCapture',
-      payload: { mode: options?.mode ?? 'capture' },
+      payload: { mode: 'capture' },
       showOptions: { focus: true },
       interactive: true,
       focusable: true,
@@ -955,43 +811,6 @@ export class OverlayWindowController {
   hideScreenGuide() {
     this.activeScreenGuide = false
     this.overlayWindow.send('overlay:hideScreenGuide')
-    this.hideOverlayIfIdle()
-  }
-
-  // ─── Selection Chip ("Ask Stella" pill above text selection) ──────────
-
-  async showSelectionChip(payload: SelectionChipPayload) {
-    this.activeSelectionChip = true
-    this.currentSelectionChipRequestId = payload.requestId
-    // Perf: self-create on demand so the selection chip still appears after an
-    // idle reclaim (or before the overlay's first build).
-    if (!(await this.ensureReady())) return
-    this.overlayWindow.show({ inactive: true })
-    const origin = this.overlayWindow.getOverlayOrigin()
-    this.overlayWindow.send('overlay:showSelectionChip', {
-      requestId: payload.requestId,
-      text: payload.text,
-      rect: {
-        x: payload.rect.x - origin.x,
-        y: payload.rect.y - origin.y,
-        width: payload.rect.width,
-        height: payload.rect.height,
-      },
-    })
-  }
-
-  hideSelectionChip(requestId?: number) {
-    if (
-      typeof requestId === 'number' &&
-      this.currentSelectionChipRequestId !== null &&
-      this.currentSelectionChipRequestId !== requestId
-    ) {
-      // Stale hide for a chip we already replaced; ignore.
-      return
-    }
-    this.activeSelectionChip = false
-    this.currentSelectionChipRequestId = null
-    this.overlayWindow.send('overlay:hideSelectionChip', { requestId })
     this.hideOverlayIfIdle()
   }
 
@@ -1157,16 +976,6 @@ export class OverlayWindowController {
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,
     )
-    ipcMain.removeListener(
-      'overlay:selectionChipClicked',
-      this.handleOverlaySelectionChipClicked,
-    )
-    ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
-    this.selectionChipClickHandler = null
-    if (this.radialHideTimeout) {
-      clearTimeout(this.radialHideTimeout)
-      this.radialHideTimeout = null
-    }
     // Clear the idle-reclaim timer so it can't fire after teardown.
     this.cancelIdleDestroy()
     this.overlayWindow.destroy()

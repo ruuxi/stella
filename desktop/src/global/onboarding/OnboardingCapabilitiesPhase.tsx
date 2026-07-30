@@ -11,18 +11,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowUp,
   Clock,
   FileSpreadsheet,
   FileText,
   Globe,
-  Maximize2,
-  Mic,
-  Plus,
   Presentation,
   RotateCcw,
   Smartphone,
-  X,
   type IconComponent,
 } from "@/ui/icons";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
@@ -46,7 +41,7 @@ type CapabilitiesPhaseProps = {
   onContinue: () => void;
 };
 
-type ChapterId = "errands" | "work" | "phone" | "everywhere";
+type ChapterId = "errands" | "work" | "phone";
 
 type Chapter = {
   id: ChapterId;
@@ -100,13 +95,6 @@ const PHONE_CUES: ChoreographyCue[] = [
   { id: "end", at: 6800 },
 ];
 
-const EVERYWHERE_CUES: ChoreographyCue[] = [
-  { id: "mini", at: 600 },
-  { id: "voice", at: 2300 },
-  { id: "keys", at: 3900 },
-  { id: "end", at: 6500 },
-];
-
 const CHAPTERS: Chapter[] = [
   {
     id: "errands",
@@ -131,14 +119,6 @@ const CHAPTERS: Chapter[] = [
     caption:
       "Message from your phone and the work happens on your computer, even while you're away.",
     durationMs: scriptEnd(PHONE_CUES),
-  },
-  {
-    id: "everywhere",
-    word: "Everywhere",
-    title: "Beside everything you do.",
-    caption:
-      "A full window, a mini chat in the corner, voice, and a quick summon from any app. Stella stays one tap away.",
-    durationMs: scriptEnd(EVERYWHERE_CUES),
   },
 ];
 
@@ -333,86 +313,6 @@ function PhoneChapter({ active, playNonce, onDone }: ChapterContentProps) {
   );
 }
 
-/* ── Everywhere chapter (mini chat, voice pill, summon keycaps) ───── */
-
-function EverywhereChapter({ active, playNonce, onDone }: ChapterContentProps) {
-  const has = useChapterScript(EVERYWHERE_CUES, active, playNonce, onDone);
-
-  return (
-    <div className="onboarding-cap-everywhere">
-      <div
-        className="onboarding-cap-float onboarding-cap-float--mini"
-        data-visible={has("mini") || undefined}
-      >
-        <div className="onboarding-cap-float__body">
-          <div className="onboarding-cap-mini">
-            <div className="onboarding-cap-mini__bar">
-              <StellaLogoIcon size={10} aria-hidden />
-              <span>Stella</span>
-              <span className="onboarding-cap-mini__bar-actions">
-                <Maximize2 size={9} />
-                <X size={9} />
-              </span>
-            </div>
-            <div className="onboarding-cap-mini__thread">
-              <span className="onboarding-cap-mini__msg" data-role="user">
-                Move my 3pm to Thursday
-              </span>
-              <span className="onboarding-cap-mini__msg" data-role="assistant">
-                Moved. Thursday at 3 works for everyone.
-              </span>
-            </div>
-            <div className="onboarding-cap-mini__composer">
-              <Plus size={9} />
-              <span>Ask anything…</span>
-              <ArrowUp size={9} />
-            </div>
-          </div>
-        </div>
-        <span className="onboarding-cap-float__label">Mini chat</span>
-      </div>
-
-      <div
-        className="onboarding-cap-float onboarding-cap-float--voice"
-        data-visible={has("voice") || undefined}
-      >
-        <div className="onboarding-cap-float__body">
-          <div className="onboarding-cap-voice">
-            <span className="onboarding-cap-voice__mic">
-              <span className="onboarding-cap-voice__ring" />
-              <span className="onboarding-cap-voice__ring" data-late="" />
-              <Mic size={13} />
-            </span>
-            <span className="onboarding-cap-voice__bars" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
-          </div>
-        </div>
-        <span className="onboarding-cap-float__label">Voice</span>
-      </div>
-
-      <div
-        className="onboarding-cap-float onboarding-cap-float--keys"
-        data-visible={has("keys") || undefined}
-      >
-        <div className="onboarding-cap-float__body">
-          <div className="onboarding-cap-keys">
-            <span className="onboarding-cap-key">⌥</span>
-            <span className="onboarding-cap-key" data-late="">
-              ⌥
-            </span>
-          </div>
-        </div>
-        <span className="onboarding-cap-float__label">Quick summon</span>
-      </div>
-    </div>
-  );
-}
-
 /* ── Phase shell ──────────────────────────────────────────────────── */
 
 export function OnboardingCapabilitiesPhase({
@@ -490,8 +390,6 @@ export function OnboardingCapabilitiesPhase({
         );
       case "phone":
         return <PhoneChapter {...common} />;
-      case "everywhere":
-        return <EverywhereChapter {...common} />;
       default: {
         const exhaustive: never = chapter.id;
         return exhaustive;

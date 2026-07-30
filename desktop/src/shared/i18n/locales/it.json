@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Avvia o ferma l'agente vocale dal vivo di Stella."
       },
-      "radial": {
-        "label": "Selettore radiale",
-        "description": "Apre il menu radiale per cattura, chat, voce e azioni rapide.",
-        "ariaLabel": "Scorciatoia del selettore radiale"
-      },
-      "mini": {
-        "label": "Finestra mini",
-        "description": "Tocca due volte un tasto modificatore per aprire o chiudere la chat mini.",
-        "ariaLabel": "Scorciatoia della finestra mini"
-      },
       "targets": {
         "dictation": "la dettatura",
         "voice": "l'agente vocale"
@@ -149,20 +139,13 @@
         "updatedDescription": "Premi {keys} per avviare {target}.",
         "clearedDescription": "{action} è disattivato finché non imposti una nuova scorciatoia.",
         "unavailableTitle": "Scorciatoia non disponibile",
-        "failedTitle": "Aggiornamento della scorciatoia non riuscito",
-        "radialUpdatedTitle": "Scorciatoia del selettore radiale aggiornata",
-        "radialUpdatedDescription": "Tieni premuto {key} per aprire il selettore radiale.",
-        "miniUpdatedTitle": "Scorciatoia della finestra mini aggiornata",
-        "miniDisabledDescription": "Il doppio tocco è disattivato.",
-        "miniUpdatedDescription": "Tocca due volte {modifier} per aprire la finestra mini."
+        "failedTitle": "Aggiornamento della scorciatoia non riuscito"
       },
       "errors": {
         "load": "Impossibile caricare le scorciatoie.",
         "unavailable": "Le scorciatoie non sono disponibili in questa finestra.",
         "unavailableShortcut": "Quella scorciatoia non è disponibile.",
-        "update": "Impossibile aggiornare la scorciatoia.",
-        "radialUpdate": "Impossibile aggiornare la scorciatoia del selettore radiale.",
-        "miniUpdate": "Impossibile aggiornare la scorciatoia della finestra mini."
+        "update": "Impossibile aggiornare la scorciatoia."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Scegli lo stile di parlato e la voce di personalità di Stella.",
         "permissions": "Concedi l'accesso ad accessibilità, cattura schermo e microfono su macOS.",
-        "shortcuts": "Cambia come Stella si apre, ascolta e avvia il selettore radiale o la voce.",
         "memory": "Gestisci la memoria dello schermo, aggiorna o cancella ciò che Stella ha ricordato.",
         "backup": "Backup crittografati automatici, punti di ripristino e snapshot su richiesta.",
         "account": "Esci, elimina i tuoi dati o elimina definitivamente il tuo account.",
@@ -477,7 +459,6 @@
       "browser": "Lascia che Stella ti conosca.",
       "theme": "Che aspetto deve avere Stella?",
       "personality": "Come deve parlare Stella?",
-      "summon": "Richiama Stella ovunque.",
       "voice": "Parla invece di scrivere.",
       "memory": "Aiuta Stella a ricordare.",
       "enter": "Stella è quasi pronta."

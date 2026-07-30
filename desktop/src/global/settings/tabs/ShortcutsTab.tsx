@@ -1,18 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@/ui/toast";
 import { Button } from "@/ui/button";
-import { Select } from "@/ui/select";
 import { Keybind } from "@/ui/keybind";
-import {
-  getRadialTriggerLabel,
-  getRadialTriggerOptions,
-  type RadialTriggerCode,
-} from "@/shared/lib/radial-trigger";
-import {
-  getMiniDoubleTapModifierLabel,
-  MINI_DOUBLE_TAP_MODIFIER_OPTIONS,
-  type MiniDoubleTapModifier,
-} from "@/shared/lib/mini-double-tap";
 import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
 
@@ -91,40 +80,16 @@ function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
 
 type ShortcutAction = "dictation" | "voice";
 
-// Curated radial-dial trigger options. The underlying catalog includes
-// every letter/digit/punctuation key — none of which are sane choices
-// for a global "hold to open" trigger (binding to "A" pops the dial
-// every time you type a word starting with A). Show only triggers that
-// don't disrupt normal typing; the saved value is always added in case
-// it's outside the recommended set.
-const RECOMMENDED_RADIAL_TRIGGER_CODES: readonly RadialTriggerCode[] = [
-  "SystemChord",
-  "Backquote",
-];
-
-const RADIAL_TRIGGER_LABEL_OVERRIDES: Partial<Record<RadialTriggerCode, string>> = {
-  Backquote: "Backtick (`)",
-};
-
 export function ShortcutsTab() {
   const t = useT();
-  const platform = window.electronAPI?.platform;
   const actionLabel = useCallback(
     (action: ShortcutAction) => t(`settings.shortcuts.actions.${action}`),
     [t],
-  );
-  const allRadialOptions = useMemo(
-    () => getRadialTriggerOptions(platform),
-    [platform],
   );
   const [shortcuts, setShortcuts] = useState<Record<ShortcutAction, string>>({
     dictation: "Alt",
     voice: "CommandOrControl+Shift+D",
   });
-  const [radialTriggerKey, setRadialTriggerKey] =
-    useState<RadialTriggerCode>("SystemChord");
-  const [miniDoubleTapModifier, setMiniDoubleTapModifier] =
-    useState<MiniDoubleTapModifier>("Alt");
   const [loaded, setLoaded] = useState(false);
   const [savingShortcut, setSavingShortcut] = useState<ShortcutAction | null>(
     null,
@@ -133,49 +98,21 @@ export function ShortcutsTab() {
     useState<ShortcutAction | null>(null);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
 
-  // Build the curated dropdown: recommended options first, then the
-  // currently-saved value if it isn't already in the recommended set.
-  // Apply label overrides so e.g. `Backquote` reads as "Backtick (`)"
-  // instead of just a bare backtick character.
-  const radialOptions = useMemo(() => {
-    const codes: RadialTriggerCode[] = [...RECOMMENDED_RADIAL_TRIGGER_CODES];
-    if (!codes.includes(radialTriggerKey)) {
-      codes.push(radialTriggerKey);
-    }
-    const labelByCode = new Map(
-      allRadialOptions.map((option) => [option.code, option.label] as const),
-    );
-    return codes.map((code) => ({
-      code,
-      label:
-        RADIAL_TRIGGER_LABEL_OVERRIDES[code] ??
-        labelByCode.get(code) ??
-        getRadialTriggerLabel(code, platform),
-    }));
-  }, [allRadialOptions, radialTriggerKey, platform]);
-
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [dictationShortcut, voiceShortcut, radialKey, miniModifier] =
-          await Promise.all([
-            window.electronAPI?.dictation?.getShortcut?.() ??
-              Promise.resolve("Alt"),
-            window.electronAPI?.voice?.getRtcShortcut?.() ??
-              Promise.resolve("CommandOrControl+Shift+D"),
-            window.electronAPI?.system?.getRadialTriggerKey?.() ??
-              Promise.resolve("SystemChord" as RadialTriggerCode),
-            window.electronAPI?.system?.getMiniDoubleTapModifier?.() ??
-              Promise.resolve("Alt" as MiniDoubleTapModifier),
-          ]);
+        const [dictationShortcut, voiceShortcut] = await Promise.all([
+          window.electronAPI?.dictation?.getShortcut?.() ??
+            Promise.resolve("Alt"),
+          window.electronAPI?.voice?.getRtcShortcut?.() ??
+            Promise.resolve("CommandOrControl+Shift+D"),
+        ]);
         if (cancelled) return;
         setShortcuts({
           dictation: dictationShortcut,
           voice: voiceShortcut,
         });
-        setRadialTriggerKey(radialKey);
-        setMiniDoubleTapModifier(miniModifier);
         setShortcutError(null);
       } catch (error) {
         if (!cancelled) {
@@ -293,64 +230,6 @@ export function ShortcutsTab() {
     };
   }, [capturingShortcut, saveShortcut]);
 
-  const saveRadialTrigger = useCallback(
-    async (triggerKey: RadialTriggerCode) => {
-      const api = window.electronAPI?.system;
-      if (!api?.setRadialTriggerKey) return;
-      setShortcutError(null);
-      try {
-        const result = await api.setRadialTriggerKey(triggerKey);
-        setRadialTriggerKey(result.triggerKey);
-        showToast({
-          title: t("settings.shortcuts.toasts.radialUpdatedTitle"),
-          description: t("settings.shortcuts.toasts.radialUpdatedDescription", {
-            key: getRadialTriggerLabel(result.triggerKey, platform),
-          }),
-        });
-      } catch (error) {
-        setShortcutError(
-          getSettingsErrorMessage(
-            error,
-            t("settings.shortcuts.errors.radialUpdate"),
-          ),
-        );
-      }
-    },
-    [platform, t],
-  );
-
-  const saveMiniDoubleTap = useCallback(
-    async (modifier: MiniDoubleTapModifier) => {
-      const api = window.electronAPI?.system;
-      if (!api?.setMiniDoubleTapModifier) return;
-      setShortcutError(null);
-      try {
-        const result = await api.setMiniDoubleTapModifier(modifier);
-        setMiniDoubleTapModifier(result.modifier);
-        showToast({
-          title: t("settings.shortcuts.toasts.miniUpdatedTitle"),
-          description:
-            result.modifier === "Off"
-              ? t("settings.shortcuts.toasts.miniDisabledDescription")
-              : t("settings.shortcuts.toasts.miniUpdatedDescription", {
-                  modifier: getMiniDoubleTapModifierLabel(
-                    result.modifier,
-                    platform,
-                  ),
-                }),
-        });
-      } catch (error) {
-        setShortcutError(
-          getSettingsErrorMessage(
-            error,
-            t("settings.shortcuts.errors.miniUpdate"),
-          ),
-        );
-      }
-    },
-    [platform, t],
-  );
-
   const renderShortcutRow = (action: ShortcutAction, description: string) => (
     <div className="settings-row">
       <div className="settings-row-info">
@@ -415,52 +294,6 @@ export function ShortcutsTab() {
           "voice",
           t("settings.shortcuts.voiceAgent.description"),
         )}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">
-              {t("settings.shortcuts.radial.label")}
-            </div>
-            <div className="settings-row-sublabel">
-              {t("settings.shortcuts.radial.description")}
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <Select<RadialTriggerCode>
-              className="settings-runtime-select"
-              value={radialTriggerKey}
-              disabled={!loaded}
-              aria-label={t("settings.shortcuts.radial.ariaLabel")}
-              onValueChange={(value) => void saveRadialTrigger(value)}
-              options={radialOptions.map((option) => ({
-                value: option.code,
-                label: option.label,
-              }))}
-            />
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">
-              {t("settings.shortcuts.mini.label")}
-            </div>
-            <div className="settings-row-sublabel">
-              {t("settings.shortcuts.mini.description")}
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <Select<MiniDoubleTapModifier>
-              className="settings-runtime-select"
-              value={miniDoubleTapModifier}
-              disabled={!loaded}
-              aria-label={t("settings.shortcuts.mini.ariaLabel")}
-              onValueChange={(value) => void saveMiniDoubleTap(value)}
-              options={MINI_DOUBLE_TAP_MODIFIER_OPTIONS.map((modifier) => ({
-                value: modifier,
-                label: getMiniDoubleTapModifierLabel(modifier, platform),
-              }))}
-            />
-          </div>
-        </div>
       </div>
     </div>
   );

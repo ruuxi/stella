@@ -37,7 +37,7 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
 
 /**
  * Single source of truth for the inline working indicator's mount props,
- * shared by every chat surface (full shell, sidebar, mini) so they can't
+ * shared by every chat surface so they cannot
  * drift. Pass the raw streaming snapshot; the helper derives `active`,
  * the friendly label inputs, and the immediate-exit handoff.
  */

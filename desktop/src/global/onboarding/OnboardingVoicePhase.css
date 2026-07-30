@@ -1,7 +1,6 @@
 /* ──────────────────────────────────────────────────────────────────────
  * Voice phase — two looping demo cards (wake word + dictation).
- * Shares the practice-card vocabulary with the summon phase; every
- * choreographed element sits in a reserved slot so the loop never
+ * Every choreographed element sits in a reserved slot so the loop never
  * shifts layout.
  * ────────────────────────────────────────────────────────────────────── */
 
@@ -47,7 +46,7 @@
   }
 }
 
-/* ── Card (same vocabulary as the summon practice cards) ──────────── */
+/* ── Card ─────────────────────────────────────────────────────────── */
 
 .ovoice-card {
   display: flex;

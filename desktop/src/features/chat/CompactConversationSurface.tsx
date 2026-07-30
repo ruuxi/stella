@@ -9,7 +9,7 @@ import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-
 import "@/app/chat/full-shell.chat.css";
 import "./compact-conversation.css";
 
-type CompactConversationVariant = "mini" | "orb" | "sidebar";
+type CompactConversationVariant = "orb" | "sidebar";
 
 type CompactConversationSurfaceProps = {
   /**

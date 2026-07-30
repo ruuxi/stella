@@ -236,8 +236,8 @@ export const usePetStatusBroadcast = ({
 
   // Subscribe to inbound `pet:sendMessage` from the overlay popover and
   // re-emit it as a Stella send-message custom event so the existing
-  // chat surface ingests it (same path used by the radial dial). We
-  // mount this in the chat runtime provider, which is the only React
+  // chat surface ingests it. We mount this in the chat runtime provider,
+  // which is the only React
   // tree that listens for `STELLA_SEND_MESSAGE_EVENT`.
   useEffect(() => {
     const cleanup = window.electronAPI?.pet?.onSendMessage?.((text) => {

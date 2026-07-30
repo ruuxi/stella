@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "מפעיל או עוצר את הסוכן הקולי החי של Stella."
       },
-      "radial": {
-        "label": "חוגה רדיאלית",
-        "description": "פותח את תפריט הטריזים לצילום, צ'אט, קול ופעולות מהירות.",
-        "ariaLabel": "קיצור החוגה הרדיאלית"
-      },
-      "mini": {
-        "label": "חלון מיני",
-        "description": "הקש פעמיים על מקש שינוי כדי לפתוח או לסגור את צ'אט המיני.",
-        "ariaLabel": "קיצור חלון המיני"
-      },
       "targets": {
         "dictation": "הכתבה",
         "voice": "הסוכן הקולי"
@@ -149,20 +139,13 @@
         "updatedDescription": "הקש {keys} כדי להתחיל {target}.",
         "clearedDescription": "{action} מושבת עד שתגדיר קיצור חדש.",
         "unavailableTitle": "הקיצור אינו זמין",
-        "failedTitle": "עדכון הקיצור נכשל",
-        "radialUpdatedTitle": "קיצור החוגה הרדיאלית עודכן",
-        "radialUpdatedDescription": "החזק את {key} כדי לפתוח את החוגה הרדיאלית.",
-        "miniUpdatedTitle": "קיצור חלון המיני עודכן",
-        "miniDisabledDescription": "הקשה כפולה מושבתת.",
-        "miniUpdatedDescription": "הקש פעמיים על {modifier} כדי לפתוח את חלון המיני."
+        "failedTitle": "עדכון הקיצור נכשל"
       },
       "errors": {
         "load": "טעינת הקיצורים נכשלה.",
         "unavailable": "הקיצורים אינם זמינים בחלון זה.",
         "unavailableShortcut": "הקיצור הזה אינו זמין.",
-        "update": "עדכון הקיצור נכשל.",
-        "radialUpdate": "עדכון קיצור החוגה הרדיאלית נכשל.",
-        "miniUpdate": "עדכון קיצור חלון המיני נכשל."
+        "update": "עדכון הקיצור נכשל."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "בחר את סגנון הדיבור ואת קול האישיות של Stella.",
         "permissions": "הענק גישה לנגישות, צילום מסך ומיקרופון ב-macOS.",
-        "shortcuts": "שנה כיצד Stella נפתחת, מאזינה ומפעילה את החוגה הרדיאלית או הקול.",
         "memory": "נהל את זיכרון המסך, עדכן או מחק את מה ש-Stella זכרה.",
         "backup": "גיבויים מוצפנים אוטומטיים, נקודות שחזור ותמונות מצב לפי דרישה.",
         "account": "התנתק, מחק את הנתונים שלך או מחק את החשבון שלך לצמיתות.",
@@ -477,7 +459,6 @@
       "browser": "אפשרו ל-Stella להכיר אתכם.",
       "theme": "איך Stella צריכה להיראות?",
       "personality": "איך Stella צריכה לדבר?",
-      "summon": "זמנו את Stella מכל מקום.",
       "voice": "דברו במקום להקליד.",
       "memory": "עזרו ל-Stella לזכור.",
       "enter": "Stella כמעט מוכנה."

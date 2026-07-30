@@ -1,5 +1,5 @@
 /* ============================================================
- * Compact chat surface (sidebar, mini window, orb, Store thread)
+ * Compact chat surface (sidebar, orb, Store thread)
  *
  * Typography tokens (`--chat-text-*`) live on `.chat-viewport-region`
  * in `full-shell.chat.css`. The variant blocks below only override
@@ -41,7 +41,7 @@
 }
 
 /*
- * When the surface hosts the virtualized LegendList (sidebar, mini, orb),
+ * When the surface hosts the virtualized LegendList (sidebar or orb),
  * it needs to be a true flex slot inside `.chat-viewport-region` so the
  * list can claim a definite height. The Store panel keeps the original
  * `min-height: 100%` flow because its messages render flat (no list).
@@ -54,9 +54,9 @@
  */
 .chat-viewport-region:has(> .chat-conversation-surface) {
   /*
-   * Self-contained sizing so compact surfaces lay out correctly even in
-   * windows that never load `full-shell.layout.css` (the mini window).
-   * The full chat's `.chat-viewport-region` gets these same properties from
+   * Self-contained sizing so compact surfaces do not depend on
+   * `full-shell.layout.css`. The full chat's `.chat-viewport-region` gets
+   * these same properties from
    * `full-shell.layout.css`; scoping them to `:has(> .chat-conversation-surface)`
    * limits them to compact surfaces (the full chat hosts the LegendList
    * directly, with no `.chat-conversation-surface` wrapper) and the values
@@ -79,7 +79,6 @@
 }
 
 /* Compact surfaces share the same smaller body size. */
-.chat-conversation-surface--mini,
 .chat-conversation-surface--orb,
 .chat-conversation-surface--sidebar {
   --chat-text-size: var(--font-size-base);
@@ -134,7 +133,7 @@
   width: fit-content;
   /* The full-chat user bubble is a solid accent fill with the derived
      `--chat-user-bubble-text`. The sidebar variant mirrors that exactly; other
-     compact surfaces (mini, orb, Store) use a subtle tint instead, so the
+     compact surfaces (orb, Store) use a subtle tint instead, so the
      body text color (`.event-body` reads `--chat-text-color`) routes through
      `--compact-chat-user-color` and each variant keeps text legible on its
      own bubble fill. */
@@ -194,7 +193,7 @@
   color: var(--text-base);
 }
 
-/* Tighter clamp for compact surfaces (sidebar / orb / mini) where bubbles
+/* Tighter clamp for compact surfaces where bubbles
    are narrower and a smaller chunk reads better. */
 .chat-conversation-surface .event-user-body {
   --user-message-clamp-lines: 8;

@@ -1,7 +1,7 @@
 /* ============================================================
  * Chat typography contract
  *
- * Every chat surface — full chat, sidebar, mini window, orb,
+ * Every chat surface — full chat, sidebar, orb,
  * and the Store thread — lives inside `.chat-viewport-region`.
  * Defining the message typography tokens here means the
  * virtualized rows (which are NOT descendants of any `.event-list`
@@ -95,7 +95,6 @@
 }
 
 .chat-viewport-region--sidebar .event-list-trailing-region,
-.chat-viewport-region--mini .event-list-trailing-region,
 .chat-viewport-region--orb .event-list-trailing-region {
   min-height: 120px;
 }
@@ -106,7 +105,6 @@
    scroll geometry while moving the empty space above the queued state. */
 .event-list-trailing-region--after-queue,
 .chat-viewport-region--sidebar .event-list-trailing-region--after-queue,
-.chat-viewport-region--mini .event-list-trailing-region--after-queue,
 .chat-viewport-region--orb .event-list-trailing-region--after-queue {
   min-height: 12px;
 }
@@ -132,7 +130,6 @@
 }
 
 .chat-viewport-region--sidebar .composer-queued-stack,
-.chat-viewport-region--mini .composer-queued-stack,
 .chat-viewport-region--orb .composer-queued-stack {
   padding-top: 108px;
 }

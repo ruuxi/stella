@@ -1,13 +1,12 @@
 /**
  * ComposerAddMenu — the dropdown that opens from the composer's "+" button.
  *
- * Attachment actions backed by chatContext or the desktop mini-window:
+ * Attachment actions backed by chatContext:
  *   1. Attach files…   → image-aware file picker (matches drag-and-drop).
- *   2. Capture         → radial-dial-style region/window capture.
- *   3. Attach Stella   → pick a window and dock the mini beside it.
+ *   2. Capture         → region/window capture.
  *
  * Menu order (top → bottom): optional recent files, new chat, then capture,
- * select area, attach Stella, and attach files at the bottom (nearest the +
+ * select area, and attach files at the bottom (nearest the +
  * button). No dividers between rows.
  *
  * The menu owns its own state (file input ref + recent-files store), so
@@ -20,7 +19,6 @@ import {
   Camera,
   File,
   MessageSquarePlus,
-  PanelRight,
   Paperclip,
   Scan,
 } from "@/ui/icons";
@@ -176,33 +174,6 @@ export function ComposerAddMenu({
     onSelectArea?.();
   }, [onSelectArea]);
 
-  const handleAttachWindow = useCallback(async () => {
-    const api = getElectronApi();
-    if (!api) return;
-    setMenuOpen(false);
-    try {
-      const result = await api.capture.beginWindowAttach();
-      if ("cancelled" in result || result.ok) {
-        return;
-      }
-      showToast({
-        title: "Couldn’t attach Stella",
-        description: result.message,
-        variant: "error",
-      });
-    } catch (error) {
-      console.warn("[composer-add-menu] attach failed:", error);
-      showToast({
-        title: "Couldn’t attach Stella",
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : "Try a normal app window.",
-        variant: "error",
-      });
-    }
-  }, []);
-
   const handleRecentClick = useCallback(
     (file: ChatContextFile) => {
       applyProcessedAttachments(
@@ -297,12 +268,6 @@ export function ComposerAddMenu({
               Select area
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem onSelect={handleAttachWindow}>
-            <span data-slot="dropdown-menu-item-icon">
-              <PanelRight size={16} strokeWidth={1.75} />
-            </span>
-            Attach Stella
-          </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleAttachFiles}>
             <span data-slot="dropdown-menu-item-icon">
               <Paperclip size={16} strokeWidth={1.75} />

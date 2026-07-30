@@ -21,7 +21,7 @@ type UseAgentInputRoutingResult = {
     detail: StellaSendMessageDetail,
     metadata?: MessageMetadata,
   ) => void
-  /** Send `text` plus optional captured context (for the orb/radial flows). */
+  /** Send `text` plus optional captured context. */
   sendMessageWithContext: (
     text: string,
     chatCtx?: ChatContext | null,

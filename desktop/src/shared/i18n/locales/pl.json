@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Uruchamia lub zatrzymuje agenta głosowego Stelli na żywo."
       },
-      "radial": {
-        "label": "Tarcza promienista",
-        "description": "Otwiera menu klinowe do przechwytywania, czatu, głosu i szybkich działań.",
-        "ariaLabel": "Skrót tarczy promienistej"
-      },
-      "mini": {
-        "label": "Mini okno",
-        "description": "Dotknij dwukrotnie klawisza modyfikującego, aby otworzyć lub zamknąć mini czat.",
-        "ariaLabel": "Skrót mini okna"
-      },
       "targets": {
         "dictation": "dyktowanie",
         "voice": "agenta głosowego"
@@ -149,20 +139,13 @@
         "updatedDescription": "Naciśnij {keys}, aby uruchomić {target}.",
         "clearedDescription": "{action} jest wyłączone, dopóki nie ustawisz nowego skrótu.",
         "unavailableTitle": "Skrót niedostępny",
-        "failedTitle": "Nie udało się zaktualizować skrótu",
-        "radialUpdatedTitle": "Zaktualizowano skrót tarczy promienistej",
-        "radialUpdatedDescription": "Przytrzymaj {key}, aby otworzyć tarczę promienistą.",
-        "miniUpdatedTitle": "Zaktualizowano skrót mini okna",
-        "miniDisabledDescription": "Dwukrotne dotknięcie jest wyłączone.",
-        "miniUpdatedDescription": "Dotknij dwukrotnie {modifier}, aby otworzyć mini okno."
+        "failedTitle": "Nie udało się zaktualizować skrótu"
       },
       "errors": {
         "load": "Nie udało się wczytać skrótów.",
         "unavailable": "Skróty są niedostępne w tym oknie.",
         "unavailableShortcut": "Ten skrót jest niedostępny.",
-        "update": "Nie udało się zaktualizować skrótu.",
-        "radialUpdate": "Nie udało się zaktualizować skrótu tarczy promienistej.",
-        "miniUpdate": "Nie udało się zaktualizować skrótu mini okna."
+        "update": "Nie udało się zaktualizować skrótu."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Wybierz styl mówienia i głos osobowości Stelli.",
         "permissions": "Przyznaj dostęp do dostępności, przechwytywania ekranu i mikrofonu w macOS.",
-        "shortcuts": "Zmień sposób, w jaki Stella się otwiera, nasłuchuje i uruchamia tarczę promienistą lub głos.",
         "memory": "Zarządzaj pamięcią ekranu, aktualizuj lub wymazuj to, co Stella zapamiętała.",
         "backup": "Automatyczne szyfrowane kopie zapasowe, punkty przywracania i migawki na żądanie.",
         "account": "Wyloguj się, usuń dane lub trwale usuń konto.",
@@ -477,7 +459,6 @@
       "browser": "Pozwól Stelli Cię poznać.",
       "theme": "Jak ma wyglądać Stella?",
       "personality": "Jak ma mówić Stella?",
-      "summon": "Przywołaj Stellę skądkolwiek.",
       "voice": "Mów zamiast pisać.",
       "memory": "Pomóż Stelli pamiętać.",
       "enter": "Stella jest prawie gotowa."

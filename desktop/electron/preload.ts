@@ -9,8 +9,6 @@ import type {
   LocalChatUpdatedPayload,
   ThreadActivityUpdatedPayload,
 } from "../../runtime/contracts/local-chat.js";
-import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
-import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
 import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
@@ -88,21 +86,17 @@ import {
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
   IPC_PREFERENCES_LIST_MODELS,
   IPC_PREFERENCES_MODELS_UPDATED,
-  IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
-  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_READ_ALOUD,
   IPC_PREFERENCES_READ_ALOUD_CHANGED,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
-  IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
-  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
@@ -251,10 +245,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     maximize: () => ipcRenderer.send("window:maximize"),
     close: () => ipcRenderer.send("window:close"),
     isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
-    isMiniAlwaysOnTop: () => ipcRenderer.invoke("window:isMiniAlwaysOnTop"),
-    setMiniAlwaysOnTop: (enabled: boolean) =>
-      ipcRenderer.invoke("window:setMiniAlwaysOnTop", enabled),
-    show: (target: "mini" | "full") => ipcRenderer.send("window:show", target),
+    show: () => ipcRenderer.send("window:show"),
     setNativeButtonsVisible: (visible: boolean) =>
       ipcRenderer.send(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, visible),
   },
@@ -434,9 +425,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         } | null;
       } | null,
     ) => ipcRenderer.send("region:commitPrepared", result),
-    submitWindowAttachClick: (point: { x: number; y: number }) =>
-      ipcRenderer.send("windowAttach:click", point),
-    cancelWindowAttach: () => ipcRenderer.send("windowAttach:cancel"),
     submitRegionClick: (point: { x: number; y: number }) =>
       ipcRenderer.send("region:click", point),
     getWindowCapture: (point: { x: number; y: number }) =>
@@ -471,42 +459,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("capture:beginRegionCapture") as Promise<
         { ok: true } | { cancelled: true }
       >,
-    beginWindowAttach: () =>
-      ipcRenderer.invoke("capture:beginWindowAttach") as Promise<
-        | {
-            ok: true;
-            window: {
-              app: string;
-              title: string;
-              bounds: { x: number; y: number; width: number; height: number };
-            };
-            miniBounds: { x: number; y: number; width: number; height: number };
-          }
-        | { cancelled: true }
-        | { ok: false; reason: string; message: string }
-      >,
-  },
-
-  radial: {
-    onShow: onIpcWithEvent<{
-      centerX: number;
-      centerY: number;
-      x?: number;
-      y?: number;
-      screenX?: number;
-      screenY?: number;
-      compactFocused?: boolean;
-      miniAlwaysOnTop?: boolean;
-    }>("radial:show"),
-    onHide: onIpcSignal("radial:hide"),
-    animDone: () => ipcRenderer.send("radial:animDone"),
-    onCursor: onIpcWithEvent<{
-      x: number;
-      y: number;
-      centerX: number;
-      centerY: number;
-    }>("radial:cursor"),
-    onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>("radial:addIcon"),
   },
 
   overlay: {
@@ -525,7 +477,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     previewWindowHighlightAtPoint: (point: { x: number; y: number }) =>
       ipcRenderer.send("overlay:previewWindowHighlightAtPoint", point),
     onStartRegionCapture: onIpc<{
-      mode?: "capture" | "window-attach";
+      mode?: "capture";
     }>("overlay:startRegionCapture"),
     onEndRegionCapture: onIpcSignal("overlay:endRegionCapture"),
     onWindowHighlight: onIpc<{
@@ -546,16 +498,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>;
     }>("overlay:showScreenGuide"),
     onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
-    onShowSelectionChip: onIpc<{
-      requestId: number;
-      text: string;
-      rect: { x: number; y: number; width: number; height: number };
-    }>("overlay:showSelectionChip"),
-    onHideSelectionChip: onIpc<{ requestId?: number } | null>(
-      "overlay:hideSelectionChip",
-    ),
-    selectionChipClicked: (requestId: number) =>
-      ipcRenderer.send("overlay:selectionChipClicked", { requestId }),
     onDisplayChange: onIpc<{
       origin: { x: number; y: number };
       bounds: { x: number; y: number; width: number; height: number };
@@ -1146,24 +1088,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_GET_SYNC_MODE) as Promise<string>,
     setLocalSyncMode: (mode: string) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_SYNC_MODE, mode),
-    getRadialTriggerKey: () =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_GET_RADIAL_TRIGGER,
-      ) as Promise<RadialTriggerCode>,
-    setRadialTriggerKey: (triggerKey: RadialTriggerCode) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-        triggerKey,
-      ) as Promise<{ triggerKey: RadialTriggerCode }>,
-    getMiniDoubleTapModifier: () =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
-      ) as Promise<MiniDoubleTapModifier>,
-    setMiniDoubleTapModifier: (modifier: MiniDoubleTapModifier) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
-        modifier,
-      ) as Promise<{ modifier: MiniDoubleTapModifier }>,
     getPreventComputerSleep: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_PREVENT_SLEEP) as Promise<boolean>,
     setPreventComputerSleep: (enabled: boolean) =>
@@ -2279,7 +2203,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     openChat: () => ipcRenderer.send("pet:openChat"),
     sendMessage: (text: string) => ipcRenderer.send("pet:sendMessage", text),
     onSendMessage: onIpc<string>("pet:sendMessage"),
-    toggleMiniWindow: () => ipcRenderer.send("pet:toggleMiniWindow"),
   },
 
   nativeIntegrations: {

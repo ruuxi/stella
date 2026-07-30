@@ -191,10 +191,7 @@ export const isRtlLocale = (locale: Locale): boolean =>
 export const localeDir = (locale: Locale): "ltr" | "rtl" =>
   isRtlLocale(locale) ? "rtl" : "ltr";
 
-/**
- * Stable storage key — only one locale exists per device, regardless of
- * window (full vs mini).
- */
+/** Stable storage key: only one locale exists per device. */
 export const LOCALE_STORAGE_KEY = "stella:locale";
 
 /**

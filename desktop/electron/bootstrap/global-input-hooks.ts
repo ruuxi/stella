@@ -5,13 +5,13 @@ import type { BootstrapContext } from "./context.js";
 const GLOBAL_INPUT_HOOK_DELAY_MS = 1_500;
 
 const canStartGlobalInputHooks = (context: BootstrapContext) => {
+  if (process.platform !== "darwin") {
+    return false;
+  }
   if (!context.state.appReady) {
     return false;
   }
-  if (process.platform === "darwin") {
-    return hasMacPermission("accessibility", false);
-  }
-  return true;
+  return hasMacPermission("accessibility", false);
 };
 
 export const scheduleGlobalInputHooksAfterAppReady = (
@@ -37,8 +37,7 @@ export const scheduleGlobalInputHooksAfterAppReady = (
       return;
     }
 
-    context.services.radialGestureService.start();
-    context.services.selectionWatcherService.start();
+    context.services.globalInputHook.start();
     context.state.globalInputHooksStarted = true;
   }, GLOBAL_INPUT_HOOK_DELAY_MS);
 };

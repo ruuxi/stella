@@ -156,10 +156,6 @@ echo "Building window_info (macOS)..."
 build_swift_universal "window_info" "src/window_info.swift" -framework CoreGraphics -framework AppKit -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/window_info"
 
-echo "Building selected_text (macOS)..."
-build_swift_universal "selected_text" "src/selected_text.swift" -framework ApplicationServices -framework AppKit -framework Carbon
-echo "Build successful: $OUTPUT_DIR/selected_text"
-
 echo "Building dictation_bridge (macOS)..."
 build_swift_universal "dictation_bridge" "src/dictation_bridge.swift" -framework ApplicationServices -framework AppKit -framework AudioToolbox -framework Carbon -framework CoreAudio
 echo "Build successful: $OUTPUT_DIR/dictation_bridge"

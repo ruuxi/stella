@@ -8,14 +8,14 @@ type KeychordProps = {
 };
 
 /**
- * Shared keychord visual used across onboarding phases (voice, summon,
- * radial). The look is the raised-Mac-key style introduced in the voice
+ * Shared keychord visual used across onboarding phases. The look is the
+ * raised-Mac-key style introduced in the voice
  * phase: large keycaps with a slightly thicker bottom border and a small
  * `+` separator between groups. Standardizing on this shape so the user
  * sees the same chord visual everywhere a shortcut is taught.
  *
  * `size="compact"` shrinks the cap dimensions for inline use inside dense
- * onboarding cards (e.g. the dial prompt), while preserving the same
+ * onboarding cards while preserving the same
  * visual vocabulary.
  */
 export function Keychord({

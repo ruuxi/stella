@@ -14,10 +14,6 @@ export const useStellaBrowserBridgeToast = () => {
   const lastToastKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('window') === 'mini') {
-      return
-    }
-
     const browserApi = window.electronAPI?.browser
     if (!browserApi?.onBridgeStatus) {
       return

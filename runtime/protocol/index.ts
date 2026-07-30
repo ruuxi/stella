@@ -830,8 +830,6 @@ export type HostHeartbeatSignature = {
  */
 export type HostDisplayUpdateParams = { payload: unknown };
 
-export type HostWindowTarget = "mini" | "full";
-
 export type HostRecentApp = {
   name: string;
   pid: number;

@@ -799,7 +799,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 
 /* The form-like split phases reveal the parked creature: fade it back
  * in at the already-snapped left position. Full-stage demo phases
- * (shapeshift, summon, voice, memory, enter — CREATURE_HIDDEN_PHASES)
+ * (shapeshift, voice, memory, enter — CREATURE_HIDDEN_PHASES)
  * fade it out via `data-hidden` from FullShell instead. */
 .new-session-view:has(.onboarding-dialogue[data-phase="engine"])
   .onboarding-stella-animation[data-split="true"],

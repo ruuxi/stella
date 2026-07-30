@@ -130,7 +130,7 @@ export function I18nProviderBase({
     };
   }, [locale]);
 
-  // Stay in sync across windows (mini ↔ full chat) on the same device.
+  // Stay in sync across renderer windows on the same device.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: StorageEvent) => {

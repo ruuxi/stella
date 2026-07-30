@@ -31,24 +31,17 @@ type VacuumState = {
 };
 
 const MIN_SELECTION_SIZE = 6;
-// Window-attach hover preview throttling. Each preview probe is a native
+// Window hover preview throttling. Each preview probe is a native
 // `window_info` query on the main side (daemon pipe write, or a full
 // CreateProcess on Windows when the daemon is down), so we cap at ~10/s
 // (leading + trailing edge) instead of one-per-frame and skip probes when the
 // cursor has barely moved since the last one — the highlight is still valid.
 const HOVER_PREVIEW_DEBOUNCE_MS = 100;
 const HOVER_PREVIEW_MOVE_THRESHOLD_PX = 6;
-type RegionCaptureMode = "capture" | "window-attach";
-
-export function RegionCapture({
-  mode = "capture",
-}: {
-  mode?: RegionCaptureMode;
-}) {
+export function RegionCapture() {
   const api = getElectronApi();
   const captureApi = api?.capture;
   const overlayApi = api?.overlay;
-  const isWindowAttach = mode === "window-attach";
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [vacuum, setVacuum] = useState<VacuumState | null>(null);
@@ -133,18 +126,14 @@ export function RegionCapture({
       if (event.key === "Escape") {
         event.preventDefault();
         setIsPreparingCapture(false);
-        if (isWindowAttach) {
-          captureApi?.cancelWindowAttach?.();
-        } else {
-          captureApi?.cancelRegion?.();
-        }
+        captureApi?.cancelRegion?.();
         clearWindowPreview();
         clearSelection();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [captureApi, clearSelection, clearWindowPreview, isWindowAttach]);
+  }, [captureApi, clearSelection, clearWindowPreview]);
 
   useEffect(() => {
     if (!vacuum || !canvasRef.current) return;
@@ -168,11 +157,7 @@ export function RegionCapture({
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsPreparingCapture(false);
-    if (isWindowAttach) {
-      captureApi?.cancelWindowAttach?.();
-    } else {
-      captureApi?.cancelRegion?.();
-    }
+    captureApi?.cancelRegion?.();
     clearWindowPreview();
     clearSelection();
   };
@@ -187,10 +172,6 @@ export function RegionCapture({
   };
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    if (isWindowAttach) {
-      previewWindowAtPoint({ x: event.clientX, y: event.clientY });
-      return;
-    }
     if (!startPoint) {
       if (!vacuum) {
         previewWindowAtPoint({ x: event.clientX, y: event.clientY });
@@ -215,14 +196,6 @@ export function RegionCapture({
     event.preventDefault();
     clearWindowPreview();
     const endPoint = currentPoint ?? { x: event.clientX, y: event.clientY };
-    if (isWindowAttach) {
-      setIsPreparingCapture(true);
-      clearWindowPreview();
-      clearSelection();
-      captureApi?.submitWindowAttachClick?.(endPoint);
-      return;
-    }
-
     const resolvedSelection = {
       x: Math.min(startPoint.x, endPoint.x),
       y: Math.min(startPoint.y, endPoint.y),
@@ -309,9 +282,8 @@ export function RegionCapture({
         />
       )}
       <div className="region-capture-hint">
-        {isWindowAttach
-          ? "Click a window to attach Stella - Right-click or Esc to cancel"
-          : "Click to capture window - drag to capture region - Right-click or Esc to cancel"}
+        Click to capture window - drag to capture region - Right-click or Esc to
+        cancel
       </div>
     </div>
   );

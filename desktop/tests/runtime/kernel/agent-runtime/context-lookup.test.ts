@@ -268,9 +268,9 @@ describe("buildContextLookupUserPrompt", () => {
       [
         "# MEMORY",
         "",
-        "## 2026-05-28 — Mini window spaces",
-        "Outcome: Mini window follows spaces only when pinned.",
-        "Recall hooks: mini window, pinned, macOS spaces",
+        "## 2026-05-28 — Sidebar hover behavior",
+        "Outcome: Sidebar hover opens a lightweight navigation preview.",
+        "Recall hooks: sidebar, hover, navigation preview",
         "",
         "## 2026-05-27 — Unrelated release",
         "Outcome: Built launcher release assets.",
@@ -279,8 +279,8 @@ describe("buildContextLookupUserPrompt", () => {
 
     const prompt = await buildContextLookupUserPrompt({
       conversationId: "conv-1",
-      lookupPrompt: "What did we decide about the mini window?",
-      searchTerms: ["mini window", "pinned"],
+      lookupPrompt: "What did we decide about sidebar hover?",
+      searchTerms: ["sidebar", "hover"],
       stellaDataDir: rootPath,
       store: makeLookupStore(),
       localEvents: [],
@@ -289,12 +289,12 @@ describe("buildContextLookupUserPrompt", () => {
     db.close();
 
     expect(prompt).toContain("# Memory Search Results");
-    expect(prompt).toContain('<memory_search terms="mini window, pinned">');
+    expect(prompt).toContain('<memory_search terms="sidebar, hover">');
     expect(prompt).toContain(
       '<match path="~/.stella/memories/MEMORY.md" lines="2-6">',
     );
     expect(prompt).toContain(
-      "4: Outcome: Mini window follows spaces only when pinned.",
+      "4: Outcome: Sidebar hover opens a lightweight navigation preview.",
     );
     expect(prompt).not.toContain("Built launcher release assets.");
     expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");

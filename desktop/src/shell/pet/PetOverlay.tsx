@@ -21,7 +21,7 @@ import "./pet-overlay.css";
 
 /** How big the rendered mascot is, in CSS pixels. */
 const MASCOT_SIZE = 76;
-/** Pointer drag threshold below which a release counts as a click. */
+/** Pointer drag threshold below which a release leaves the pet in place. */
 const DRAG_THRESHOLD_PX = 4;
 
 type VoicePetMode = "idle" | "listening" | "speaking";
@@ -125,16 +125,13 @@ const PetBubbleMessage = ({ message }: { message: string }) => {
 };
 
 /**
- * Floating pet companion rendered inside its own dedicated mini
+ * Floating pet companion rendered inside its own dedicated
  * `BrowserWindow`.
  *
  * Composition:
  *   - Status bubble (title + latest message + streaming spinner) above
  *     the mascot, mirroring how the working indicator reads in the chat.
  *   - Mascot sprite sheet driven by `mapStateToAnimation(status.state)`.
- *   - Click the sprite to toggle the mini chat window (opened just to
- *     the left of the pet via the `pet:toggleMiniWindow` IPC); the pet
- *     stays on screen either way.
  *   - Right-click context menu with Close pet.
  *   - Pointer drag to reposition the entire window via the
  *     `pet:moveWindow` IPC.
@@ -348,12 +345,6 @@ export const PetOverlay = ({
           x: newWindowX,
           y: newWindowY,
         });
-      } else {
-        // A release with no meaningful movement is a click on the pet:
-        // toggle the mini chat window open/closed (positioned just to
-        // the left of the pet by main). The pet stays on screen.
-        setContextMenu(null);
-        window.electronAPI?.pet?.toggleMiniWindow?.();
       }
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);

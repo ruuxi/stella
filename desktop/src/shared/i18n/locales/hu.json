@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Elindítja vagy leállítja a Stella élő hangügynökét."
       },
-      "radial": {
-        "label": "Radiális tárcsa",
-        "description": "Megnyitja a szeletmenüt rögzítéshez, csevegéshez, hanghoz és gyors műveletekhez.",
-        "ariaLabel": "Radiális tárcsa gyorsbillentyűje"
-      },
-      "mini": {
-        "label": "Mini ablak",
-        "description": "Koppints duplán egy módosítóbillentyűre a mini csevegés megnyitásához vagy bezárásához.",
-        "ariaLabel": "Mini ablak gyorsbillentyűje"
-      },
       "targets": {
         "dictation": "a diktálást",
         "voice": "a hangügynököt"
@@ -149,20 +139,13 @@
         "updatedDescription": "Nyomd meg a(z) {keys} billentyűket {target} elindításához.",
         "clearedDescription": "A(z) {action} le van tiltva, amíg nem állítasz be új gyorsbillentyűt.",
         "unavailableTitle": "Gyorsbillentyű nem érhető el",
-        "failedTitle": "A gyorsbillentyű frissítése sikertelen",
-        "radialUpdatedTitle": "A radiális tárcsa gyorsbillentyűje frissítve",
-        "radialUpdatedDescription": "Tartsd lenyomva a(z) {key} billentyűt a radiális tárcsa megnyitásához.",
-        "miniUpdatedTitle": "A mini ablak gyorsbillentyűje frissítve",
-        "miniDisabledDescription": "A dupla koppintás le van tiltva.",
-        "miniUpdatedDescription": "Koppints duplán a(z) {modifier} billentyűre a mini ablak megnyitásához."
+        "failedTitle": "A gyorsbillentyű frissítése sikertelen"
       },
       "errors": {
         "load": "A gyorsbillentyűk betöltése sikertelen.",
         "unavailable": "A gyorsbillentyűk nem érhetők el ebben az ablakban.",
         "unavailableShortcut": "Ez a gyorsbillentyű nem érhető el.",
-        "update": "A gyorsbillentyű frissítése sikertelen.",
-        "radialUpdate": "A radiális tárcsa gyorsbillentyűjének frissítése sikertelen.",
-        "miniUpdate": "A mini ablak gyorsbillentyűjének frissítése sikertelen."
+        "update": "A gyorsbillentyű frissítése sikertelen."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Válaszd ki a Stella beszédstílusát és személyiséghangját.",
         "permissions": "Adj hozzáférést a kisegítő lehetőségekhez, a képernyőrögzítéshez és a mikrofonhoz macOS-en.",
-        "shortcuts": "Módosítsd, hogyan nyílik meg, figyel és indítja a Stella a radiális tárcsát vagy a hangot.",
         "memory": "Kezeld a képernyőmemóriát, frissítsd vagy töröld, amire a Stella emlékezett.",
         "backup": "Automatikus titkosított biztonsági mentések, visszaállítási pontok és igény szerinti pillanatképek.",
         "account": "Jelentkezz ki, töröld az adataidat, vagy töröld véglegesen a fiókodat.",
@@ -477,7 +459,6 @@
       "browser": "Hadd ismerjen meg téged a Stella.",
       "theme": "Hogyan nézzen ki a Stella?",
       "personality": "Hogyan beszéljen a Stella?",
-      "summon": "Hívd elő Stellát bárhonnan.",
       "voice": "Beszélj gépelés helyett.",
       "memory": "Segíts a Stellának emlékezni.",
       "enter": "A Stella majdnem készen áll."

@@ -540,8 +540,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   // notification the worker sent to a connected client over JSON-RPC. The
   // client (Electron host) subscribes via NOTIFICATION_NAMES.RUN_EVENT and
   // is expected to ack with run.ackEvents { runId, lastSeq } so the worker
-  // can prune. On host reconnect (after Electron restart, mini-window
-  // open, etc.) the new client calls run.resumeEvents { runId, lastSeq }
+  // can prune. On host reconnect (for example, after Electron restart) the
+  // new client calls run.resumeEvents { runId, lastSeq }
   // to replay everything past `lastSeq`. The fallback retention is the
   // periodic time-based sweep below — acks are an optimization, not a
   // correctness requirement.

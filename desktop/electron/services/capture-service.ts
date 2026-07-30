@@ -5,7 +5,6 @@ import {
   type Display,
   type NativeImage,
 } from 'electron'
-import { captureChatContext } from '../chat-context.js'
 import { globalShortcut } from 'electron'
 import type { ChatContext } from '../../../runtime/contracts/index.js'
 import type {
@@ -30,11 +29,10 @@ const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
 export type CaptureWindowBridge = {
   getAllWindows: () => BrowserWindow[]
-  showWindow: (target: 'full' | 'mini') => void
 }
 
 export type CaptureOverlayBridge = {
-  startRegionCapture: (options?: { mode?: 'capture' | 'window-attach' }) => void
+  startRegionCapture: () => void | Promise<void>
   endRegionCapture: () => void
   suspendRegionCaptureForScreenshot: () => void
   restoreRegionCaptureAfterScreenshot: () => void
@@ -56,24 +54,11 @@ export class CaptureService {
   private pendingChatContext: ChatContext | null = null
   private chatContextVersion = 0
   private lastBroadcastChatContextVersion = -1
-  private lastRadialPoint: { x: number; y: number } | null = null
-  private radialCaptureRequestId = 0
-  private pendingRadialCapturePromise: Promise<void> | null = null
-  private stagedRadialChatContext: ChatContext | null = null
-  private radialContextShouldCommit = false
   private pendingRegionCaptureResolve:
     | ((value: RegionCaptureResult | null) => void)
     | null = null
   private pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null =
     null
-  private pendingWindowAttachResolve:
-    | ((value: { x: number; y: number } | null) => void)
-    | null = null
-  private pendingWindowAttachPromise: Promise<{
-    x: number
-    y: number
-  } | null> | null = null
-  private radialWindowContextEnabled = true
 
   constructor(private readonly options: CaptureServiceOptions) {}
 
@@ -122,9 +107,7 @@ export class CaptureService {
   resetForHardReset() {
     this.setPendingChatContext(null)
     this.lastBroadcastChatContextVersion = -1
-    this.cancelRadialContextCapture()
     this.cancelRegionCapture()
-    this.cancelWindowAttach()
   }
 
   removeScreenshot(index: number) {
@@ -201,135 +184,8 @@ export class CaptureService {
     return true
   }
 
-  cancelRadialContextCapture() {
-    this.radialCaptureRequestId += 1
-    this.pendingRadialCapturePromise = null
-    this.stagedRadialChatContext = null
-    this.radialContextShouldCommit = false
-    this.radialWindowContextEnabled = true
-  }
-
-  /**
-   * Returns the most recently staged radial-capture context (window info +
-   * screenshot). Used by the cmd+rc "Open chat" path to surface what the
-   * user pointed at as a sidebar suggestion instead of an auto-attach. The
-   * caller must drain the staged context themselves; calling this method
-   * does NOT clear it.
-   */
-  getStagedRadialContext(): ChatContext | null {
-    return this.stagedRadialChatContext
-  }
-
-  /** Wait for any in-flight radial capture to settle (or no-op if none). */
-  async waitForRadialContextSettled(): Promise<void> {
-    const promise = this.pendingRadialCapturePromise
-    if (!promise) return
-    try {
-      await promise
-    } catch {
-      // captureRadialContext swallows errors internally; just ensure we wait.
-    }
-  }
-
-  setRadialContextShouldCommit(value: boolean) {
-    this.radialContextShouldCommit = value
-  }
-
-  setRadialWindowContextEnabled(value: boolean) {
-    this.radialWindowContextEnabled = value
-  }
-
-  commitStagedRadialContext(radialContextBeforeGesture: ChatContext | null) {
-    if (!this.radialContextShouldCommit || !this.stagedRadialChatContext) {
-      return
-    }
-
-    const baseScreenshots =
-      this.pendingChatContext?.regionScreenshots ??
-      radialContextBeforeGesture?.regionScreenshots ??
-      []
-    // Stack the previous window's screenshot onto regionScreenshots so a
-    // fresh radial Add/Capture stacks alongside earlier attachments
-    // instead of silently replacing the prior window chip.
-    const previousWindowShot = this.pendingChatContext?.windowScreenshot ?? null
-    const screenshots = previousWindowShot
-      ? [...baseScreenshots, previousWindowShot]
-      : baseScreenshots
-
-    this.setPendingChatContext({
-      ...this.stagedRadialChatContext,
-      windowContextEnabled: this.stagedRadialChatContext.window
-        ? this.radialWindowContextEnabled
-        : undefined,
-      regionScreenshots: screenshots,
-    })
-    this.stagedRadialChatContext = null
-    this.radialContextShouldCommit = false
-    this.radialWindowContextEnabled = true
-
-    this.broadcastChatContext()
-  }
-
-  captureRadialContext(
-    x: number,
-    y: number,
-    radialContextBeforeGesture: ChatContext | null,
-  ) {
-    const requestId = ++this.radialCaptureRequestId
-    this.lastRadialPoint = { x, y }
-    this.stagedRadialChatContext = null
-    this.radialWindowContextEnabled = true
-    const existingScreenshots =
-      this.pendingChatContext?.regionScreenshots ??
-      radialContextBeforeGesture?.regionScreenshots ??
-      []
-
-    this.pendingRadialCapturePromise = (async () => {
-      try {
-        const fresh = await captureChatContext(
-          { x, y },
-          { excludeCurrentProcessWindows: true },
-        )
-        if (requestId !== this.radialCaptureRequestId) {
-          return
-        }
-
-        const screenshots =
-          this.pendingChatContext?.regionScreenshots ?? existingScreenshots
-        this.stagedRadialChatContext = {
-          ...fresh,
-          regionScreenshots: screenshots,
-        }
-      } catch (error) {
-        if (requestId !== this.radialCaptureRequestId) {
-          return
-        }
-        console.warn('Failed to capture chat context', error)
-        const screenshots =
-          this.pendingChatContext?.regionScreenshots ?? existingScreenshots
-        this.stagedRadialChatContext = {
-          window: null,
-          browserUrl: null,
-          selectedText: null,
-          windowAxTree: null,
-          regionScreenshots: screenshots,
-        }
-      } finally {
-        if (requestId === this.radialCaptureRequestId) {
-          this.pendingRadialCapturePromise = null
-          this.commitStagedRadialContext(radialContextBeforeGesture)
-        }
-      }
-    })()
-  }
-
-  hasPendingRadialCapture() {
-    return Boolean(this.pendingRadialCapturePromise)
-  }
-
   private getDisplayForPoint(point?: { x: number; y: number }) {
-    const targetPoint =
-      point ?? this.lastRadialPoint ?? screen.getCursorScreenPoint()
+    const targetPoint = point ?? screen.getCursorScreenPoint()
     return screen.getDisplayNearestPoint(targetPoint)
   }
 
@@ -370,12 +226,8 @@ export class CaptureService {
     })
     let source = pickSource(sources)
 
-    // Opening/closing the mini window (an always-on-top screen-saver-level
-    // panel) can briefly perturb the desktop source list — `getSources` has
-    // been observed returning an empty list or a source whose thumbnail hasn't
-    // been populated yet right after a window z-order change, which surfaced as
-    // "capture sometimes doesn't work after opening the mini." A single short
-    // retry lets the compositor settle and almost always yields a valid frame.
+    // A short retry lets the compositor settle when desktopCapturer initially
+    // returns an empty source or an unpopulated thumbnail.
     if (!source || source.thumbnail.isEmpty()) {
       await new Promise((r) => setTimeout(r, 120))
       sources = await desktopCapturer.getSources({
@@ -550,17 +402,6 @@ export class CaptureService {
     this.options.overlay.endRegionCapture()
   }
 
-  private resetWindowAttach() {
-    this.pendingWindowAttachResolve = null
-    this.pendingWindowAttachPromise = null
-    try {
-      globalShortcut.unregister('Escape')
-    } catch {
-      // Shortcut may already be gone if attach mode was interrupted externally.
-    }
-    this.options.overlay.endRegionCapture()
-  }
-
   async startRegionCapture() {
     if (this.pendingRegionCapturePromise) {
       return this.pendingRegionCapturePromise
@@ -570,7 +411,7 @@ export class CaptureService {
       this.cancelRegionCapture()
     })
 
-    this.options.overlay.startRegionCapture({ mode: 'capture' })
+    this.options.overlay.startRegionCapture()
 
     this.pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>(
       (resolve) => {
@@ -641,49 +482,6 @@ export class CaptureService {
       this.pendingRegionCaptureResolve(null)
     }
     this.resetRegionCapture()
-  }
-
-  async startWindowAttach() {
-    if (this.pendingWindowAttachPromise) {
-      return this.pendingWindowAttachPromise
-    }
-
-    globalShortcut.register('Escape', () => {
-      this.cancelWindowAttach()
-    })
-
-    this.options.overlay.startRegionCapture({ mode: 'window-attach' })
-
-    this.pendingWindowAttachPromise = new Promise<{
-      x: number
-      y: number
-    } | null>((resolve) => {
-      this.pendingWindowAttachResolve = resolve
-    })
-
-    return this.pendingWindowAttachPromise
-  }
-
-  commitWindowAttachPoint(point: { x: number; y: number }) {
-    if (!this.pendingWindowAttachResolve) {
-      this.resetWindowAttach()
-      return
-    }
-
-    const resolve = this.pendingWindowAttachResolve
-    const regionBounds = this.options.overlay.getOverlayBounds()
-    resolve({
-      x: (regionBounds?.x ?? 0) + point.x,
-      y: (regionBounds?.y ?? 0) + point.y,
-    })
-    this.resetWindowAttach()
-  }
-
-  cancelWindowAttach() {
-    if (this.pendingWindowAttachResolve) {
-      this.pendingWindowAttachResolve(null)
-    }
-    this.resetWindowAttach()
   }
 
   async getRegionWindowCapture(point: { x: number; y: number }) {

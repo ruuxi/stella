@@ -155,8 +155,8 @@ const createDeferredStartupTasks = (
   const chronicleSupported = process.platform === "darwin";
 
   // Perf: the overlay's cold second-renderer is no longer eagerly built here.
-  // Every overlay show entrypoint (radial/voice/region-capture/screen-guide/
-  // selection-chip/morph/window-highlight) self-creates the window via
+  // Every overlay show entrypoint (voice/region-capture/screen-guide/
+  // morph/window-highlight) self-creates the window via
   // `OverlayWindowController.ensureReady()`. Startup schedules a delayed warm
   // so first use is usually ready without competing with first paint.
   return [

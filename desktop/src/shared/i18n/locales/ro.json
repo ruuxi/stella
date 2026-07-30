@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Pornește sau oprește agentul vocal live al Stellei."
       },
-      "radial": {
-        "label": "Selector radial",
-        "description": "Deschide meniul radial pentru captură, chat, voce și acțiuni rapide.",
-        "ariaLabel": "Scurtătură pentru selectorul radial"
-      },
-      "mini": {
-        "label": "Fereastră mini",
-        "description": "Apasă de două ori o tastă modificatoare pentru a deschide sau închide chatul mini.",
-        "ariaLabel": "Scurtătură pentru fereastra mini"
-      },
       "targets": {
         "dictation": "dictarea",
         "voice": "agentul vocal"
@@ -149,20 +139,13 @@
         "updatedDescription": "Apasă {keys} pentru a porni {target}.",
         "clearedDescription": "{action} este dezactivat până când setezi o nouă scurtătură.",
         "unavailableTitle": "Scurtătură indisponibilă",
-        "failedTitle": "Actualizarea scurtăturii a eșuat",
-        "radialUpdatedTitle": "Scurtătura selectorului radial a fost actualizată",
-        "radialUpdatedDescription": "Ține apăsat {key} pentru a deschide selectorul radial.",
-        "miniUpdatedTitle": "Scurtătura ferestrei mini a fost actualizată",
-        "miniDisabledDescription": "Apăsarea dublă este dezactivată.",
-        "miniUpdatedDescription": "Apasă de două ori {modifier} pentru a deschide fereastra mini."
+        "failedTitle": "Actualizarea scurtăturii a eșuat"
       },
       "errors": {
         "load": "Nu s-au putut încărca scurtăturile.",
         "unavailable": "Scurtăturile nu sunt disponibile în această fereastră.",
         "unavailableShortcut": "Acea scurtătură nu este disponibilă.",
-        "update": "Nu s-a putut actualiza scurtătura.",
-        "radialUpdate": "Nu s-a putut actualiza scurtătura selectorului radial.",
-        "miniUpdate": "Nu s-a putut actualiza scurtătura ferestrei mini."
+        "update": "Nu s-a putut actualiza scurtătura."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Alege stilul de vorbire și vocea de personalitate a Stellei.",
         "permissions": "Acordă acces la accesibilitate, captură de ecran și microfon pe macOS.",
-        "shortcuts": "Schimbă modul în care Stella se deschide, ascultă și pornește selectorul radial sau vocea.",
         "memory": "Gestionează memoria ecranului, actualizează sau șterge ce și-a amintit Stella.",
         "backup": "Copii de rezervă criptate automate, puncte de restaurare și instantanee la cerere.",
         "account": "Deconectează-te, șterge-ți datele sau șterge-ți definitiv contul.",
@@ -477,7 +459,6 @@
       "browser": "Lasă Stella să te cunoască.",
       "theme": "Cum ar trebui să arate Stella?",
       "personality": "Cum ar trebui să vorbească Stella?",
-      "summon": "Cheamă Stella de oriunde.",
       "voice": "Vorbește în loc să tastezi.",
       "memory": "Ajută Stella să țină minte.",
       "enter": "Stella e aproape gata."

@@ -11,7 +11,6 @@ import {
   IPC_PET_SET_INTERACTIVE,
   IPC_PET_SET_OPEN,
   IPC_PET_STATUS,
-  IPC_PET_TOGGLE_MINI,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { WindowManager } from "../windows/window-manager.js";
 import type { PetWindowController } from "../windows/pet-window.js";
@@ -22,16 +21,13 @@ import type {
 
 type PetHandlersOptions = {
   windowManager: WindowManager;
-  /** Pet controller owns the dedicated mini `BrowserWindow` that hosts
-   *  the pet sprite. Toggling visibility here just shows/hides that
-   *  window. */
+  /** Pet controller owns the dedicated overlay window that hosts the sprite. */
   getPetController: () => PetWindowController | null;
   /** Toggle the realtime voice session. Voice always opens the pet
    *  (the sprite animates listening / speaking from
    *  `voice:runtimeState` and the mic button turns red). The caller
    *  resolves to a single function so every voice activation path —
-   *  the keybind, the radial dial's voice wedge, and the pet's own
-   *  mic action button — shares behaviour. */
+   *  the keybind and the pet's own mic action button shares behaviour. */
   toggleVoiceRtc: () => void;
   /** Start a dictation overlay whose transcript routes to Stella's
    *  chat instead of pasting into the focused app. The pet's mic
@@ -182,7 +178,7 @@ export const registerPetHandlers = ({
 
   const onOpenChat = (event: IpcMainEvent) => {
     if (!assertPrivilegedSender(event, IPC_PET_OPEN_CHAT)) return;
-    windowManager.showWindow("full");
+    windowManager.showWindow();
     const fullWindow = windowManager.getFullWindow();
     if (fullWindow && !fullWindow.isDestroyed()) {
       fullWindow.webContents.send("chat:openSidebar");
@@ -198,14 +194,6 @@ export const registerPetHandlers = ({
     }
   };
 
-  const onToggleMini = (event: IpcMainEvent) => {
-    if (!assertPrivilegedSender(event, IPC_PET_TOGGLE_MINI)) return;
-    const petWindow = getPetController()?.getWindow() ?? null;
-    const petBounds =
-      petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null;
-    windowManager.toggleMiniBesidePet(petBounds);
-  };
-
   ipcMain.handle(IPC_PET_GET_STATE, onGetState);
   ipcMain.on(IPC_PET_SET_OPEN, onSetOpen);
   ipcMain.on(IPC_PET_MOVE_WINDOW, onMoveWindow);
@@ -216,7 +204,6 @@ export const registerPetHandlers = ({
   ipcMain.on(IPC_PET_STATUS, onStatus);
   ipcMain.on(IPC_PET_OPEN_CHAT, onOpenChat);
   ipcMain.on(IPC_PET_SEND_MESSAGE, onSendMessage);
-  ipcMain.on(IPC_PET_TOGGLE_MINI, onToggleMini);
 
   const dispose = () => {
     if (activeDisposer !== dispose) return;
@@ -231,7 +218,6 @@ export const registerPetHandlers = ({
     ipcMain.removeListener(IPC_PET_STATUS, onStatus);
     ipcMain.removeListener(IPC_PET_OPEN_CHAT, onOpenChat);
     ipcMain.removeListener(IPC_PET_SEND_MESSAGE, onSendMessage);
-    ipcMain.removeListener(IPC_PET_TOGGLE_MINI, onToggleMini);
     latestStatus = DEFAULT_STATUS;
   };
 

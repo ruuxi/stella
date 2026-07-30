@@ -179,7 +179,6 @@ describe("isWorkerRestartRelevantPath", () => {
 describe("isFullWindowReloadRelevantPath", () => {
   it("flags Vite-served browser resources that need a full window reload", () => {
     expect(isFullWindowReloadRelevantPath("desktop/index.html")).toBe(true);
-    expect(isFullWindowReloadRelevantPath("desktop/mini.html")).toBe(true);
     expect(isFullWindowReloadRelevantPath("desktop/overlay.html")).toBe(true);
     expect(isFullWindowReloadRelevantPath("desktop/pet.html")).toBe(true);
   });
@@ -224,7 +223,6 @@ describe("isViteTrackablePath", () => {
     expect(isViteTrackablePath("desktop/src/app.tsx")).toBe(true);
     expect(isViteTrackablePath("desktop/src/icons/logo.svg")).toBe(true);
     expect(isViteTrackablePath("desktop/index.html")).toBe(true);
-    expect(isViteTrackablePath("desktop/mini.html")).toBe(true);
     expect(isViteTrackablePath("desktop/overlay.html")).toBe(true);
     expect(isViteTrackablePath("desktop/pet.html")).toBe(true);
     expect(isViteTrackablePath("package.json")).toBe(false);
@@ -260,7 +258,6 @@ describe("isSelfModRelevantPath", () => {
   it("accepts renderer, full-reload, worker, and restart-required paths", () => {
     expect(isSelfModRelevantPath("desktop/src/app.tsx")).toBe(true);
     expect(isSelfModRelevantPath("desktop/index.html")).toBe(true);
-    expect(isSelfModRelevantPath("desktop/mini.html")).toBe(true);
     expect(isSelfModRelevantPath("desktop/overlay.html")).toBe(true);
     expect(isSelfModRelevantPath("desktop/pet.html")).toBe(true);
     expect(isSelfModRelevantPath("runtime/kernel/runner.ts")).toBe(true);
@@ -282,9 +279,6 @@ describe("toSelfModRelevantKey", () => {
     expect(
       toSelfModRelevantKey(path.join(repoRoot, "desktop", "index.html"), repoRoot),
     ).toBe("desktop/index.html");
-    expect(
-      toSelfModRelevantKey(path.join(repoRoot, "desktop", "mini.html"), repoRoot),
-    ).toBe("desktop/mini.html");
     expect(
       toSelfModRelevantKey(
         path.join(repoRoot, "runtime", "kernel", "runner.ts"),

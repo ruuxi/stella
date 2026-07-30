@@ -86,7 +86,6 @@ export type ChatPanelOpenRequest = ChatSidebarOpenOptions & {
 
 interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
-  variant?: "mini" | "sidebar";
   messages: MessageRecord[];
   conversationId?: string | null;
   isStreaming: boolean;
@@ -118,7 +117,6 @@ interface ChatPanelTabProps {
 
 export function ChatPanelTab({
   openRequest,
-  variant = "sidebar",
   wideLayout = false,
   messages,
   conversationId,
@@ -158,7 +156,7 @@ export function ChatPanelTab({
   // Perf: the auto-context suggestion strip polls native window/AX
   // enumeration on an interval. Only treat the composer surface as "active"
   // (and thus pollable) while this window is focused and visible — otherwise
-  // a backgrounded/hidden renderer (full or mini) keeps spawning the macOS
+  // a backgrounded/hidden renderer keeps spawning the macOS
   // helper + osascript for chips nobody can see. The hook also self-gates on
   // visibility, but unmounting the poll setup here avoids even arming it.
   const [surfaceActive, setSurfaceActive] = useState(
@@ -178,19 +176,12 @@ export function ChatPanelTab({
       window.removeEventListener("blur", sync);
     };
   }, []);
-  // The mini window mounts ChatPanelTab without a ChatRuntimeProvider, so
-  // read the runtime optionally. Area annotation is a full-window feature;
-  // when there's no provider the "Select area" action is simply omitted.
   const chatRuntime = useContext(ChatRuntimeContext);
   const agentModelConfigByThread = useAgentModelConfigs(
     chatRuntime?.conversation.tasks ?? [],
   );
   const startAnnotation = chatRuntime?.annotation.start;
-  // The activity pill reads the shared chat runtime, so it can only mount
-  // where a provider exists. The mini window has none, so it keeps the inline
-  // indicator covering spawned-agent work; every provider-backed surface shows
-  // the pill just like the full shell.
-  const showActivityPill = variant !== "mini" && Boolean(chatRuntime);
+  const showActivityPill = Boolean(chatRuntime);
 
   /*
    * Own scroll-management instance for the sidebar list. Mirrors the
@@ -480,7 +471,7 @@ export function ChatPanelTab({
 
   return (
     <div
-      className={`chat-panel-tab chat-panel-tab--${variant}${wideLayout ? " chat-panel-tab--wide" : ""}`}
+      className={`chat-panel-tab chat-panel-tab--sidebar${wideLayout ? " chat-panel-tab--wide" : ""}`}
       {...dropHandlers}
     >
       <div
@@ -494,7 +485,7 @@ export function ChatPanelTab({
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"
-              variant={variant}
+              variant="sidebar"
               scroll={sidebarScrollApi}
               messages={messages}
               conversationId={conversationId}
@@ -541,9 +532,9 @@ export function ChatPanelTab({
                   className="chat-sidebar-shell-content"
                 >
                   {hasAttachedComposerChips(chatContext, selectedText) && (
-                    <div className="composer-attached-strip composer-attached-strip--mini">
+                    <div className="composer-attached-strip composer-attached-strip--compact">
                       <ComposerContextRow
-                        variant="mini"
+                        variant="compact"
                         chatContext={chatContext}
                         selectedText={selectedText}
                         setChatContext={setChatContext}

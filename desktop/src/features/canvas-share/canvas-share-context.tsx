@@ -10,11 +10,9 @@
  * publish/revoke are Node ("use node") ACTIONS under `data/canvas_shares_actions`,
  * and listMine is a QUERY under `data/canvas_shares`.
  *
- * The provider is mounted once inside the main app tree (under the Convex
- * provider). It is intentionally absent from the mini window, which has no
- * Convex provider; consumers read `useCanvasShare()` and render nothing when
- * it returns `null`, so the shared canvas renderer never calls Convex hooks
- * outside a provider.
+ * The provider is mounted once inside the main app tree under the Convex
+ * provider. Consumers render nothing when `useCanvasShare()` returns `null`,
+ * so shared canvas rendering remains safe outside that provider.
  *
  * Backend contract:
  *   publish({ html, title? }) -> { url, slug, expiresAt }   (action)
@@ -122,8 +120,8 @@ export function CanvasShareProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Returns the canvas-share API, or `null` when rendered outside the provider
- * (e.g. the mini window). Callers must no-op / hide UI on `null`.
+ * Returns the canvas-share API, or `null` when rendered outside the provider.
+ * Callers must no-op or hide UI on `null`.
  */
 export const useCanvasShare = (): CanvasShareContextValue | null =>
   useContext(CanvasShareContext);

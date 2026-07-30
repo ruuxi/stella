@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Bắt đầu hoặc dừng tác nhân giọng nói trực tiếp của Stella."
       },
-      "radial": {
-        "label": "Vòng quay xuyên tâm",
-        "description": "Mở menu hình nêm cho chụp, trò chuyện, giọng nói và thao tác nhanh.",
-        "ariaLabel": "Phím tắt vòng quay xuyên tâm"
-      },
-      "mini": {
-        "label": "Cửa sổ mini",
-        "description": "Nhấn đúp một phím bổ trợ để mở hoặc đóng trò chuyện mini.",
-        "ariaLabel": "Phím tắt cửa sổ mini"
-      },
       "targets": {
         "dictation": "đọc chính tả",
         "voice": "tác nhân giọng nói"
@@ -149,20 +139,13 @@
         "updatedDescription": "Nhấn {keys} để bắt đầu {target}.",
         "clearedDescription": "{action} bị tắt cho đến khi bạn đặt phím tắt mới.",
         "unavailableTitle": "Phím tắt không khả dụng",
-        "failedTitle": "Không thể cập nhật phím tắt",
-        "radialUpdatedTitle": "Đã cập nhật phím tắt vòng quay xuyên tâm",
-        "radialUpdatedDescription": "Giữ {key} để mở vòng quay xuyên tâm.",
-        "miniUpdatedTitle": "Đã cập nhật phím tắt cửa sổ mini",
-        "miniDisabledDescription": "Nhấn đúp đã bị tắt.",
-        "miniUpdatedDescription": "Nhấn đúp {modifier} để mở cửa sổ mini."
+        "failedTitle": "Không thể cập nhật phím tắt"
       },
       "errors": {
         "load": "Không tải được phím tắt.",
         "unavailable": "Phím tắt không khả dụng trong cửa sổ này.",
         "unavailableShortcut": "Phím tắt đó không khả dụng.",
-        "update": "Không cập nhật được phím tắt.",
-        "radialUpdate": "Không cập nhật được phím tắt vòng quay xuyên tâm.",
-        "miniUpdate": "Không cập nhật được phím tắt cửa sổ mini."
+        "update": "Không cập nhật được phím tắt."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Chọn phong cách nói và giọng tính cách của Stella.",
         "permissions": "Cấp quyền trợ năng, quay màn hình và micrô trên macOS.",
-        "shortcuts": "Thay đổi cách Stella mở, lắng nghe và khởi chạy vòng quay xuyên tâm hoặc giọng nói.",
         "memory": "Quản lý bộ nhớ màn hình, cập nhật hoặc xóa những gì Stella đã nhớ.",
         "backup": "Bản sao lưu được mã hóa tự động, điểm khôi phục và ảnh chụp theo yêu cầu.",
         "account": "Đăng xuất, xóa dữ liệu của bạn hoặc xóa vĩnh viễn tài khoản của bạn.",
@@ -477,7 +459,6 @@
       "browser": "Hãy để Stella hiểu bạn hơn.",
       "theme": "Stella nên trông như thế nào?",
       "personality": "Stella nên nói chuyện thế nào?",
-      "summon": "Gọi Stella từ bất cứ đâu.",
       "voice": "Hãy nói thay vì gõ.",
       "memory": "Giúp Stella ghi nhớ.",
       "enter": "Stella gần như đã sẵn sàng."

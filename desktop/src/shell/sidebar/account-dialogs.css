@@ -31,10 +31,9 @@
   border: 1px solid var(--border-weak);
   overflow: hidden;
   /* These dialogs use `fit` (auto-height container with no viewport cap), so a
-     long feedback message, a vertically-resized textarea, or simply a short
-     window (e.g. the mini shell) could push the action buttons off-screen with
-     no way to scroll to them. Cap to the viewport so the inner body can scroll
-     instead of clipping. */
+     long feedback message, a vertically-resized textarea, or a short window
+     could push the action buttons off-screen with no way to scroll to them.
+     Cap to the viewport so the inner body can scroll instead of clipping. */
   max-height: calc(100vh - 16px);
 }
 

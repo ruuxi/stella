@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { isLowMemoryWindowsDevice } from '../resource-profile.js'
 
-export type WindowLoadMode = 'full' | 'mini' | 'overlay' | 'pet'
+export type WindowLoadMode = 'full' | 'overlay' | 'pet'
 
 const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   switch (windowMode) {
@@ -11,8 +11,6 @@ const getWindowEntryFile = (windowMode: WindowLoadMode) => {
       return 'overlay.html'
     case 'pet':
       return 'pet.html'
-    case 'mini':
-      return 'mini.html'
     case 'full':
     default:
       return 'index.html'

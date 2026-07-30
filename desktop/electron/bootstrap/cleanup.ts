@@ -22,9 +22,6 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
     await context.state.stellaBrowserBridgeService?.stop();
     await stopOrphanedStellaBrowserDaemons();
   });
-  processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
-    context.services.selectionWatcherService.stop();
-  });
   processRuntime.registerCleanup("before-quit", "overlay-window", () => {
     context.state.overlayController?.destroy();
   });
@@ -98,7 +95,7 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
     stopNativeHelperDaemons();
   });
   processRuntime.registerCleanup("before-quit", "global-input-hooks", () => {
-    context.services.radialGestureService.stop();
+    context.services.globalInputHook.stop();
     context.state.globalInputHooksStarted = false;
     context.state.globalInputHooksStartScheduled = false;
   });

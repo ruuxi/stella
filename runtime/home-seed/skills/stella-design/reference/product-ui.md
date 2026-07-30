@@ -70,8 +70,8 @@ When modifying Stella itself:
 - Keep app-level dialogs app-level, not trapped inside scroll containers.
 - Do not paint new route backgrounds when the global background should show.
 - Keep display/sidebar controls pinned and stable.
-- Preserve mini-window constraints; never let a full-window assumption leak
-  into mini-only UI.
+- Preserve narrow-layout constraints; never let wide-layout assumptions leak
+  into cramped UI.
 - Use normie-friendly labels in visible UI.
 
 ## Product Bans

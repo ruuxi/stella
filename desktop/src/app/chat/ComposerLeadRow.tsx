@@ -6,8 +6,8 @@
  * Keeping this in one place is deliberate: the row used to be duplicated in
  * the full-shell `Composer` and the sidebar `ChatPanelTab`, which is how the
  * `ComposerActivityPill` drifted onto one surface but not the other.
- * Surfaces that have no `ChatRuntimeProvider` — namely the mini window —
- * pass `showActivityPill={false}`, since the pill reads the shared runtime.
+ * Surfaces without `ChatRuntimeProvider` pass
+ * `showActivityPill={false}`, since the pill reads the shared runtime.
  * The full-shell pill remains mounted when the docked sidebar is visible,
  * but suppresses its running label while activity is already shown there.
  */
@@ -21,7 +21,7 @@ import { ComposerActivityPill } from "@/app/chat/ComposerActivityPill";
 type ComposerLeadRowProps = {
   /** When present, the assistant reply peek renders flush above the row. */
   replyPeek?: AssistantReplyPeekProps | null;
-  /** Pill is gated off where there's no chat runtime (the mini window). */
+  /** Pill is gated off where there is no chat runtime. */
   showActivityPill?: boolean;
 };
 

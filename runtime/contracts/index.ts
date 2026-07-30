@@ -4,8 +4,6 @@ export type DiscoveryCategory =
   | "apps_system"
   | "messages_notes";
 
-export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
-
 export type WindowBounds = {
   x: number;
   y: number;
@@ -118,76 +116,6 @@ export type ChatContext = {
 export type ChatContextUpdate = {
   context: ChatContext | null;
   version: number;
-};
-
-export type MiniBridgeEventRecord = {
-  _id: string;
-  timestamp: number;
-  type: string;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-  payload?: Record<string, unknown>;
-  channelEnvelope?: Record<string, unknown>;
-};
-
-export type MiniBridgeSnapshot = {
-  conversationId: string | null;
-  events: MiniBridgeEventRecord[];
-  streamingText: string;
-  reasoningText: string;
-  isStreaming: boolean;
-  pendingUserMessageId: string | null;
-};
-
-export type MiniBridgeRequest =
-  | {
-      type: "query:snapshot";
-      conversationId: string | null;
-    }
-  | {
-      type: "mutation:sendMessage";
-      conversationId: string;
-      text: string;
-      selectedText: string | null;
-      chatContext: ChatContext | null;
-    }
-  | {
-      type: "mutation:cancelStream";
-      conversationId: string;
-    };
-
-export type MiniBridgeResponse =
-  | {
-      type: "query:snapshot";
-      snapshot: MiniBridgeSnapshot;
-    }
-  | {
-      type: "mutation:sendMessage";
-      accepted: boolean;
-    }
-  | {
-      type: "mutation:cancelStream";
-      accepted: boolean;
-    }
-  | {
-      type: "error";
-      message: string;
-    };
-
-export type MiniBridgeRequestEnvelope = {
-  requestId: string;
-  request: MiniBridgeRequest;
-};
-
-export type MiniBridgeResponseEnvelope = {
-  requestId: string;
-  response: MiniBridgeResponse;
-};
-
-export type MiniBridgeUpdate = {
-  type: "snapshot";
-  snapshot: MiniBridgeSnapshot;
 };
 
 export type BrowserType =

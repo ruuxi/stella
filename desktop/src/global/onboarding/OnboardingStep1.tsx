@@ -37,7 +37,6 @@ import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
 import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
 import { OnboardingThemePhase } from "./OnboardingThemePhase";
 import { OnboardingPersonalityPhase } from "./OnboardingPersonalityPhase";
-import { OnboardingSummonPhase } from "./OnboardingSummonPhase";
 import { OnboardingVoicePhase } from "./OnboardingVoicePhase";
 import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingEnterPhase } from "./OnboardingEnterPhase";
@@ -56,7 +55,6 @@ const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
   browser: "onboarding.stepTitles.browser",
   theme: "onboarding.stepTitles.theme",
   personality: "onboarding.stepTitles.personality",
-  summon: "onboarding.stepTitles.summon",
   voice: "onboarding.stepTitles.voice",
   memory: "onboarding.stepTitles.memory",
   import: "onboarding.stepTitles.import",
@@ -385,13 +383,6 @@ export const OnboardingStep1 = ({
             splitTransitionActive={leaving}
             onFinish={nextSplitStep}
             onSelectVoice={appearance.selectPersonalityVoice}
-          />
-        );
-      case "summon":
-        return (
-          <OnboardingSummonPhase
-            splitTransitionActive={leaving}
-            onContinue={nextSplitStep}
           />
         );
       case "voice":

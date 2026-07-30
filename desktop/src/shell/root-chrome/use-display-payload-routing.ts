@@ -8,7 +8,6 @@ import type { RightSidebarHandle } from "@/shell/RightSidebar";
 
 type UseDisplayPayloadRoutingOptions = {
   rightSidebarRef: RefObject<RightSidebarHandle | null>;
-  isMiniWindow: boolean;
 };
 
 type UseDisplayPayloadRoutingResult = {
@@ -26,10 +25,7 @@ type UseDisplayPayloadRoutingResult = {
  *
  * Programmatic payloads register or refresh tabs without opening the
  * workspace panel. The panel should only open from an explicit user action
- * (toggle, keyboard/context-menu summon, or clicking a resource/card).
- * - In the mini window, register payloads passively (`ds.update`) and
- *   let the user summon the panel via the right-click context menu.
- *
+ * (toggle, keyboard/context-menu open, or clicking a resource/card).
  * Also seeds the workspace panel with a stable Trash tab when the
  * previous agent run left files in deferred-delete trash, and wires
  * the owner-scoped media materializer so any media job gets surfaced
@@ -37,7 +33,6 @@ type UseDisplayPayloadRoutingResult = {
  */
 export function useDisplayPayloadRouting({
   rightSidebarRef,
-  isMiniWindow,
 }: UseDisplayPayloadRoutingOptions): UseDisplayPayloadRoutingResult {
   const latestDisplayPayloadRef = useRef<DisplayTabPayload | null>(null);
 
@@ -46,13 +41,9 @@ export function useDisplayPayloadRouting({
       latestDisplayPayloadRef.current = payload;
       const ds = rightSidebarRef.current;
       if (!ds) return;
-      if (isMiniWindow) {
-        ds.update(payload);
-        return;
-      }
       ds.update(payload);
     },
-    [rightSidebarRef, isMiniWindow],
+    [rightSidebarRef],
   );
 
   // Structured display payloads from main process.

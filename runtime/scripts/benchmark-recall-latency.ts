@@ -94,10 +94,10 @@ const QUERIES = [
     terms: ["orchestrator prompt", "Recall", "send_input", "milestone"],
   },
   {
-    id: "radial_ui_decision",
+    id: "retained_chat_history",
     prompt:
-      "What was the prior product decision about the radial dial versus a native context menu?",
-    terms: ["radial dial", "native context menu", "product decision"],
+      "What was the prior product decision about the retained desktop chat history limit?",
+    terms: ["retained chat", "MAX_VISIBLE_MESSAGES", "desktop history limit"],
   },
   {
     id: "episodic_drive",

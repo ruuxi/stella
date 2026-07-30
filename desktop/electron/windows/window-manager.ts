@@ -1,26 +1,12 @@
-import { app, BrowserWindow, screen, type Display } from 'electron'
-import {
-  MINI_SHELL_MIN_SIZE,
-  MINI_SHELL_MAX_SIZE,
-  MINI_SHELL_SIZE,
-} from '../layout-constants.js'
-import {
-  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
-  getWindowInfoAtPoint,
-  moveResizeWindowAtPoint,
-  type WindowInfo,
-} from '../window-capture.js'
+import { app, BrowserWindow } from 'electron'
 import { pathToFileURL } from 'node:url'
 import { FullWindowController } from './full-window.js'
-import { MiniWindowController } from './mini-window.js'
 import {
   attachStoreWebviewGuards,
   isStoreWebviewWebContents,
 } from './store-webview.js'
 import { getMainLogger } from '../observability/main-logger.js'
-import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
-import { isLowMemoryWindowsDevice } from '../resource-profile.js'
 
 type WindowManagerOptions = {
   electronDir: string
@@ -31,10 +17,7 @@ type WindowManagerOptions = {
   sessionPartition: string
   isDev: boolean
   getDevServerUrl: () => string
-  isAppReady: () => boolean
   externalLinkService: ExternalLinkService
-  onUpdateUiState: (partial: Partial<UiState>) => void
-  onMiniHidden?: () => void
   /**
    * Whether a genuine app quit is in progress. When true, the Windows
    * full-window close handler lets the close proceed instead of diverting
@@ -45,66 +28,9 @@ type WindowManagerOptions = {
   onMinimizeFullToTray?: () => void
 }
 
-const compactSize = MINI_SHELL_SIZE
-const LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS = 30 * 1000
-const DEFAULT_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
-const MINI_IDLE_DESTROY_DELAY_MS = isLowMemoryWindowsDevice()
-  ? LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS
-  : DEFAULT_IDLE_DESTROY_DELAY_MS
-const MINI_ATTACH_GAP = 8
-const MINI_ATTACH_MIN_TARGET_WIDTH = 320
-
-type Bounds = { x: number; y: number; width: number; height: number }
-type ShellWindowMode = 'full' | 'mini'
-type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
-type ExternalPickerWindowState = {
-  mode: ShellWindowMode
-  wasVisible: boolean
-  wasFocused: boolean
-  hidden: boolean
-}
-type MiniAttachFailureReason =
-  | 'unsupported'
-  | 'no-window'
-  | 'no-room'
-  | 'move-failed'
-type MiniAttachWindowPayload = {
-  app: string
-  title: string
-  bounds: Bounds
-}
-export type MiniAttachResult =
-  | {
-      ok: true
-      window: MiniAttachWindowPayload
-      miniBounds: Bounds
-    }
-  | {
-      ok: false
-      reason: MiniAttachFailureReason
-      message: string
-    }
-
 /**
- * Chromium net error codes for failures that are usually transient — most
- * commonly seen in dev when Vite is briefly cycling (HMR config change,
- * dev runner restart) right as the renderer attempts to reload. Recovering
- * to the static recovery surface for these is wrong: the dev server will
- * be back in a few hundred ms and a simple reload of the original URL is
- * the right move.
- *
- * Codes:
- *   -3   ABORTED            (intentional navigation cancellation)
- *   -7   TIMED_OUT
- *   -21  NETWORK_CHANGED
- *   -100 CONNECTION_CLOSED
- *   -101 CONNECTION_RESET
- *   -102 CONNECTION_REFUSED
- *   -103 CONNECTION_ABORTED
- *   -104 CONNECTION_FAILED
- *   -105 NAME_NOT_RESOLVED
- *   -106 INTERNET_DISCONNECTED
- *   -118 CONNECTION_TIMED_OUT
+ * Chromium net error codes for failures that are usually transient, most
+ * commonly seen in dev while Vite is cycling.
  */
 const TRANSIENT_NET_ERROR_CODES = new Set([
   -3, -7, -21, -100, -101, -102, -103, -104, -105, -106, -118,
@@ -119,23 +45,15 @@ const shouldRecoverFromDidFailLoad = (details: {
   isMainFrame: boolean
 }) => {
   if (!details.isMainFrame) return false
-  // Avoid recovery loops if recovery.html itself fails to load.
   if (details.validatedURL.includes('recovery.html')) return false
-  // Transient failures are handled separately via bounded reload retries —
-  // recovery is for genuinely broken renderers (crashed processes, missing
-  // bundles), not for "Vite restarted while you held Cmd+Shift+R".
   if (isTransientNetError(details.errorCode)) return false
   return true
 }
 
-/**
- * Tracks bounded reload retries per window so a flaky dev server can't
- * either (a) leave the window stranded after one transient failure, or
- * (b) trap us in a tight reload loop if Vite is genuinely down. We retry
- * with linear backoff and surface the recovery page after the cap.
- */
 const TRANSIENT_RELOAD_MAX_ATTEMPTS = 4
 const TRANSIENT_RELOAD_BASE_DELAY_MS = 350
+const RELOAD_RETRY_RESET_MS = 5_000
+const UNRESPONSIVE_RECOVERY_THRESHOLD_MS = 10_000
 
 type TransientReloadState = {
   attempts: number
@@ -143,41 +61,11 @@ type TransientReloadState = {
   scheduledTimer: ReturnType<typeof setTimeout> | null
 }
 
-const RELOAD_RETRY_RESET_MS = 5_000
-
-/**
- * Additional grace period after Electron's `'unresponsive'` event fires
- * before we give up and force-load the recovery page. Electron's
- * `'unresponsive'` already has Chromium's hang-monitor delay baked in
- * (~30s of ignored input event pings), so this timer is *additional*
- * slack on top of that — total wall-clock freeze before recovery is
- * roughly hang-monitor + this value. Heavy work in Stella runs in the
- * runtime worker / backend / embedded webviews, not the renderer's JS
- * main thread, so a renderer that's still frozen this far past the
- * hang-monitor threshold is genuinely stuck (infinite render loop,
- * runaway sync work, pathological compute) and the user deserves an
- * escape hatch instead of a beachball.
- */
-const UNRESPONSIVE_RECOVERY_THRESHOLD_MS = 10_000
-
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
-  private readonly miniWindowController: MiniWindowController
   private readonly observedWindows = new WeakSet<BrowserWindow>()
-  private lastFocusedWindowMode: ShellWindowMode = 'full'
-  private lastActiveWindowMode: ShellWindowMode = 'full'
-  private miniWindowBounds: Bounds | null = null
-  private miniShouldRestoreExternalApp = false
-  private miniAlwaysOnTop = true
-  private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
-  private readonly transientReloadStateByMode = new Map<
-    ShellWindowMode,
-    TransientReloadState
-  >()
-  private readonly unresponsiveTimerByMode = new Map<
-    ShellWindowMode,
-    ReturnType<typeof setTimeout>
-  >()
+  private transientReloadState: TransientReloadState | null = null
+  private unresponsiveTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly options: WindowManagerOptions) {
     this.fullWindowController = new FullWindowController({
@@ -189,22 +77,22 @@ export class WindowManager {
       setupExternalLinkHandlers: (window) =>
         options.externalLinkService.setupExternalLinkHandlers(window),
       onDidFinishLoad: () => {
-        this.resetTransientReloadStateOnSuccess('full')
+        this.resetTransientReloadStateOnSuccess()
       },
       onRenderProcessGone: (details) => {
         console.error('Renderer process gone:', details.reason)
-        this.cancelUnresponsiveWatchdog('full')
+        this.cancelUnresponsiveWatchdog()
         this.fullWindowController.loadRecoveryPage()
       },
       onDidFailLoad: (details) => {
-        if (this.handleTransientReload('full', details)) {
+        if (this.handleTransientReload(details)) {
           return
         }
         if (!shouldRecoverFromDidFailLoad(details)) {
           return
         }
         console.error(
-          'Full renderer failed to load:',
+          'Renderer failed to load:',
           details.errorCode,
           details.errorDescription,
           details.validatedURL,
@@ -212,92 +100,31 @@ export class WindowManager {
         this.fullWindowController.loadRecoveryPage()
       },
       onUnresponsive: () => {
-        this.armUnresponsiveWatchdog('full', () => {
-          this.fullWindowController.loadRecoveryPage()
-        })
+        this.armUnresponsiveWatchdog()
       },
       onResponsive: () => {
-        this.cancelUnresponsiveWatchdog('full')
+        this.cancelUnresponsiveWatchdog()
       },
       onClosed: () => {
-        this.cancelTransientReload('full')
-        this.cancelUnresponsiveWatchdog('full')
-        this.syncLastActiveWindowMode()
-      },
-    })
-    this.miniWindowController = new MiniWindowController({
-      electronDir: options.electronDir,
-      preloadPath: options.preloadPath,
-      sessionPartition: options.sessionPartition,
-      isDev: options.isDev,
-      getDevServerUrl: options.getDevServerUrl,
-      setupExternalLinkHandlers: (window) =>
-        options.externalLinkService.setupExternalLinkHandlers(window),
-      onDidFinishLoad: () => {
-        this.resetTransientReloadStateOnSuccess('mini')
-      },
-      onRenderProcessGone: (details) => {
-        console.error('Mini renderer process gone:', details.reason)
-        this.cancelUnresponsiveWatchdog('mini')
-        this.miniWindowController.loadRecoveryPage()
-      },
-      onDidFailLoad: (details) => {
-        if (this.handleTransientReload('mini', details)) {
-          return
-        }
-        if (!shouldRecoverFromDidFailLoad(details)) {
-          return
-        }
-        console.error(
-          'Mini renderer failed to load:',
-          details.errorCode,
-          details.errorDescription,
-          details.validatedURL,
-        )
-        this.miniWindowController.loadRecoveryPage()
-      },
-      onUnresponsive: () => {
-        this.armUnresponsiveWatchdog('mini', () => {
-          this.miniWindowController.loadRecoveryPage()
-        })
-      },
-      onResponsive: () => {
-        this.cancelUnresponsiveWatchdog('mini')
-      },
-      onClosed: () => {
-        this.cancelTransientReload('mini')
-        this.cancelUnresponsiveWatchdog('mini')
-        this.cancelMiniIdleDestroy()
-        this.syncLastActiveWindowMode()
+        this.cancelTransientReload()
+        this.cancelUnresponsiveWatchdog()
       },
     })
   }
 
-  /**
-   * Returns `true` when the failure was a transient connection blip that we
-   * absorbed via a delayed reload — caller should bail out of the recovery
-   * fall-through path. Returns `false` for terminal failures (e.g. missing
-   * bundle, JS parse error in main frame).
-   *
-   * Bounded by `TRANSIENT_RELOAD_MAX_ATTEMPTS`; each attempt waits a little
-   * longer than the previous so we don't hammer a still-restarting Vite.
-   */
-  private handleTransientReload(
-    mode: ShellWindowMode,
-    details: { errorCode: number; validatedURL: string; isMainFrame: boolean },
-  ): boolean {
-    if (!details.isMainFrame) return false
-    if (!isTransientNetError(details.errorCode)) return false
-    // Recovery loops itself isn't reachable here (already filtered upstream),
-    // but be conservative.
+  private handleTransientReload(details: {
+    errorCode: number
+    validatedURL: string
+    isMainFrame: boolean
+  }): boolean {
+    if (!details.isMainFrame || !isTransientNetError(details.errorCode)) {
+      return false
+    }
     if (details.validatedURL.includes('recovery.html')) return false
-    // -3 (ABORTED) is silent on purpose. It usually means the user/system
-    // initiated a fresh navigation, so a reload would race or even cancel
-    // the new navigation. Just swallow it.
     if (details.errorCode === -3) return true
 
     const now = Date.now()
-    const previous = this.transientReloadStateByMode.get(mode)
+    const previous = this.transientReloadState
     const attemptsSoFar =
       previous && now - previous.lastFailureAtMs < RELOAD_RETRY_RESET_MS
         ? previous.attempts
@@ -305,8 +132,7 @@ export class WindowManager {
     const nextAttempt = attemptsSoFar + 1
 
     if (nextAttempt > TRANSIENT_RELOAD_MAX_ATTEMPTS) {
-      // Give up on retries; let the caller fall through to recovery.
-      this.cancelTransientReload(mode)
+      this.cancelTransientReload()
       return false
     }
 
@@ -316,110 +142,73 @@ export class WindowManager {
 
     const delayMs = TRANSIENT_RELOAD_BASE_DELAY_MS * nextAttempt
     console.warn(
-      `[reload] ${mode} transient ${details.errorCode} on ${details.validatedURL}; retry ${nextAttempt}/${TRANSIENT_RELOAD_MAX_ATTEMPTS} in ${delayMs}ms`,
+      `[reload] full transient ${details.errorCode} on ${details.validatedURL}; retry ${nextAttempt}/${TRANSIENT_RELOAD_MAX_ATTEMPTS} in ${delayMs}ms`,
     )
 
     const scheduledTimer = setTimeout(() => {
-      const state = this.transientReloadStateByMode.get(mode)
-      if (state) {
-        state.scheduledTimer = null
+      if (this.transientReloadState) {
+        this.transientReloadState.scheduledTimer = null
       }
-      if (mode === 'full') {
-        this.fullWindowController.reloadMainWindow()
-      } else {
-        this.miniWindowController.reloadMainWindow()
-      }
+      this.fullWindowController.reloadMainWindow()
     }, delayMs)
 
-    this.transientReloadStateByMode.set(mode, {
+    this.transientReloadState = {
       attempts: nextAttempt,
       lastFailureAtMs: now,
       scheduledTimer,
-    })
+    }
     return true
   }
 
-  /**
-   * Clears the retry budget only after a navigation actually finishes
-   * loading. Resetting on `did-start-loading` was wrong: the retry timer
-   * itself emits `did-start-loading` immediately when it calls
-   * `reloadMainWindow`, which would delete the state before the retry's
-   * `did-fail-load` arrived — so every failed retry would re-enter at
-   * `attempts = 1` and the bounded backoff/recovery-page fallback would
-   * never engage. `did-finish-load` is the only signal that means the
-   * page actually came up.
-   */
-  private resetTransientReloadStateOnSuccess(mode: ShellWindowMode) {
-    const state = this.transientReloadStateByMode.get(mode)
-    if (!state) return
-    if (state.scheduledTimer) {
-      clearTimeout(state.scheduledTimer)
+  private resetTransientReloadStateOnSuccess() {
+    if (this.transientReloadState?.scheduledTimer) {
+      clearTimeout(this.transientReloadState.scheduledTimer)
     }
-    this.transientReloadStateByMode.delete(mode)
+    this.transientReloadState = null
   }
 
-  private cancelTransientReload(mode: ShellWindowMode) {
-    const state = this.transientReloadStateByMode.get(mode)
-    if (state?.scheduledTimer) {
-      clearTimeout(state.scheduledTimer)
+  private cancelTransientReload() {
+    if (this.transientReloadState?.scheduledTimer) {
+      clearTimeout(this.transientReloadState.scheduledTimer)
     }
-    this.transientReloadStateByMode.delete(mode)
+    this.transientReloadState = null
   }
 
-  /**
-   * Starts the unresponsive watchdog for a shell window. If the renderer
-   * doesn't emit `'responsive'` (or get closed) before the threshold
-   * elapses, `forceRecover` runs and the window is force-navigated to
-   * the recovery surface. A second `'unresponsive'` while the timer is
-   * already armed is a no-op so we don't shorten the window.
-   */
-  private armUnresponsiveWatchdog(
-    mode: ShellWindowMode,
-    forceRecover: () => void,
-  ) {
-    if (this.unresponsiveTimerByMode.has(mode)) return
+  private armUnresponsiveWatchdog() {
+    if (this.unresponsiveTimer) return
     console.warn(
-      `[unresponsive] ${mode} renderer stopped responding; recovering in ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms if it doesn't recover`,
+      `[unresponsive] renderer stopped responding; recovering in ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms if it doesn't recover`,
     )
     getMainLogger()?.error('main.renderer-unresponsive', {
-      mode,
+      mode: 'full',
       recoverInMs: UNRESPONSIVE_RECOVERY_THRESHOLD_MS,
     })
-    const timer = setTimeout(() => {
-      this.unresponsiveTimerByMode.delete(mode)
+    this.unresponsiveTimer = setTimeout(() => {
+      this.unresponsiveTimer = null
       console.error(
-        `[unresponsive] ${mode} renderer still unresponsive after ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms; forcing recovery surface`,
+        `[unresponsive] renderer still unresponsive after ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms; forcing recovery surface`,
       )
       getMainLogger()?.error('main.renderer-recovery-forced', {
-        mode,
+        mode: 'full',
         afterMs: UNRESPONSIVE_RECOVERY_THRESHOLD_MS,
       })
-      forceRecover()
+      this.fullWindowController.loadRecoveryPage()
     }, UNRESPONSIVE_RECOVERY_THRESHOLD_MS)
-    this.unresponsiveTimerByMode.set(mode, timer)
   }
 
-  private cancelUnresponsiveWatchdog(mode: ShellWindowMode) {
-    const timer = this.unresponsiveTimerByMode.get(mode)
-    if (!timer) return
-    clearTimeout(timer)
-    this.unresponsiveTimerByMode.delete(mode)
+  private cancelUnresponsiveWatchdog() {
+    if (!this.unresponsiveTimer) return
+    clearTimeout(this.unresponsiveTimer)
+    this.unresponsiveTimer = null
   }
 
   createFullWindow() {
     const window = this.fullWindowController.create()
-    this.observeShellWindow(window, 'full')
+    this.observeFullWindow(window)
     attachStoreWebviewGuards(window, {
       preloadPath: this.options.storeWebPreloadPath,
       isAllowedUrl: this.options.isAllowedStoreWebUrl,
     })
-    return window
-  }
-
-  private createMiniWindow(initialBounds?: Bounds) {
-    this.cancelMiniIdleDestroy()
-    const window = this.miniWindowController.create(initialBounds)
-    this.observeShellWindow(window, 'mini')
     return window
   }
 
@@ -431,21 +220,10 @@ export class WindowManager {
     return this.fullWindowController.getWindow()
   }
 
-  getMiniWindow(): BrowserWindow | null {
-    return this.miniWindowController.getWindow()
-  }
-
   getAllWindows() {
     return BrowserWindow.getAllWindows()
   }
 
-  /**
-   * Everything the renderer needs to mount the Store/Billing `<webview>`:
-   * the first-party base URL, the (persisted) website session partition the
-   * old `WebContentsView` used — so cookies/login carry over identically —
-   * and the desktop-bridge preload as a `file:` URL for the tag's `preload`
-   * attribute. `attachStoreWebviewGuards` re-enforces all of this on attach.
-   */
   getStoreWebEmbedConfig() {
     return {
       baseUrl: this.options.storeWebBaseUrl,
@@ -458,521 +236,35 @@ export class WindowManager {
     return isStoreWebviewWebContents(id)
   }
 
-  isCompactMode() {
-    return this.lastActiveWindowMode === 'mini'
-  }
-
-  getLastActiveWindowMode() {
-    return this.lastActiveWindowMode
-  }
-
-  getLastFocusedWindowMode() {
-    return this.lastFocusedWindowMode
-  }
-
   isWindowFocused() {
-    return this.getFocusedShellWindow() !== null
-  }
-
-  isShellWindowVisible(mode: ShellWindowMode) {
-    const window = this.getShellWindow(mode)
-    return Boolean(window && !window.isDestroyed() && window.isVisible())
-  }
-
-  isShellWindowFocused(mode: ShellWindowMode) {
-    const window = this.getShellWindow(mode)
+    const window = this.getFullWindow()
     return Boolean(window && !window.isDestroyed() && window.isFocused())
   }
 
-  getShellWindowModeForWindow(
-    window: BrowserWindow | null,
-  ): ShellWindowMode | null {
-    if (!window || window.isDestroyed()) return null
-    if (window === this.getMiniWindow()) return 'mini'
-    if (window === this.getFullWindow()) return 'full'
-    return null
-  }
-
-  isFullWindowMacFullscreen() {
-    if (process.platform !== 'darwin') {
-      return false
-    }
-
-    const fullWindow = this.getFullWindow()
-    return Boolean(
-      fullWindow && !fullWindow.isDestroyed() && fullWindow.isFullScreen(),
-    )
+  isWindowVisible() {
+    const window = this.getFullWindow()
+    return Boolean(window && !window.isDestroyed() && window.isVisible())
   }
 
   minimizeWindow() {
-    const target =
-      this.getFocusedShellWindow() ??
-      this.getVisibleShellWindow(this.lastActiveWindowMode) ??
-      this.getVisibleShellWindow(
-        this.getOtherWindowMode(this.lastActiveWindowMode),
-      )
+    const window = this.getFullWindow()
+    if (!window || window.isDestroyed()) return
+    this.hideWindow(window)
+  }
 
-    if (!target || target.window.isDestroyed()) return
-
-    if (target.mode === 'mini') {
-      // Delegate to the dedicated mini-hide path so macOS gets the
-      // `app.hide()` call when the mini was popped from outside the
-      // app. Without that, hiding the mini just transfers focus to the
-      // next window in the stack — which surfaces the full window even
-      // when the user only ever interacted with the mini (the symptom
-      // was: option-option closed the mini and brought the main window
-      // forward).
-      this.hideMiniWindow(false)
-      return
+  restoreWindowVisibility() {
+    const window = this.getFullWindow()
+    if (!window || window.isDestroyed()) return
+    if (window.isMinimized()) {
+      window.restore()
     }
-
-    this.hideWindow(target.window)
-    this.syncLastActiveWindowMode()
-  }
-
-  isMiniShowing() {
-    const miniWindow = this.getMiniWindow()
-    return Boolean(
-      miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible(),
-    )
-  }
-
-  isMiniAlwaysOnTop() {
-    return this.miniAlwaysOnTop
-  }
-
-  setMiniAlwaysOnTop(enabled: boolean) {
-    this.miniAlwaysOnTop = enabled
-    const miniWindow = this.getMiniWindow()
-    if (!miniWindow || miniWindow.isDestroyed()) return
-    if (enabled) {
-      miniWindow.setAlwaysOnTop(true, 'screen-saver')
-    } else {
-      miniWindow.setAlwaysOnTop(false)
+    if (!window.isVisible()) {
+      window.showInactive()
     }
   }
 
-  /**
-   * Pet-click entry point: toggle the mini chat window. When opening,
-   * the mini is positioned just to the left of the pet sprite (so it
-   * reads as belonging to the pet) and the pet itself is left untouched.
-   * On close we explicitly clear `miniShouldRestoreExternalApp` so the
-   * hide path never calls `app.hide()` — that would hide the pet window
-   * too, and the pet must stay on screen.
-   */
-  toggleMiniBesidePet(petBounds: Bounds | null) {
-    if (this.isMiniShowing()) {
-      this.miniShouldRestoreExternalApp = false
-      this.hideMiniWindow(true)
-      return
-    }
-    if (petBounds) {
-      this.miniWindowBounds = this.computeMiniBoundsBesidePet(petBounds)
-    }
-    this.showWindow('mini')
-  }
-
-  /**
-   * Place the mini just left of the pet sprite. The sprite sits at the
-   * bottom-right of the pet window (20px inset, ~76px tall — see
-   * `pet-window.ts` / `pet-overlay.css`), so we anchor off that corner
-   * rather than the window's transparent top-left, then clamp the result
-   * to the work area of the display the pet is on.
-   */
-  private computeMiniBoundsBesidePet(petBounds: Bounds): Bounds {
-    const width = compactSize.width
-    const height = compactSize.height
-    const gap = 16
-    const spriteInset = 20
-    const spriteSize = 76
-    const spriteLeft = petBounds.x + petBounds.width - spriteInset - spriteSize
-    const spriteCenterY =
-      petBounds.y + petBounds.height - spriteInset - spriteSize / 2
-
-    const display = screen.getDisplayNearestPoint({
-      x: spriteLeft,
-      y: Math.round(spriteCenterY),
-    })
-    const wa = display.workArea
-
-    let x = spriteLeft - gap - width
-    let y = Math.round(spriteCenterY - height / 2)
-    x = Math.max(wa.x, Math.min(x, wa.x + wa.width - width))
-    y = Math.max(wa.y, Math.min(y, wa.y + wa.height - height))
-
-    return { x, y, width, height }
-  }
-
-  hideMiniWindow(_animate: boolean) {
-    const miniWindow = this.getMiniWindow()
-    if (!miniWindow || miniWindow.isDestroyed()) return
-
-    const willRestoreExternalApp =
-      process.platform === 'darwin' && this.miniShouldRestoreExternalApp
-
-    const fullWindow = this.getFullWindow()
-    const fullIsOnScreen = Boolean(
-      fullWindow && !fullWindow.isDestroyed() && fullWindow.isVisible(),
-    )
-
-    // Case A: user popped the mini from outside Stella AND the full
-    // window is also visible (e.g., they had Stella full open in the
-    // background, then summoned mini from another app). When `mini.hide()`
-    // runs, macOS would normally pick the full window as the next key
-    // window — visually pulling it to the front. The user doesn't want
-    // that; they want focus to fall through to whatever app they were
-    // in, with the full window left exactly where it was.
-    //
-    // Trick: temporarily mark the full window unfocusable so macOS
-    // skips it during the post-hide stack walk. With nothing focusable
-    // in our process, Stella deactivates and focus returns to the
-    // previous external app. We do NOT touch the full window's
-    // visibility — its z-order and on-screen state are preserved.
-    //
-    // The restoration to `setFocusable(true)` is deferred via
-    // `setImmediate` so it runs AFTER the synchronous hide + focus
-    // transfer have completed; doing it inline races macOS's stack
-    // walk and the full window can still get pulled forward.
-    if (willRestoreExternalApp && fullIsOnScreen && fullWindow) {
-      fullWindow.setFocusable(false)
-      this.hideWindow(miniWindow, { preserveExternalFocus: true })
-      this.syncLastActiveWindowMode()
-      this.scheduleMiniIdleDestroy()
-      this.miniShouldRestoreExternalApp = false
-      setImmediate(() => {
-        if (fullWindow && !fullWindow.isDestroyed()) {
-          fullWindow.setFocusable(true)
-        }
-      })
-      return
-    }
-
-    this.hideWindow(miniWindow, { preserveExternalFocus: true })
-    this.syncLastActiveWindowMode()
-    this.scheduleMiniIdleDestroy()
-
-    // Case B: user popped the mini from outside Stella AND the full
-    // window isn't on screen. `app.hide()` is safe here (nothing of
-    // ours for it to disturb) and is the cleanest way to return focus
-    // to the previous app.
-    //
-    // Case C (the remaining else): the mini was opened from inside
-    // Stella (the full window was focused at raise time, so
-    // `miniShouldRestoreExternalApp` was false). In that case the
-    // user's intent on close is to return to the full window — let
-    // macOS do its natural thing and promote full to key. No special
-    // handling needed.
-    if (willRestoreExternalApp) {
-      this.miniShouldRestoreExternalApp = false
-      app.hide()
-    }
-  }
-
-  private cancelMiniIdleDestroy() {
-    if (!this.miniIdleDestroyTimer) {
-      return
-    }
-    clearTimeout(this.miniIdleDestroyTimer)
-    this.miniIdleDestroyTimer = null
-  }
-
-  private scheduleMiniIdleDestroy() {
-    this.cancelMiniIdleDestroy()
-    this.miniIdleDestroyTimer = setTimeout(() => {
-      this.miniIdleDestroyTimer = null
-      const miniWindow = this.getMiniWindow()
-      if (!miniWindow || miniWindow.isDestroyed() || miniWindow.isVisible()) {
-        return
-      }
-      this.miniWindowController.destroy()
-    }, MINI_IDLE_DESTROY_DELAY_MS)
-  }
-
-  private observeShellWindow(window: BrowserWindow, mode: ShellWindowMode) {
-    if (this.observedWindows.has(window)) {
-      return
-    }
-
-    this.observedWindows.add(window)
-    window.on('focus', () => {
-      this.lastFocusedWindowMode = mode
-      this.setLastActiveWindowMode(mode)
-    })
-    window.on('show', () => {
-      if (mode === 'mini') {
-        this.cancelMiniIdleDestroy()
-      }
-      this.lastActiveWindowMode = mode
-    })
-    window.on('close', (event) => {
-      if (process.platform !== 'win32' || mode !== 'full') return
-
-      // A real quit (tray "Quit Stella", before-quit cleanup, relaunch) must
-      // be allowed to close the window normally.
-      if (this.options.isQuitting?.()) return
-
-      // Otherwise, the Windows "X" minimizes Stella to the system tray rather
-      // than quitting — the app keeps running in the background.
-      event.preventDefault()
-      this.hideWindow(window)
-      this.syncLastActiveWindowMode()
-      this.options.onMinimizeFullToTray?.()
-    })
-    window.on('hide', () => {
-      this.syncLastActiveWindowMode()
-      if (mode === 'mini') {
-        this.options.onMiniHidden?.()
-        this.scheduleMiniIdleDestroy()
-      }
-    })
-
-    if (mode === 'mini') {
-      const rememberBounds = () => {
-        if (window.isDestroyed()) return
-        const { x, y, width, height } = window.getBounds()
-        this.miniWindowBounds = { x, y, width, height }
-      }
-
-      window.on('move', rememberBounds)
-      window.on('resize', rememberBounds)
-    }
-  }
-
-  private getOtherWindowMode(mode: ShellWindowMode): ShellWindowMode {
-    return mode === 'mini' ? 'full' : 'mini'
-  }
-
-  private getShellWindow(mode: ShellWindowMode): BrowserWindow | null {
-    return mode === 'mini' ? this.getMiniWindow() : this.getFullWindow()
-  }
-
-  private getFocusedShellWindow(): ShellWindowRef | null {
-    const miniWindow = this.getMiniWindow()
-    if (miniWindow && !miniWindow.isDestroyed() && miniWindow.isFocused()) {
-      return { mode: 'mini', window: miniWindow }
-    }
-
-    const fullWindow = this.getFullWindow()
-    if (fullWindow && !fullWindow.isDestroyed() && fullWindow.isFocused()) {
-      return { mode: 'full', window: fullWindow }
-    }
-
-    return null
-  }
-
-  private getVisibleShellWindow(mode: ShellWindowMode): ShellWindowRef | null {
-    const window = this.getShellWindow(mode)
-    if (!window || window.isDestroyed() || !window.isVisible()) {
-      return null
-    }
-    return { mode, window }
-  }
-
-  private setLastActiveWindowMode(mode: ShellWindowMode) {
-    this.lastActiveWindowMode = mode
-    this.options.onUpdateUiState({ window: mode })
-  }
-
-  private syncLastActiveWindowMode() {
-    const focused = this.getFocusedShellWindow()
-    if (focused) {
-      this.setLastActiveWindowMode(focused.mode)
-      return
-    }
-
-    if (this.getVisibleShellWindow(this.lastActiveWindowMode)) {
-      return
-    }
-
-    const fallback = this.getVisibleShellWindow(
-      this.getOtherWindowMode(this.lastActiveWindowMode),
-    )
-    if (fallback) {
-      this.setLastActiveWindowMode(fallback.mode)
-      return
-    }
-
-    if (this.lastActiveWindowMode === 'mini') {
-      this.setLastActiveWindowMode('full')
-    }
-  }
-
-  private computeCompactPosition(): { x: number; y: number } {
-    const cursor = screen.getCursorScreenPoint()
-    const display = screen.getDisplayNearestPoint(cursor)
-    const wa = display.workArea
-    const gap = 16
-
-    let targetX = wa.x + wa.width - compactSize.width - gap
-    let targetY = wa.y + Math.round((wa.height - compactSize.height) / 2)
-
-    targetX = Math.max(
-      wa.x,
-      Math.min(targetX, wa.x + wa.width - compactSize.width),
-    )
-    targetY = Math.max(
-      wa.y,
-      Math.min(targetY, wa.y + wa.height - compactSize.height),
-    )
-
-    return { x: targetX, y: targetY }
-  }
-
-  private getDisplayScaleFactor(display: Display) {
-    return process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
-  }
-
-  private toNativeScreenPoint(point: { x: number; y: number }) {
-    const display = screen.getDisplayNearestPoint(point)
-    const scaleFactor = this.getDisplayScaleFactor(display)
-    return {
-      display,
-      scaleFactor,
-      x: Math.round(point.x * scaleFactor),
-      y: Math.round(point.y * scaleFactor),
-    }
-  }
-
-  private toNativeBounds(bounds: Bounds, display: Display): Bounds {
-    const scaleFactor = this.getDisplayScaleFactor(display)
-    return {
-      x: Math.round(bounds.x * scaleFactor),
-      y: Math.round(bounds.y * scaleFactor),
-      width: Math.round(bounds.width * scaleFactor),
-      height: Math.round(bounds.height * scaleFactor),
-    }
-  }
-
-  private fromNativeBounds(bounds: Bounds, display: Display): Bounds {
-    const scaleFactor = this.getDisplayScaleFactor(display)
-    return {
-      x: Math.round(bounds.x / scaleFactor),
-      y: Math.round(bounds.y / scaleFactor),
-      width: Math.round(bounds.width / scaleFactor),
-      height: Math.round(bounds.height / scaleFactor),
-    }
-  }
-
-  private clamp(value: number, min: number, max: number) {
-    return Math.max(min, Math.min(value, max))
-  }
-
-  private computeMiniAttachLayout(
-    originalBounds: Bounds,
-    display: Display,
-  ): { targetBounds: Bounds; miniBounds: Bounds } | null {
-    const workArea = display.workArea
-    const miniWidth = MINI_SHELL_MIN_SIZE.width
-    const maxTargetWidth = workArea.width - miniWidth - MINI_ATTACH_GAP
-    if (maxTargetWidth < MINI_ATTACH_MIN_TARGET_WIDTH) {
-      return null
-    }
-
-    const maxAttachHeight = Math.min(
-      MINI_SHELL_MAX_SIZE.height,
-      workArea.height,
-    )
-    const minAttachHeight = Math.min(
-      MINI_SHELL_MIN_SIZE.height,
-      maxAttachHeight,
-    )
-    const attachHeight = this.clamp(
-      Math.round(originalBounds.height),
-      minAttachHeight,
-      maxAttachHeight,
-    )
-    const targetWidth = this.clamp(
-      Math.round(originalBounds.width),
-      MINI_ATTACH_MIN_TARGET_WIDTH,
-      maxTargetWidth,
-    )
-    const maxTargetX =
-      workArea.x + workArea.width - targetWidth - MINI_ATTACH_GAP - miniWidth
-    const targetX = this.clamp(
-      Math.round(originalBounds.x),
-      workArea.x,
-      maxTargetX,
-    )
-    const targetCenterY = originalBounds.y + originalBounds.height / 2
-    const targetY = this.clamp(
-      Math.round(targetCenterY - attachHeight / 2),
-      workArea.y,
-      workArea.y + workArea.height - attachHeight,
-    )
-    const targetBounds = {
-      x: targetX,
-      y: targetY,
-      width: targetWidth,
-      height: attachHeight,
-    }
-    const miniBounds = {
-      x: targetBounds.x + targetBounds.width + MINI_ATTACH_GAP,
-      y: targetBounds.y,
-      width: miniWidth,
-      height: attachHeight,
-    }
-
-    return { targetBounds, miniBounds }
-  }
-
-  private computeMiniBoundsForAttachedWindow(
-    targetBounds: Bounds,
-    display: Display,
-  ): Bounds | null {
-    const workArea = display.workArea
-    const miniWidth = MINI_SHELL_MIN_SIZE.width
-    const maxAttachHeight = Math.min(
-      MINI_SHELL_MAX_SIZE.height,
-      workArea.height,
-    )
-    const minAttachHeight = Math.min(
-      MINI_SHELL_MIN_SIZE.height,
-      maxAttachHeight,
-    )
-    const height = this.clamp(
-      Math.round(targetBounds.height),
-      minAttachHeight,
-      maxAttachHeight,
-    )
-    const x = Math.round(targetBounds.x + targetBounds.width + MINI_ATTACH_GAP)
-    if (x + miniWidth > workArea.x + workArea.width) {
-      return null
-    }
-
-    return {
-      x,
-      y: this.clamp(
-        Math.round(targetBounds.y),
-        workArea.y,
-        workArea.y + workArea.height - height,
-      ),
-      width: miniWidth,
-      height,
-    }
-  }
-
-  private toMiniAttachWindowPayload(
-    windowInfo: WindowInfo,
-  ): MiniAttachWindowPayload {
-    return {
-      app: windowInfo.process,
-      title: windowInfo.title,
-      bounds: windowInfo.bounds,
-    }
-  }
-
-  private getPreferredMiniBounds(): Bounds {
-    if (this.miniWindowBounds) {
-      return this.miniWindowBounds
-    }
-
-    const pos = this.computeCompactPosition()
-    return {
-      x: pos.x,
-      y: pos.y,
-      width: compactSize.width,
-      height: compactSize.height,
-    }
+  restoreFullSize() {
+    this.showWindow()
   }
 
   private hideWindow(
@@ -986,252 +278,21 @@ export class WindowManager {
       window.blur()
       window.setFocusable(false)
     }
-
     window.hide()
-
     if (wasFocused && !window.isDestroyed()) {
       window.setFocusable(true)
     }
   }
 
-  restoreFullSize() {
-    this.showWindow('full')
-  }
-
-  hideShellWindowForExternalPicker(
-    target: ShellWindowMode,
-    options?: { skipMacFullscreenFullWindow?: boolean },
-  ): ExternalPickerWindowState {
-    const window = this.getShellWindow(target)
-    const state: ExternalPickerWindowState = {
-      mode: target,
-      wasVisible: Boolean(
-        window && !window.isDestroyed() && window.isVisible(),
-      ),
-      wasFocused: Boolean(
-        window && !window.isDestroyed() && window.isFocused(),
-      ),
-      hidden: false,
-    }
-    if (!window || window.isDestroyed() || !state.wasVisible) {
-      return state
-    }
-
-    if (
-      target === 'full' &&
-      options?.skipMacFullscreenFullWindow &&
-      this.isFullWindowMacFullscreen()
-    ) {
-      return state
-    }
-
-    this.hideWindow(window, { preserveExternalFocus: true })
-    this.syncLastActiveWindowMode()
-    return { ...state, hidden: true }
-  }
-
-  async attachMiniToExternalWindowAtPoint(point: {
-    x: number
-    y: number
-  }): Promise<MiniAttachResult> {
-    if (process.platform !== 'darwin' && process.platform !== 'win32') {
-      return {
-        ok: false,
-        reason: 'unsupported',
-        message: 'Attach is available on macOS and Windows.',
-      }
-    }
-
-    const nativePoint = this.toNativeScreenPoint(point)
-    const originalInfo = await getWindowInfoAtPoint(
-      nativePoint.x,
-      nativePoint.y,
-      {
-        excludePids: [process.pid],
-        excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
-      },
-    )
-    if (!originalInfo) {
-      return {
-        ok: false,
-        reason: 'no-window',
-        message: 'Pick a normal app window to attach Stella beside.',
-      }
-    }
-
-    const originalBounds = this.fromNativeBounds(
-      originalInfo.bounds,
-      nativePoint.display,
-    )
-    const layout = this.computeMiniAttachLayout(
-      originalBounds,
-      nativePoint.display,
-    )
-    if (!layout) {
-      return {
-        ok: false,
-        reason: 'no-room',
-        message: 'There is not enough room on this screen to attach Stella.',
-      }
-    }
-
-    const moved = await moveResizeWindowAtPoint(nativePoint.x, nativePoint.y, {
-      excludePids: [process.pid],
-      excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
-      bounds: this.toNativeBounds(layout.targetBounds, nativePoint.display),
-    })
-    if (!moved?.moved) {
-      return {
-        ok: false,
-        reason: 'move-failed',
-        message: 'Stella could not resize that window.',
-      }
-    }
-
-    const finalTargetBounds = this.fromNativeBounds(
-      moved.windowInfo.bounds,
-      nativePoint.display,
-    )
-    const miniBounds =
-      this.computeMiniBoundsForAttachedWindow(
-        finalTargetBounds,
-        nativePoint.display,
-      ) ?? layout.miniBounds
-
-    this.miniWindowBounds = miniBounds
-    this.showWindow('mini')
-
-    return {
-      ok: true,
-      window: this.toMiniAttachWindowPayload({
-        ...moved.windowInfo,
-        bounds: finalTargetBounds,
-      }),
-      miniBounds,
-    }
-  }
-
-  restoreWindowVisibility(target: ShellWindowMode) {
-    const window = this.getShellWindow(target)
-    if (!window || window.isDestroyed()) return
-
-    if (target === 'mini') {
-      this.cancelMiniIdleDestroy()
-      if (process.platform === 'darwin') {
-        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-        window.setAlwaysOnTop(this.miniAlwaysOnTop, 'screen-saver')
-      } else if (process.platform === 'win32') {
-        window.setAlwaysOnTop(this.miniAlwaysOnTop, 'screen-saver')
-      }
-    }
-
-    if (window.isMinimized()) {
-      window.restore()
-    }
-    if (!window.isVisible()) {
-      window.showInactive()
-    }
-    this.setLastActiveWindowMode(target)
-  }
-
-  private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
-    if (mode === 'mini') {
-      if (process.platform === 'darwin') {
-        // When the full shell is sitting in its own macOS fullscreen Space,
-        // any app-level activation (`app.dock.show()`, `app.focus({ steal })`,
-        // or making the panel key via `window.focus()`) makes AppKit
-        // re-resolve "the app's frontmost window" against that fullscreen
-        // window and either switches Spaces to it or — worse — pulls it
-        // out of fullscreen back to the home Space. The mini is an NSPanel
-        // at `screen-saver` level with `visibleOnFullScreen: true`, so it
-        // can render over the active Space (fullscreen included) without
-        // any app activation at all. Take a quiet show-inactive path in
-        // that case and skip every activation call.
-        const fullIsMacFullscreen = this.isFullWindowMacFullscreen()
-        if (fullIsMacFullscreen) {
-          window.setVisibleOnAllWorkspaces(true, {
-            visibleOnFullScreen: true,
-            skipTransformProcessType: true,
-          })
-          if (this.miniAlwaysOnTop) {
-            window.setAlwaysOnTop(true, 'screen-saver')
-          } else {
-            window.setAlwaysOnTop(false)
-          }
-          if (!window.isVisible()) {
-            window.showInactive()
-          }
-          window.moveTop()
-          window.setVisibleOnAllWorkspaces(true, {
-            visibleOnFullScreen: true,
-            skipTransformProcessType: true,
-          })
-          if (this.miniAlwaysOnTop) {
-            window.setAlwaysOnTop(true, 'screen-saver')
-          }
-          return
-        }
-
-        app.dock?.show()
-        // Do not call `app.show()` here. On macOS it unhides every owned
-        // BrowserWindow, which can briefly surface the full shell when the
-        // user is only restoring the mini (notably after radial capture).
-        app.focus({ steal: true })
-        window.setVisibleOnAllWorkspaces(true, {
-          visibleOnFullScreen: true,
-          skipTransformProcessType: true,
-        })
-        if (this.miniAlwaysOnTop) {
-          window.setAlwaysOnTop(true, 'screen-saver')
-        } else {
-          window.setAlwaysOnTop(false)
-        }
-        if (!window.isVisible()) {
-          window.showInactive()
-        } else {
-          window.show()
-        }
-        window.moveTop()
-        window.setVisibleOnAllWorkspaces(true, {
-          visibleOnFullScreen: true,
-          skipTransformProcessType: true,
-        })
-        if (this.miniAlwaysOnTop) {
-          window.setAlwaysOnTop(true, 'screen-saver')
-        }
-        window.focus()
-        return
-      }
-
-      // Windows (and Linux): the mini is a regular window, so Windows' own
-      // foreground lock can refuse a focus steal from a background process
-      // and merely flash the taskbar button instead of raising the window.
-      // Promoting it into the topmost band first guarantees it paints above
-      // the currently-foreground app even when the OS denies the focus
-      // change, then we attempt the focus on top of that.
-      if (process.platform === 'win32' && this.miniAlwaysOnTop) {
-        window.setAlwaysOnTop(true, 'screen-saver')
-      }
-      window.show()
-      window.moveTop()
-      app.focus({ steal: true })
-      window.focus()
-      return
-    }
-
+  private focusAndRaise(window: BrowserWindow) {
     if (process.platform === 'win32') {
       const alreadyForeground = window.isFocused()
       app.focus({ steal: true })
       window.show()
       window.moveTop()
       if (alreadyForeground) {
-        // Already the foreground window — a plain focus suffices, so skip the
-        // screen-saver promote/demote that would otherwise churn the global
-        // topmost z-order band (and briefly steal topmost from other apps).
         window.focus()
       } else {
-        // Briefly promote into the topmost band so the raise wins over the
-        // always-on-top mini panel, then drop back out of it.
         window.setAlwaysOnTop(true, 'screen-saver')
         window.focus()
         setTimeout(() => {
@@ -1240,103 +301,36 @@ export class WindowManager {
           }
         }, 75)
       }
-    } else {
-      app.focus({ steal: true })
-      window.show()
-      window.moveTop()
-      window.focus()
-    }
-  }
-
-  showWindow(target: ShellWindowMode) {
-    if (target === 'mini') {
-      if (!this.options.isAppReady()) return
-
-      // Compute the destination bounds BEFORE constructing the panel so it
-      // materializes in place. If we let `BrowserWindow` cascade-default and
-      // then `setBounds` afterwards, macOS panels can paint one frame at the
-      // cascade location (forced visible by the `setAlwaysOnTop` /
-      // `setVisibleOnAllWorkspaces` calls in mini-window's `afterCreate`)
-      // before snapping to the right spot, which surfaces as a visible jump
-      // on first summon.
-      const targetBounds = this.getPreferredMiniBounds()
-      const miniWindow = this.createMiniWindow(targetBounds)
-      this.miniShouldRestoreExternalApp =
-        process.platform === 'darwin' && this.getFocusedShellWindow() === null
-
-      // The mini and full shells are independent windows; if the full
-      // shell happens to be on screen we want to leave it alone and just
-      // raise the mini on top. The one wrinkle is macOS: `focusAndRaise`
-      // calls `app.show()` to wake the app, and that side-effect un-hides
-      // every owned window — so a deliberately-hidden full shell would
-      // re-appear behind the mini. Snapshot its visibility before raising
-      // the mini and tuck it back down only if it was hidden going in.
-      const fullWindow = this.getFullWindow()
-      const fullWasHiddenBeforeRaise = Boolean(
-        fullWindow && !fullWindow.isDestroyed() && !fullWindow.isVisible(),
-      )
-
-      if (miniWindow.isMinimized()) {
-        miniWindow.restore()
-      }
-      // Re-apply bounds for the case where `createMiniWindow` returned an
-      // already-existing panel (the constructor's `x`/`y` only takes effect
-      // on the first construction). For a fresh panel this is a no-op snap
-      // to the same coords we baked in.
-      miniWindow.setBounds(targetBounds)
-
-      const raiseMini = () => {
-        if (miniWindow.isDestroyed()) return
-        this.focusAndRaise(miniWindow, 'mini')
-        this.setLastActiveWindowMode('mini')
-
-        if (
-          fullWindow &&
-          !fullWindow.isDestroyed() &&
-          fullWindow.isVisible() &&
-          (process.platform === 'win32' || fullWasHiddenBeforeRaise)
-        ) {
-          // Windows: the mini replaces the full shell as the active surface
-          // (unlike macOS, where the mini is an NSPanel that floats over the
-          // full window and we deliberately leave it alone). Leaving the full
-          // window visible behind the mini forced the user to dismiss it
-          // separately — and dismissing via its "X" routes through the
-          // close→minimize-to-tray handler, which is what surfaced as
-          // "opening the mini sent the full window to the tray." Hide it
-          // cleanly with `window.hide()` (never `close()`), so opening the
-          // mini just hides the full shell; `showWindow('full')` restores it.
-          //
-          // On macOS/Linux we keep the original behavior: only re-hide the
-          // full window if it was already hidden before the raise (focusAndRaise
-          // can un-hide owned windows as a side effect).
-          this.hideWindow(fullWindow, { preserveExternalFocus: true })
-        }
-      }
-
-      if (miniWindow.webContents.isLoadingMainFrame()) {
-        miniWindow.webContents.once('did-finish-load', raiseMini)
-        return
-      }
-
-      raiseMini()
       return
     }
 
-    const fullWindow = this.createFullWindow()
-    if (this.isMiniShowing()) {
-      this.miniShouldRestoreExternalApp = false
-      this.hideMiniWindow(false)
+    app.focus({ steal: true })
+    window.show()
+    window.moveTop()
+    window.focus()
+  }
+
+  private observeFullWindow(window: BrowserWindow) {
+    if (this.observedWindows.has(window)) return
+    this.observedWindows.add(window)
+    window.on('close', (event) => {
+      if (process.platform !== 'win32' || this.options.isQuitting?.()) return
+      event.preventDefault()
+      this.hideWindow(window)
+      this.options.onMinimizeFullToTray?.()
+    })
+  }
+
+  showWindow() {
+    const window = this.createFullWindow()
+    if (window.isMinimized()) {
+      window.restore()
     }
-    if (fullWindow.isMinimized()) {
-      fullWindow.restore()
-    }
-    this.focusAndRaise(fullWindow, 'full')
-    this.setLastActiveWindowMode('full')
+    this.focusAndRaise(window)
   }
 
   reloadFullWindow() {
     this.fullWindowController.reloadMainWindow()
-    this.miniWindowController.reloadMainWindow()
   }
 
   onActivate() {
@@ -1344,25 +338,6 @@ export class WindowManager {
       this.createInitialWindows()
       return
     }
-
-    const miniWindow = this.getMiniWindow()
-    const shouldRaiseMini = Boolean(
-      miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible(),
-    )
-
-    const fullWindow = this.createFullWindow()
-    if (fullWindow.isMinimized()) {
-      fullWindow.restore()
-    }
-    this.focusAndRaise(fullWindow, 'full')
-    this.setLastActiveWindowMode('full')
-
-    if (shouldRaiseMini && miniWindow && !miniWindow.isDestroyed()) {
-      if (miniWindow.isMinimized()) {
-        miniWindow.restore()
-      }
-      this.focusAndRaise(miniWindow, 'mini')
-      this.setLastActiveWindowMode('mini')
-    }
+    this.showWindow()
   }
 }

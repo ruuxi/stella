@@ -112,9 +112,8 @@
 }
 
 .chat-viewport-region--sidebar .inline-working-indicator,
-.chat-viewport-region--mini .inline-working-indicator,
 .chat-viewport-region--orb .inline-working-indicator {
-  /* Compact-pill height + tighter density in the sidebar/mini/orb,
+  /* Compact-pill height + tighter density in the sidebar/orb,
    * matching the smaller `--compact-chat-item-padding`. */
   min-height: 30px;
   padding: 0;

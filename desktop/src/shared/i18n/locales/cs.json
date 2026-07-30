@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Spustí nebo zastaví živého hlasového agenta Stelly."
       },
-      "radial": {
-        "label": "Radiální volič",
-        "description": "Otevře klínové menu pro zachycení, chat, hlas a rychlé akce.",
-        "ariaLabel": "Zkratka radiálního voliče"
-      },
-      "mini": {
-        "label": "Mini okno",
-        "description": "Dvojitým klepnutím na modifikační klávesu otevřete nebo zavřete mini chat.",
-        "ariaLabel": "Zkratka mini okna"
-      },
       "targets": {
         "dictation": "diktování",
         "voice": "hlasového agenta"
@@ -149,20 +139,13 @@
         "updatedDescription": "Stisknutím {keys} spustíte {target}.",
         "clearedDescription": "{action} je zakázáno, dokud nenastavíte novou zkratku.",
         "unavailableTitle": "Zkratka není dostupná",
-        "failedTitle": "Aktualizace zkratky se nezdařila",
-        "radialUpdatedTitle": "Zkratka radiálního voliče aktualizována",
-        "radialUpdatedDescription": "Podržte {key} pro otevření radiálního voliče.",
-        "miniUpdatedTitle": "Zkratka mini okna aktualizována",
-        "miniDisabledDescription": "Dvojité klepnutí je zakázáno.",
-        "miniUpdatedDescription": "Dvojitým klepnutím na {modifier} otevřete mini okno."
+        "failedTitle": "Aktualizace zkratky se nezdařila"
       },
       "errors": {
         "load": "Nepodařilo se načíst zkratky.",
         "unavailable": "Zkratky nejsou v tomto okně dostupné.",
         "unavailableShortcut": "Tato zkratka není dostupná.",
-        "update": "Nepodařilo se aktualizovat zkratku.",
-        "radialUpdate": "Nepodařilo se aktualizovat zkratku radiálního voliče.",
-        "miniUpdate": "Nepodařilo se aktualizovat zkratku mini okna."
+        "update": "Nepodařilo se aktualizovat zkratku."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Vyberte styl mluvení a hlas osobnosti Stelly.",
         "permissions": "Udělte v systému macOS přístup ke zpřístupnění, záznamu obrazovky a mikrofonu.",
-        "shortcuts": "Změňte, jak se Stella otevírá, naslouchá a spouští radiální volič nebo hlas.",
         "memory": "Spravujte paměť obrazovky, aktualizujte nebo vymažte, co si Stella zapamatovala.",
         "backup": "Automatické šifrované zálohy, body obnovení a snímky na vyžádání.",
         "account": "Odhlaste se, smažte svá data nebo trvale smažte svůj účet.",
@@ -477,7 +459,6 @@
       "browser": "Nechte Stellu, ať vás pozná.",
       "theme": "Jak by Stella měla vypadat?",
       "personality": "Jak by Stella měla mluvit?",
-      "summon": "Přivolej Stellu odkudkoli.",
       "voice": "Mluvte místo psaní.",
       "memory": "Pomozte Stelle si pamatovat.",
       "enter": "Stella je téměř připravena."

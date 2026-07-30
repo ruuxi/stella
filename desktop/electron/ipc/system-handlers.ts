@@ -67,15 +67,6 @@ import {
 import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index.js";
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
-  DEFAULT_RADIAL_TRIGGER_CODE,
-  normalizeRadialTriggerCode,
-  type RadialTriggerCode,
-} from "../../src/shared/lib/radial-trigger.js";
-import {
-  normalizeMiniDoubleTapModifier,
-  type MiniDoubleTapModifier,
-} from "../../src/shared/lib/mini-double-tap.js";
-import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_APPLY_SESSION_COOKIE,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
@@ -106,8 +97,6 @@ import {
   IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_SHELL_SAVE_FILE_AS,
-  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
-  IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_PERSONALITY_VOICE,
   IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_PREFERENCES_GET_MODELS,
@@ -119,8 +108,6 @@ import {
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
-  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-  IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
@@ -537,12 +524,8 @@ type SystemHandlersOptions = {
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
   onPermissionGranted?: (kind: MacPermissionKind) => void;
   stopGlobalInputHooksForPermissionReset?: () => void;
-  /** Update the radial-trigger key on the gesture service when prefs change. */
-  setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
-  /** Update the mini double-tap modifier on the gesture service when prefs change. */
-  setMiniDoubleTapModifier: (modifier: MiniDoubleTapModifier) => void;
-  /** When Accessibility is granted (e.g. user enabled it in System Settings), ensure hooks are running. */
-  ensureRadialGestureOnMac?: () => void;
+  /** When Accessibility is granted, ensure dictation input hooks are running. */
+  ensureGlobalInputHooksOnMac?: () => void;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -1694,88 +1677,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return options.backupService.setMode(prefs.syncMode);
   });
 
-  ipcMain.handle(IPC_PREFERENCES_GET_RADIAL_TRIGGER, (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_GET_RADIAL_TRIGGER,
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted preferences:getRadialTrigger request.",
-      );
-    }
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) return DEFAULT_RADIAL_TRIGGER_CODE;
-    return loadLocalPreferences(stellaAppDir).radialTriggerKey;
-  });
-
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-    (event, triggerKey: string) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted preferences:setRadialTrigger request.",
-        );
-      }
-      const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
-      const stellaAppDir = options.getStellaAppDir();
-      if (stellaAppDir) {
-        const prefs = loadLocalPreferences(stellaAppDir);
-        prefs.radialTriggerKey = nextTriggerKey;
-        saveLocalPreferences(stellaAppDir, prefs);
-      }
-      options.setRadialTriggerKey(nextTriggerKey);
-      return { triggerKey: nextTriggerKey };
-    },
-  );
-
-  ipcMain.handle(IPC_PREFERENCES_GET_MINI_DOUBLE_TAP, (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted preferences:getMiniDoubleTap request.",
-      );
-    }
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) return "Alt";
-    return loadLocalPreferences(stellaAppDir).miniDoubleTapModifier;
-  });
-
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
-    (event, modifier: string) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted preferences:setMiniDoubleTap request.",
-        );
-      }
-      const nextModifier = normalizeMiniDoubleTapModifier(modifier);
-      const stellaAppDir = options.getStellaAppDir();
-      if (stellaAppDir) {
-        const prefs = loadLocalPreferences(stellaAppDir);
-        prefs.miniDoubleTapModifier = nextModifier;
-        saveLocalPreferences(stellaAppDir, prefs);
-      }
-      options.setMiniDoubleTapModifier(nextModifier);
-      return { modifier: nextModifier };
-    },
-  );
-
   ipcMain.handle(IPC_PREFERENCES_GET_PREVENT_SLEEP, (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
@@ -2589,7 +2490,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     if (accessibility && !lastAccessibilityStatus) {
       options.onPermissionGranted?.("accessibility");
       try {
-        options.ensureRadialGestureOnMac?.();
+        options.ensureGlobalInputHooksOnMac?.();
       } catch {
         // Best-effort; hooks may still be starting.
       }

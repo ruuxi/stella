@@ -296,9 +296,9 @@ export default defineConfig({
       '@radix-ui/react-switch',
     ],
     // Cover every window's HTML entry in the cold dep scan (not just index.html),
-    // so the overlay/pet/mini spines don't trigger a separate re-optimize when
-    // first opened.
-    entries: ['index.html', 'overlay.html', 'pet.html', 'mini.html'],
+    // so the overlay/pet spines don't trigger a separate re-optimize when first
+    // opened.
+    entries: ['index.html', 'overlay.html', 'pet.html'],
     rolldownOptions: {
       transform: {
         target: 'esnext',
@@ -314,7 +314,6 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        mini: path.resolve(__dirname, 'mini.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         pet: path.resolve(__dirname, 'pet.html'),
       },
@@ -363,7 +362,6 @@ export default defineConfig({
         // instantly instead of cold-transforming on creation.
         './src/overlay-entry.tsx',
         './src/pet-entry.tsx',
-        './src/mini-entry.tsx',
       ],
     },
     // Pin to a single IPv4 loopback port and publish that exact address via

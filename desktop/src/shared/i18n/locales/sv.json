@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Startar eller stoppar Stellas röstagent i realtid."
       },
-      "radial": {
-        "label": "Radialratt",
-        "description": "Öppnar kilmenyn för infångning, chatt, röst och snabbåtgärder.",
-        "ariaLabel": "Kortkommando för radialratt"
-      },
-      "mini": {
-        "label": "Minifönster",
-        "description": "Tryck två gånger på en modifieringstangent för att öppna eller stänga minichatten.",
-        "ariaLabel": "Kortkommando för minifönster"
-      },
       "targets": {
         "dictation": "diktering",
         "voice": "röstagenten"
@@ -149,20 +139,13 @@
         "updatedDescription": "Tryck på {keys} för att starta {target}.",
         "clearedDescription": "{action} är inaktiverat tills du anger ett nytt kortkommando.",
         "unavailableTitle": "Kortkommando ej tillgängligt",
-        "failedTitle": "Det gick inte att uppdatera kortkommandot",
-        "radialUpdatedTitle": "Kortkommando för radialratt uppdaterat",
-        "radialUpdatedDescription": "Håll ned {key} för att öppna radialratten.",
-        "miniUpdatedTitle": "Kortkommando för minifönster uppdaterat",
-        "miniDisabledDescription": "Dubbeltryck är inaktiverat.",
-        "miniUpdatedDescription": "Tryck två gånger på {modifier} för att öppna minifönstret."
+        "failedTitle": "Det gick inte att uppdatera kortkommandot"
       },
       "errors": {
         "load": "Det gick inte att läsa in kortkommandon.",
         "unavailable": "Kortkommandon är inte tillgängliga i det här fönstret.",
         "unavailableShortcut": "Det kortkommandot är inte tillgängligt.",
-        "update": "Det gick inte att uppdatera kortkommandot.",
-        "radialUpdate": "Det gick inte att uppdatera kortkommandot för radialratten.",
-        "miniUpdate": "Det gick inte att uppdatera kortkommandot för minifönstret."
+        "update": "Det gick inte att uppdatera kortkommandot."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Välj Stellas talstil och personlighetsröst.",
         "permissions": "Bevilja åtkomst till hjälpmedel, skärminspelning och mikrofon på macOS.",
-        "shortcuts": "Ändra hur Stella öppnas, lyssnar och startar radialratten eller rösten.",
         "memory": "Hantera skärmminne, uppdatera eller radera det Stella har kommit ihåg.",
         "backup": "Automatiska krypterade säkerhetskopior, återställningspunkter och ögonblicksbilder på begäran.",
         "account": "Logga ut, radera dina data eller radera ditt konto permanent.",
@@ -477,7 +459,6 @@
       "browser": "Låt Stella lära känna dig.",
       "theme": "Hur ska Stella se ut?",
       "personality": "Hur ska Stella prata?",
-      "summon": "Kalla på Stella var som helst.",
       "voice": "Tala i stället för att skriva.",
       "memory": "Hjälp Stella att minnas.",
       "enter": "Stella är nästan redo."

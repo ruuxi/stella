@@ -37,7 +37,6 @@ describe("materialized image strip publication", () => {
 
   beforeEach(() => {
     storage.clear();
-    document.documentElement.dataset.stellaWindow = "mini";
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,7 +48,6 @@ describe("materialized image strip publication", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
-    delete document.documentElement.dataset.stellaWindow;
   });
 
   it("rerenders the pending strip when the shared Map gains a payload", async () => {
@@ -70,7 +68,7 @@ describe("materialized image strip publication", () => {
     }));
 
     await act(async () => {
-      root.render(<InlineGeneratedImageStrip payloads={pending} />);
+      root.render(<InlineGeneratedImageStrip payloads={pending} materializeJob={false} />);
     });
     const strip = container.querySelector('[aria-label="Generated images"]');
     expect(strip?.getAttribute("aria-busy")).toBe("true");

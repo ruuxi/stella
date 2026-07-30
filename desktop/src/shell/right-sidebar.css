@@ -79,51 +79,6 @@
   }
 }
 
-/* ── Mini window: full-width takeover ───────────────────────────────
-   Mirrors the chat-sidebar's compact-mode pattern (chat-sidebar.css ~L34).
-   In the mini window the panel chat already covers the content area;
-   when the user right-clicks to summon the display panel we want it to
-   replace the chat surface entirely instead of slicing it. */
-@media (max-width: 600px) {
-  html[data-stella-window="mini"] .right-sidebar--open {
-    width: 100%;
-    flex: 1;
-    box-shadow: none;
-  }
-
-  html[data-stella-window="mini"] .right-sidebar-inner {
-    width: 100%;
-    padding-top: var(--shell-topbar-height, 38px);
-    border-left: none;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  html[data-stella-window="mini"] .right-sidebar {
-    border-radius: 0;
-    margin-left: 0;
-    /* No slide animation in mini — the panel is a full-surface swap
-       (chat hides, display takes over), so the slide reads as flicker. */
-    transition: none;
-  }
-
-  /* Hide both the chat outlet AND the open panel chat so the display
-     panel cleanly owns the available space next to the icon rail. */
-  html[data-stella-window="mini"][data-display-panel-open="true"]
-    .full-body
-    .content-area,
-  html[data-stella-window="mini"][data-display-panel-open="true"]
-    .full-body
-    .chat-sidebar {
-    display: none;
-  }
-
-  /* Resize and expand are meaningless at full width. */
-  html[data-stella-window="mini"] .right-sidebar__resize-handle {
-    display: none;
-  }
-}
-
 .right-sidebar-inner {
   position: relative;
   z-index: 1;
@@ -209,46 +164,12 @@
   max-width: none;
 }
 
-html[data-stella-window="mini"] .right-sidebar--open {
-  width: 100%;
-  flex: 1;
-}
-
-html[data-stella-window="mini"] .right-sidebar,
-html[data-stella-window="mini"] .right-sidebar--open {
-  position: relative;
-  inset: auto;
-  z-index: auto;
-  border-radius: 0;
-  margin-left: 0;
-  transition: none;
-}
-
-html[data-stella-window="mini"] .right-sidebar--open .right-sidebar-inner {
-  width: 100%;
-  border-left: none;
-  border-radius: 0;
-}
-
 @media (max-width: 600px) {
   .right-sidebar--open .right-sidebar-inner {
     width: 100%;
     border-left: none;
     border-radius: 0;
   }
-}
-
-html[data-stella-window="mini"][data-display-panel-open="true"]
-  .full-body
-  .content-area,
-html[data-stella-window="mini"][data-display-panel-open="true"]
-  .full-body
-  .chat-sidebar {
-  display: none;
-}
-
-html[data-stella-window="mini"] .right-sidebar__resize-handle {
-  display: none;
 }
 
 /* ── Left-edge resize handle ────────────────────────────────────────── */

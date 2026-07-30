@@ -3,10 +3,9 @@
  * any text selection inside the Stella renderer.
  *
  * Click opens the panel chat with the selection attached as a
- * SelectedTextChip via the standard chat-context broadcast (mirrors the
- * radial gesture's path). A companion copy icon button to the pill's right
- * copies the same text to the clipboard (icon swaps to a checkmark briefly,
- * matching MessageActions' copy feedback).
+ * SelectedTextChip via the standard chat-context broadcast. A companion copy
+ * icon button to the pill's right copies the same text to the clipboard (icon
+ * swaps to a checkmark briefly, matching MessageActions' copy feedback).
  *
  * Hidden in any of the following surfaces (where a chip would either be
  * redundant or actively get in the user's way):
@@ -14,10 +13,6 @@
  *   - The panel chat
  *   - Any input/textarea/contenteditable
  *   - Anything marked `[data-stella-chrome]`
- *
- * For the global ("anywhere on the user's computer") variant see
- * `desktop/electron/services/selection-watcher-service.ts` + the overlay
- * window's SelectionChipOverlay.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

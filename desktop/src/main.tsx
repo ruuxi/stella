@@ -20,15 +20,11 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 applyLowPowerDocumentFlag();
 installRendererErrorReporting();
 
-const requestedWindow = new URLSearchParams(window.location.search).get(
-  "window",
-);
-const isMiniWindow = requestedWindow === "mini";
-document.documentElement.dataset.stellaWindow = isMiniWindow ? "mini" : "full";
+document.documentElement.dataset.stellaWindow = "full";
 
 const appTree = (
   <ErrorBoundary>
-    <DesktopConvexAuthProvider enableRuntimeEffects={!isMiniWindow}>
+    <DesktopConvexAuthProvider enableRuntimeEffects>
       <AppProviders>
         <App />
       </AppProviders>

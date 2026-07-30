@@ -17,7 +17,6 @@ type UiHandlersOptions = {
   broadcastUiState: () => void;
   setAppReady: (ready: boolean) => void;
   deactivateVoiceModes: () => boolean;
-  syncNativeRadialGesture: () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -46,10 +45,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.on("window:close", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
-    if (win === options.windowManager.getMiniWindow()) {
-      options.windowManager.hideMiniWindow(true);
-      return;
-    }
     win.close();
   });
 
@@ -58,30 +53,14 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     return win?.isMaximized() ?? false;
   });
 
-  ipcMain.handle("window:isMiniAlwaysOnTop", () =>
-    options.windowManager.isMiniAlwaysOnTop(),
-  );
-
-  ipcMain.handle("window:setMiniAlwaysOnTop", (event, enabled: boolean) => {
-    if (!options.assertPrivilegedSender(event, "window:setMiniAlwaysOnTop")) {
-      return options.windowManager.isMiniAlwaysOnTop();
-    }
-    options.windowManager.setMiniAlwaysOnTop(Boolean(enabled));
-    return options.windowManager.isMiniAlwaysOnTop();
-  });
-
   ipcMain.on(IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE, (event, visible: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || process.platform !== "darwin") return;
     win.setWindowButtonVisibility(Boolean(visible));
   });
 
-  // Onboarding presentation: while onboarding is active we expand the
-  // (transparent + frameless) main window to cover the current display so
-  // the renderer's radial fog mask has room to fade fully to transparent
-  // well inside the window bounds - the user can't perceive a window
-  // rectangle, only the floating fog. Exit restores the standard size,
-  // re-centered on the same display.
+  // Onboarding presentation expands the main window to cover the current
+  // display, then restores the standard centered size on exit.
   const DEFAULT_WIDTH = 1400;
   const DEFAULT_HEIGHT = 940;
   ipcMain.handle(
@@ -89,13 +68,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     (event, active: boolean) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win) return { ok: false };
-      // Onboarding presentation only applies to the full window. The mini
-      // renderer also mounts FullShell and historically drove this IPC,
-      // which animated the mini toward the work-area centre clamped by its
-      // max bounds — visible as a creep/grow after first summon.
-      if (win === options.windowManager.getMiniWindow()) {
-        return { ok: false };
-      }
       const display = screen.getDisplayMatching(win.getBounds());
       const work = display.workArea;
       if (active) {
@@ -140,16 +112,10 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.handle("ui:setState", (event, partial: Partial<UiState>) => {
     if (!options.assertPrivilegedSender(event, "ui:setState"))
       return options.uiState;
-    const previousSuppression =
-      options.uiState.suppressNativeRadialDuringOnboarding;
     const {
-      window: nextWindow,
       isVoiceRtcActive,
       ...rest
     } = partial;
-    if (nextWindow === "mini" || nextWindow === "full") {
-      options.windowManager.showWindow(nextWindow);
-    }
     if (isVoiceRtcActive !== undefined) {
       if (isVoiceRtcActive) {
         options.uiState.isVoiceRtcActive = true;
@@ -160,12 +126,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     if (Object.keys(rest).length > 0) {
       options.updateUiState(rest);
     }
-    if (
-      partial.suppressNativeRadialDuringOnboarding !== undefined &&
-      partial.suppressNativeRadialDuringOnboarding !== previousSuppression
-    ) {
-      options.syncNativeRadialGesture();
-    }
     if (isVoiceRtcActive !== undefined) {
       if (isVoiceRtcActive) {
         options.broadcastUiState();
@@ -174,12 +134,9 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     return options.uiState;
   });
 
-  ipcMain.on("window:show", (event, target: "full" | "mini") => {
+  ipcMain.on("window:show", (event) => {
     if (!options.assertPrivilegedSender(event, "window:show")) return;
-    if (target !== "mini" && target !== "full") {
-      return;
-    }
-    options.windowManager.showWindow(target);
+    options.windowManager.showWindow();
   });
 
   ipcMain.on("app:reload", (event) => {

@@ -17,8 +17,8 @@ type UseStellaSendMessageBridgeOptions = {
 /**
  * Bridge `STELLA_SEND_MESSAGE_EVENT` window events into chat sends.
  *
- * Suggestion chips, the radial dial, and the orchestrator's hidden
- * follow-ups all dispatch the same event; the routing call here
+ * Suggestion chips and the orchestrator's hidden follow-ups dispatch
+ * the same event; the routing call here
  * decides whether to send into the active conversation or into a
  * specific routed agent (when `targetAgentId` is present).
  */

@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { loadWindow, type WindowLoadMode } from './window-load.js'
 
-export type ShellWindowMode = Extract<WindowLoadMode, 'full' | 'mini'>
+export type ShellWindowMode = Extract<WindowLoadMode, 'full'>
 
 export type ShellWindowDidFailLoadDetails = {
   errorCode: number

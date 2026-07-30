@@ -148,7 +148,7 @@
 
 .chat-composer-context-chip,
 .composer-context-chip,
-.mini-context-chip {
+.compact-context-chip {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -166,23 +166,23 @@
  * removal is the × pinned to the chip's top-right corner. */
 button.chat-composer-context-chip:hover,
 button.composer-context-chip:hover,
-button.mini-context-chip:hover {
+button.compact-context-chip:hover {
   background: color-mix(in oklch, var(--foreground) 6%, var(--card));
 }
 
 button.chat-composer-context-chip:focus-visible,
 button.composer-context-chip:focus-visible,
-button.mini-context-chip:focus-visible {
+button.compact-context-chip:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
 .chat-composer-context-chip--screenshot,
 .composer-context-chip--screenshot,
-.mini-context-chip--screenshot,
+.compact-context-chip--screenshot,
 .chat-composer-context-chip--pending,
 .composer-context-chip--pending,
-.mini-context-chip--pending {
+.compact-context-chip--pending {
   padding: 2px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
@@ -191,13 +191,13 @@ button.mini-context-chip:focus-visible {
 
 .chat-composer-context-chip--pending,
 .composer-context-chip--pending,
-.mini-context-chip--pending {
+.compact-context-chip--pending {
   pointer-events: none;
 }
 
 .chat-composer-context-pending-inner,
 .composer-context-pending-inner,
-.mini-context-pending-inner {
+.compact-context-pending-inner {
   background: linear-gradient(
     90deg,
     color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
@@ -219,7 +219,7 @@ button.mini-context-chip:focus-visible {
 
 .chat-composer-context-thumb,
 .composer-context-thumb,
-.mini-context-thumb {
+.compact-context-thumb {
   object-fit: cover;
   border-radius: 999px;
 }
@@ -287,7 +287,7 @@ button.mini-context-chip:focus-visible {
   max-width: min(520px, 70vw);
 }
 
-.context-pill--mini {
+.context-pill--compact {
   max-width: 200px;
 }
 
@@ -488,7 +488,7 @@ button.chat-composer-file-chip.composer-chip-previewable {
   border-radius: 6px;
 }
 
-.mini-context-pending-inner {
+.compact-context-pending-inner {
   width: 48px;
   height: 36px;
   border-radius: 6px;
@@ -499,7 +499,7 @@ button.chat-composer-file-chip.composer-chip-previewable {
   height: 42px;
 }
 
-.mini-context-thumb {
+.compact-context-thumb {
   width: 48px;
   height: 36px;
   cursor: default;
@@ -517,7 +517,7 @@ button.chat-composer-file-chip.composer-chip-previewable {
 .composer-context-chip--window[data-with-thumb="true"],
 .chat-composer-context-chip--screenshot[data-region-card="true"],
 .composer-context-chip--screenshot[data-region-card="true"],
-.mini-context-chip--screenshot[data-region-card="true"] {
+.compact-context-chip--screenshot[data-region-card="true"] {
   padding: 4px 6px 6px;
   border-radius: 10px;
 }

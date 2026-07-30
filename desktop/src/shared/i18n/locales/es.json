@@ -129,16 +129,6 @@
       "voiceAgent": {
         "description": "Inicia o detiene el agente de voz en directo de Stella."
       },
-      "radial": {
-        "label": "Rueda radial",
-        "description": "Abre el menú radial para captura, chat, voz y acciones rápidas.",
-        "ariaLabel": "Atajo de la rueda radial"
-      },
-      "mini": {
-        "label": "Ventana mini",
-        "description": "Pulsa dos veces una tecla modificadora para abrir o cerrar el chat mini.",
-        "ariaLabel": "Atajo de la ventana mini"
-      },
       "targets": {
         "dictation": "el dictado",
         "voice": "el agente de voz"
@@ -149,20 +139,13 @@
         "updatedDescription": "Pulsa {keys} para iniciar {target}.",
         "clearedDescription": "{action} está desactivado hasta que establezcas un nuevo atajo.",
         "unavailableTitle": "Atajo no disponible",
-        "failedTitle": "No se pudo actualizar el atajo",
-        "radialUpdatedTitle": "Atajo de la rueda radial actualizado",
-        "radialUpdatedDescription": "Mantén pulsado {key} para abrir la rueda radial.",
-        "miniUpdatedTitle": "Atajo de la ventana mini actualizado",
-        "miniDisabledDescription": "La doble pulsación está desactivada.",
-        "miniUpdatedDescription": "Pulsa dos veces {modifier} para abrir la ventana mini."
+        "failedTitle": "No se pudo actualizar el atajo"
       },
       "errors": {
         "load": "No se pudieron cargar los atajos.",
         "unavailable": "Los atajos no están disponibles en esta ventana.",
         "unavailableShortcut": "Ese atajo no está disponible.",
-        "update": "No se pudo actualizar el atajo.",
-        "radialUpdate": "No se pudo actualizar el atajo de la rueda radial.",
-        "miniUpdate": "No se pudo actualizar el atajo de la ventana mini."
+        "update": "No se pudo actualizar el atajo."
       }
     },
     "memory": {
@@ -425,7 +408,6 @@
       "descriptions": {
         "voice": "Elige el estilo de habla y la voz de personalidad de Stella.",
         "permissions": "Concede acceso a accesibilidad, captura de pantalla y micrófono en macOS.",
-        "shortcuts": "Cambia cómo Stella se abre, escucha e inicia la rueda radial o la voz.",
         "memory": "Gestiona la memoria de pantalla, actualiza o borra lo que Stella ha recordado.",
         "backup": "Copias de seguridad cifradas automáticas, puntos de restauración e instantáneas bajo demanda.",
         "account": "Cierra sesión, elimina tus datos o elimina permanentemente tu cuenta.",
@@ -477,7 +459,6 @@
       "browser": "Deja que Stella te conozca.",
       "theme": "¿Cómo debería verse Stella?",
       "personality": "¿Cómo debería hablar Stella?",
-      "summon": "Invoca a Stella desde cualquier lugar.",
       "voice": "Habla en lugar de escribir.",
       "memory": "Ayuda a Stella a recordar.",
       "enter": "Stella casi está lista."

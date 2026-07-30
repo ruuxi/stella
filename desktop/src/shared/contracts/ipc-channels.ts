@@ -70,13 +70,6 @@ export const IPC_REGION_CANCEL = "region:cancel" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
 export const IPC_CAPTURE_REGION_FAILED = "capture:regionCaptureFailed" as const;
 
-// ── Radial ──────────────────────────────────────────────────────────────────
-
-export const IPC_RADIAL_SHOW = "radial:show" as const;
-export const IPC_RADIAL_HIDE = "radial:hide" as const;
-export const IPC_RADIAL_ANIM_DONE = "radial:animDone" as const;
-export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
-
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export const IPC_OVERLAY_SET_INTERACTIVE = "overlay:setInteractive" as const;
@@ -84,9 +77,6 @@ export const IPC_OVERLAY_START_REGION_CAPTURE =
   "overlay:startRegionCapture" as const;
 export const IPC_OVERLAY_END_REGION_CAPTURE =
   "overlay:endRegionCapture" as const;
-export const IPC_OVERLAY_SHOW_MINI = "overlay:showMini" as const;
-export const IPC_OVERLAY_HIDE_MINI = "overlay:hideMini" as const;
-export const IPC_OVERLAY_RESTORE_MINI = "overlay:restoreMini" as const;
 export const IPC_OVERLAY_DISPLAY_CHANGE = "overlay:displayChange" as const;
 export const IPC_OVERLAY_MORPH_FORWARD = "overlay:morphForward" as const;
 export const IPC_OVERLAY_MORPH_BOUNDS = "overlay:morphBounds" as const;
@@ -102,15 +92,6 @@ export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT =
   "overlay:hideWindowHighlight" as const;
 export const IPC_OVERLAY_PREVIEW_WINDOW_HIGHLIGHT_AT_POINT =
   "overlay:previewWindowHighlightAtPoint" as const;
-
-// ── Mini ────────────────────────────────────────────────────────────────────
-
-export const IPC_MINI_VISIBILITY = "mini:visibility" as const;
-export const IPC_MINI_DISMISS_PREVIEW = "mini:dismissPreview" as const;
-export const IPC_MINI_BRIDGE_REQUEST = "miniBridge:request" as const;
-export const IPC_MINI_BRIDGE_UPDATE = "miniBridge:update" as const;
-export const IPC_MINI_BRIDGE_RESPONSE = "miniBridge:response" as const;
-export const IPC_MINI_BRIDGE_READY = "miniBridge:ready" as const;
 
 // ── Theme ───────────────────────────────────────────────────────────────────
 
@@ -235,14 +216,6 @@ export const IPC_PREFERENCES_LIST_CODEX_MODELS =
   "preferences:listCodexModels" as const;
 export const IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS =
   "preferences:listClaudeCodeModels" as const;
-export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
-  "preferences:getRadialTrigger" as const;
-export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =
-  "preferences:setRadialTrigger" as const;
-export const IPC_PREFERENCES_GET_MINI_DOUBLE_TAP =
-  "preferences:getMiniDoubleTap" as const;
-export const IPC_PREFERENCES_SET_MINI_DOUBLE_TAP =
-  "preferences:setMiniDoubleTap" as const;
 export const IPC_PREFERENCES_GET_PREVENT_SLEEP =
   "preferences:getPreventSleep" as const;
 export const IPC_PREFERENCES_SET_PREVENT_SLEEP =
@@ -477,9 +450,7 @@ export const IPC_PET_MOVE_WINDOW = "pet:moveWindow" as const;
  *  keystrokes (the resting pet window is non-focusable so it never
  *  steals focus from the active app). */
 export const IPC_PET_SET_COMPOSER_ACTIVE = "pet:setComposerActive" as const;
-/** Pet voice button: ask main to enter voice (RTC) mode. Routes
- *  through `uiStateService.activateVoiceRtc` — same path the radial
- *  dial uses — so all the existing voice-overlay plumbing applies. */
+/** Pet voice button: ask main to enter voice (RTC) mode. */
 export const IPC_PET_REQUEST_VOICE = "pet:requestVoice" as const;
 /** Renderer-driven mouse passthrough toggle. The pet window is small
  *  but most of its rectangle is transparent space around the sprite +
@@ -491,7 +462,3 @@ export const IPC_PET_SET_INTERACTIVE = "pet:setInteractive" as const;
 export const IPC_PET_STATUS = "pet:status" as const;
 export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
 export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
-/** Pet click: toggle the mini chat window open/closed. When opening,
- *  main positions the mini just to the left of the pet sprite; the pet
- *  itself stays visible either way. */
-export const IPC_PET_TOGGLE_MINI = "pet:toggleMiniWindow" as const;
