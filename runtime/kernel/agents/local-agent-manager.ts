@@ -36,7 +36,6 @@ import type {
   TaskLifecycleStatus,
   TerminalTaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { AGENT_ORCHESTRATION_TOOL_NAMES } from "../tools/defs/task.js";
 import type {
   FileChangeRecord,
@@ -1470,6 +1469,13 @@ export class LocalAgentManager implements AgentToolApi {
         selfModMetadata: task.selfModMetadata,
       });
       if (!isCurrentAttempt()) return;
+      if (context.modelConfigSnapshot) {
+        task.modelConfigSnapshot = context.modelConfigSnapshot;
+        // Persist the exact resolved engine/model after context loading. The
+        // Activity projection exposes this for provider icons and tooltips,
+        // and a resumed thread keeps the same effective route.
+        this.persistTask(task);
+      }
 
       context.maxAgentDepth =
         typeof task.maxAgentDepth === "number"

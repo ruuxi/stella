@@ -62,6 +62,7 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 import {
   buildChatTimelineItems,
   type ChatTimelineItem,
@@ -71,6 +72,7 @@ import { LoaderCircle } from "@/ui/icons";
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
   conversationId?: string | null;
+  agentModelConfigByThread?: AgentModelConfigsByThread;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -226,6 +228,7 @@ const ItemSeparator = ({ leadingItem }: { leadingItem: TimelineListItem }) => (
 const renderRow = (
   row: EventRowViewModel,
   conversationId?: string | null,
+  agentModelConfigByThread?: AgentModelConfigsByThread,
 ) => {
   if (row.kind === "user") {
     return <UserMessageRow key={row.id} row={row} />;
@@ -235,6 +238,7 @@ const renderRow = (
       key={row.id}
       row={row}
       conversationId={conversationId}
+      agentModelConfigByThread={agentModelConfigByThread}
     />
   );
 };
@@ -263,6 +267,7 @@ const TimelineUserItem = ({
 export const ChatTimeline = memo(function ChatTimeline({
   rows,
   conversationId,
+  agentModelConfigByThread,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -314,9 +319,9 @@ export const ChatTimeline = memo(function ChatTimeline({
           <TimelineUserItem item={item} onCancelQueued={onCancelQueued} />
         );
       }
-      return renderRow(item.row, conversationId);
+      return renderRow(item.row, conversationId, agentModelConfigByThread);
     },
-    [conversationId, indicator, onCancelQueued],
+    [agentModelConfigByThread, conversationId, indicator, onCancelQueued],
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);

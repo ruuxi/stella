@@ -1,6 +1,5 @@
-/* Files list — the section's default view. The list is also the drop target
-   for local media imports, so it owns the positioning context `DropOverlay`
-   needs. */
+/* Unified Work list — agent threads and files interleaved by recency. The
+   surface remains the drop target for local media imports. */
 
 .files-list {
   position: relative;
@@ -10,45 +9,31 @@
   min-height: 0;
 }
 
-.files-list__head {
+.files-list__search {
   display: flex;
   align-items: center;
+  gap: 8px;
   flex-shrink: 0;
-  min-height: 32px;
-  padding: 4px 8px;
+  min-height: 34px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--border-weak);
-}
-
-.files-list__import {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 8px 0 5px;
-  border: none;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
   color: var(--text-weak);
-  font-size: var(--font-size-base);
-  font-weight: var(--weight-medium);
-  cursor: default;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
 }
 
-.files-list__import:hover {
-  color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
-}
-
-.files-list__import:focus-visible {
+.files-list__search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: none;
   outline: none;
-  box-shadow: var(--focus-ring);
+  background: transparent;
+  color: var(--text-strong);
+  font-size: var(--font-size-base);
 }
 
-.files-list__file-input {
-  display: none;
+.files-list__search input::placeholder {
+  color: var(--text-faint);
 }
 
 .files-list__items {
@@ -100,10 +85,17 @@
 }
 
 .files-list__title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.files-list__meta {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
 }
 
 /* The remove affordance only appears on hover/focus so a long list reads as

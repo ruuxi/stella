@@ -70,6 +70,13 @@ describe("AgentCompletionCard fileless summary rendering", () => {
         <AgentCompletionCard
           sections={[filelessSection(summary)]}
           conversationId="conversation-test"
+          modelConfigByThread={{
+            a1: {
+              engine: "codex_cli",
+              routeModel: "stella/openai/gpt-5.6-sol",
+              engineModel: "gpt-5.6-sol",
+            },
+          }}
         />,
       );
     });
@@ -83,6 +90,9 @@ describe("AgentCompletionCard fileless summary rendering", () => {
     expect(markdownRoot).not.toBeNull();
     expect(markdownRoot!.textContent).toContain("Outcome: done.");
     expect(markdownRoot!.textContent).toContain("desktop-v0.0.387");
+    const modelIcon = container.querySelector(".agent-model-icon");
+    expect(modelIcon?.getAttribute("data-brand")).toBe("openai");
+    expect(modelIcon?.getAttribute("title")).toBe("gpt-5.6-sol");
   });
 
   it("emits bold/code/link as data-streamdown nodes — the shape the scoped CSS must target", async () => {

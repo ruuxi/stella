@@ -1151,16 +1151,14 @@ export const buildAgentContext = async (
     resolvedLlm,
     modelConfigSnapshot:
       args.modelConfigSnapshot ??
-      (args.agentType === AGENT_IDS.ORCHESTRATOR
-        ? captureEffectiveModelConfig({
-            stellaDataDir: context.stellaDataDir,
-            engine: agentEngine,
-            configuredModel: model,
-            engineModelOverride: args.spawnEngine?.model,
-            resolvedLlm,
-            reasoningEffort: effectiveReasoningEffort,
-          })
-        : undefined),
+      captureEffectiveModelConfig({
+        stellaDataDir: context.stellaDataDir,
+        engine: agentEngine,
+        configuredModel: model,
+        engineModelOverride: args.spawnEngine?.model,
+        resolvedLlm,
+        reasoningEffort: effectiveReasoningEffort,
+      }),
     reasoningEffort: effectiveReasoningEffort,
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: injectsCoreMemory

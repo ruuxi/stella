@@ -1,5 +1,6 @@
 import type { OfficePreviewRef } from "./office-preview.js";
 import type { FileChangeRecord, ProducedFileRecord } from "./file-changes.js";
+import type { AgentModelConfigSnapshot } from "./agent-engine.js";
 
 export type EventRecord = {
   _id: string;
@@ -33,6 +34,8 @@ export type ThreadActivityRecord = {
   attemptGeneration?: number;
   /** Root run that owns the thread's latest lifecycle. */
   rootRunId?: string;
+  /** Exact engine/model configuration captured for this thread's run. */
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   parentAgentId?: string;
   startedAt: number;
   completedAt?: number;

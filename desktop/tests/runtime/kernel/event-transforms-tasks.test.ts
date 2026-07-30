@@ -961,6 +961,16 @@ describe("buildActivityTasks", () => {
     expect(tasks[0]?.assistantMessages).toEqual(assistantMessages);
   });
 
+  it("projects the resolved agent model snapshot for inline provider icons", () => {
+    const modelConfigSnapshot = {
+      engine: "claude_code_local" as const,
+      routeModel: "stella/anthropic/claude-opus-4-7",
+      engineModel: "opus",
+    };
+    const tasks = buildActivityTasks([record({ modelConfigSnapshot })]);
+    expect(tasks[0]?.modelConfigSnapshot).toEqual(modelConfigSnapshot);
+  });
+
   it("excludes orchestrator-internal helper agents", () => {
     const tasks = buildActivityTasks([
       record({ threadId: "helper", agentType: "schedule" }),

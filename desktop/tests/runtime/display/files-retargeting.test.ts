@@ -16,7 +16,7 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
 // shell does at boot; without it `openDisplayPayloadTab` has no mapper.
 await import("../../../src/shell/display/payload-to-tab-spec");
 
-const { openDisplayPayloadTab } = await import(
+const { openAgentThreadTab, openDisplayPayloadTab } = await import(
   "../../../src/features/workspace-display/open-payload"
 );
 const { sidebarSections } = await import(
@@ -35,6 +35,19 @@ beforeEach(() => {
 });
 
 describe("payload → Files retargeting", () => {
+  it("opens agent threads as Work viewers in the resizable panel", () => {
+    openAgentThreadTab({
+      threadId: "agent-42",
+      conversationId: "conversation-1",
+      agentType: "general",
+      title: "Inspect the route",
+    });
+
+    expect(sidebarSections.getSnapshot().activeSection).toBe("files");
+    expect(files()).toBe("agent-thread:agent-42");
+    expect(panelOpen()).toBe(true);
+  });
+
   it("registers the viewer and puts the panel on Files", () => {
     openDisplayPayloadTab({
       kind: "markdown",

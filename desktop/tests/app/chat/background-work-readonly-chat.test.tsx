@@ -36,6 +36,10 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
         status: "running",
         attemptGeneration: 2,
         rootRunId: "root-attempt-2",
+        modelConfigSnapshot: {
+          engine: "default",
+          routeModel: "stella/anthropic/claude-sonnet-4-5",
+        },
         startedAt: 1_000,
         updatedAt: 3_000,
         assistantMessages: ["I traced the durable routing boundary."],
@@ -102,10 +106,26 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
 
     const button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="View activity"]',
+      'button[aria-label="Open agent thread"]',
     );
     expect(button).not.toBeNull();
+    const modelIcon = button?.querySelector(".agent-model-icon");
+    expect(modelIcon?.getAttribute("data-brand")).toBe("anthropic");
+    expect(modelIcon?.getAttribute("title")).toBe(
+      "stella/anthropic/claude-sonnet-4-5",
+    );
     await act(async () => button?.click());
+    expect(openAgentThreadTab).toHaveBeenCalledWith({
+      threadId: "agent-thread-1",
+      conversationId: "conversation-1",
+      agentType: "general",
+      title: "Inspect durable routing",
+    });
+
+    openAgentThreadTab.mockClear();
+    await act(async () =>
+      card?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
     expect(openAgentThreadTab).toHaveBeenCalledWith({
       threadId: "agent-thread-1",
       conversationId: "conversation-1",

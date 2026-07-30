@@ -26,7 +26,6 @@
  */
 import { useLayoutEffect, useMemo } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Eye } from "@/ui/icons";
 import {
   CHAT_ACTIVITY_SHIMMER_GROUP,
   TextShimmer,
@@ -40,6 +39,7 @@ import {
 } from "@/features/chat/lib/agent-activity-presentation";
 import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { openAgentThreadTab } from "@/features/workspace-display/open-payload";
+import { AgentModelIcon } from "./AgentModelIcon";
 import "./background-work-card.css";
 
 /** Sweep duration for the title shimmer — a touch quicker than the base
@@ -208,6 +208,18 @@ export function BackgroundWorkCard({
   );
   if (threadIds.length === 0) return null;
   const title = lifecycleTitle;
+  const openThread = (threadId: string) => {
+    const record = threadActivity.find(
+      (candidate) => candidate.threadId === threadId,
+    );
+    openAgentThreadTab({
+      threadId,
+      conversationId,
+      agentType: record?.agentType ?? "Agent",
+      title: descriptions?.[threadId]?.trim() || "Agent thread",
+    });
+  };
+  const primaryThreadId = threadIds[0]!;
 
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
@@ -229,6 +241,19 @@ export function BackgroundWorkCard({
   return (
     <div
       className="background-work-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${title} agent thread`}
+      onClick={(event) => {
+        if ((event.target as Element).closest("button, a")) return;
+        openThread(primaryThreadId);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openThread(primaryThreadId);
+      }}
       data-state={failed ? "failed" : isFollowUp ? "follow-up" : "started"}
       data-lifecycle-status={presentationStatus}
       data-working={presentationStatus === "running" ? "true" : undefined}
@@ -267,20 +292,18 @@ export function BackgroundWorkCard({
             key={threadId}
             type="button"
             className="background-work-card__chat"
-            onClick={() =>
-              openAgentThreadTab({
-                threadId,
-                conversationId,
-                agentType:
-                  threadActivity.find((record) => record.threadId === threadId)
-                    ?.agentType ?? "Agent",
-                title: descriptions?.[threadId]?.trim() || "Agent thread",
-              })
-            }
-            aria-label="View activity"
-            title="View activity"
+            onClick={(event) => {
+              event.stopPropagation();
+              openThread(threadId);
+            }}
+            aria-label="Open agent thread"
           >
-            <Eye size={14} strokeWidth={1.8} aria-hidden="true" />
+            <AgentModelIcon
+              snapshot={
+                threadActivity.find((record) => record.threadId === threadId)
+                  ?.modelConfigSnapshot
+              }
+            />
           </button>
         ))}
       </span>

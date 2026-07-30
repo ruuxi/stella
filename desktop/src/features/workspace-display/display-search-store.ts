@@ -2,7 +2,7 @@
  * Shared search-query state for the unified display library overview.
  *
  * The composer Activity/Search pill requests the mode (and focus), while the
- * input inside Home writes the debounced query. Plain module store +
+ * input inside Work writes the debounced query. Plain module store +
  * `useSyncExternalStore` keeps those separate React trees in sync without
  * prop-drilling through the shell.
  */

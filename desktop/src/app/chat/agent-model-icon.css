@@ -1,0 +1,19 @@
+.agent-model-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-weak);
+  filter: grayscale(1);
+  opacity: 0.68;
+  transition:
+    color 120ms ease,
+    filter 120ms ease,
+    opacity 120ms ease;
+}
+
+:is(button, [role="button"]):hover .agent-model-icon,
+:is(button, [role="button"]):focus-visible .agent-model-icon {
+  color: var(--text-strong);
+  filter: none;
+  opacity: 1;
+}

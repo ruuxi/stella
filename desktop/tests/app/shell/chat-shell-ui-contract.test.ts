@@ -133,25 +133,43 @@ describe("chat shell UI contracts", () => {
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
     expect(activityPill).toContain(
-      'sidebarSections.openLocation("home", null)',
+      'sidebarSections.openLocation("files", null)',
     );
     expect(activityPill).toContain("displaySearchStore.open()");
   });
 
-  it("keeps the optimized search in Home but reveals it only on request", () => {
+  it("keeps Activity search-free and reveals optimized search in Work on request", () => {
     const home = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
     );
-    expect(home).toContain("sidebar-search__field");
-    expect(home).toContain('searchMode="quick"');
-    expect(home).toContain("searchOpen ?");
-    expect(home).toContain("inputRef.current?.focus()");
-    expect(home).toContain("}, 150)");
-    expect(home).toContain("useDeferredValue(query)");
-    expect(home).toContain("const renderEmpty = useCallback(");
-    expect(home).toContain("renderEmpty={renderEmpty}");
-    expect(home).toContain('placeholder="Search activity, files, and more"');
+    const work = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/sidebar-sections/FilesSection.tsx"),
+      "utf8",
+    );
+    expect(home).not.toContain("useDisplaySearch");
+    expect(home).not.toContain("sidebar-search__field");
+    expect(work).toContain('placeholder="Search agents and files"');
+    expect(work).toContain("inputRef.current?.focus()");
+    expect(work).toContain("useDeferredValue(inputValue.trim().toLowerCase())");
+    expect(work).toContain("}, 120)");
+    expect(work).not.toContain("Add a file");
+    expect(work).toContain("return [...agents, ...files].sort(");
+  });
+
+  it("threads conversation and model identity into full-chat agent cards", () => {
+    const fullChat = fs.readFileSync(
+      path.join(SOURCE_ROOT, "app/chat/ChatColumn.tsx"),
+      "utf8",
+    );
+    const eventsStart = fullChat.lastIndexOf("<ConversationEvents");
+    const eventsEnd = fullChat.indexOf("/>", eventsStart);
+    const eventsCall = fullChat.slice(eventsStart, eventsEnd);
+    expect(eventsStart).toBeGreaterThanOrEqual(0);
+    expect(eventsCall).toContain("conversationId={conversationId}");
+    expect(eventsCall).toContain(
+      "agentModelConfigByThread={agentModelConfigByThread}",
+    );
   });
 
   it("uses emphasis instead of a selected-tab tint", () => {

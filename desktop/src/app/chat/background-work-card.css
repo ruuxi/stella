@@ -27,9 +27,23 @@
   font-size: var(--font-size-base);
   line-height: 1.3;
   overflow: hidden;
+  cursor: default;
   transition:
     background 160ms ease,
     border-color 160ms ease;
+}
+
+.background-work-card:hover {
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 16%,
+    var(--panel-surface-border)
+  );
+}
+
+.background-work-card:focus-visible {
+  outline: none;
+  box-shadow: var(--panel-surface-highlight), var(--focus-ring);
 }
 
 .background-work-card__glyph {

@@ -1,5 +1,5 @@
 /**
- * The right sidebar's tab rail: Files and Apps.
+ * The right sidebar's tab rail: Work and Apps.
  *
  * Clicking the active tab returns a drilled-in section to its default view;
  * clicking it while already at that view does nothing.
@@ -17,7 +17,6 @@ import { displaySearchStore } from "@/features/workspace-display/display-search-
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
   AppWindowMac,
-  Folder,
   LayoutList,
   Settings,
   type IconProps,
@@ -32,7 +31,7 @@ export const SIDEBAR_SECTION_META: Record<
   { label: string; Icon: ComponentType<IconProps> }
 > = {
   home: { label: "Home", Icon: LayoutList },
-  files: { label: "Files", Icon: Folder },
+  files: { label: "Work", Icon: LayoutList },
   apps: { label: "Apps", Icon: AppWindowMac },
   settings: { label: "Settings", Icon: Settings },
 };

@@ -36,6 +36,7 @@ import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-alou
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import { useDeferredChatMessages } from "@/features/chat/hooks/use-deferred-chat-messages";
+import { useAgentModelConfigs } from "@/features/chat/hooks/use-agent-model-configs";
 import {
   restoreQueuedTextToComposer,
   type QueuedUserMessage,
@@ -142,6 +143,7 @@ export const ChatColumn = memo(function ChatColumn({
     isUserScrolling,
     conversationId,
   );
+  const agentModelConfigByThread = useAgentModelConfigs(conversation.tasks);
 
   const assistantReplyPeek = useAssistantReplyPeek({
     messages,
@@ -329,6 +331,8 @@ export const ChatColumn = memo(function ChatColumn({
           <div className="chat-viewport-region">
             <ConversationEvents
               messages={messages}
+              conversationId={conversationId}
+              agentModelConfigByThread={agentModelConfigByThread}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               queuedUserMessages={conversation.streaming.queuedUserMessages}
               onCancelQueued={handleCancelQueued}

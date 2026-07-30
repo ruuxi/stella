@@ -15,6 +15,8 @@ import {
   type BackgroundTaskLifecycleIndex,
 } from "@/features/chat/lib/background-task-lifecycle";
 import { isAgentStartedEvent } from "@/features/chat/lib/event-transforms";
+import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 import { MessageSquare } from "@/ui/icons";
 import type { AgentThreadMessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import "./agent-thread-chat-tab.css";
@@ -37,10 +39,12 @@ const ThreadLifecycleCard = ({
   state,
   index,
   conversationId,
+  modelConfigByThread,
 }: {
   state: BackgroundTaskCardState;
   index: BackgroundTaskLifecycleIndex;
   conversationId: string;
+  modelConfigByThread: AgentModelConfigsByThread;
 }) => {
   if (state.status === "completed" && state.completion) {
     return (
@@ -48,6 +52,7 @@ const ThreadLifecycleCard = ({
         sections={[state.completion]}
         cardId={state.cardId}
         conversationId={conversationId}
+        modelConfigByThread={modelConfigByThread}
       />
     );
   }
@@ -142,6 +147,7 @@ export function AgentThreadChatTab({
   conversationId: string;
   agentType: string;
 }) {
+  const { records: threadActivity } = useThreadActivity(conversationId);
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -163,6 +169,16 @@ export function AgentThreadChatTab({
         ),
       ),
     [messages],
+  );
+  const modelConfigByThread = useMemo<AgentModelConfigsByThread>(
+    () =>
+      Object.fromEntries(
+        threadActivity.map((record) => [
+          record.threadId,
+          record.modelConfigSnapshot,
+        ]),
+      ),
+    [threadActivity],
   );
   const visibleMessages = useMemo(
     () =>
@@ -266,12 +282,16 @@ export function AgentThreadChatTab({
     void load("initial");
     const unsubscribe =
       window.electronAPI?.localChat?.onThreadActivityUpdated?.((payload) => {
-        if (
-          payload.conversationId === conversationId &&
-          payload.transcriptUpdate?.threadId === threadId
-        ) {
-          scheduleRefresh();
-        }
+        if (payload.conversationId !== conversationId) return;
+        const exactThreadId =
+          payload.transcriptUpdate?.threadId ??
+          payload.assistantUpdate?.threadId;
+        // Transcript/authored-update pushes identify their exact thread.
+        // Lifecycle persistence also emits a conversation-level invalidation
+        // with no thread id; refresh the one visible viewer for that signal so
+        // external-engine/finalization writes cannot leave it frozen.
+        if (exactThreadId && exactThreadId !== threadId) return;
+        scheduleRefresh();
       });
     return () => {
       disposed = true;
@@ -384,6 +404,7 @@ export function AgentThreadChatTab({
                     }
                     index={lifecycleIndex}
                     conversationId={conversationId}
+                    modelConfigByThread={modelConfigByThread}
                   />
                 ) : (
                   <>

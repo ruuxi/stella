@@ -18,6 +18,7 @@ import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 import { hasQueuedMessageEntryPlayed } from "@/features/chat/lib/message-entry-animation-state";
 
 const USER_MESSAGE_ENTER_MS = 360;
@@ -33,6 +34,7 @@ const justSentActiveUntil = new Map<string, number>();
 type Props = {
   messages: MessageRecord[];
   conversationId?: string | null;
+  agentModelConfigByThread?: AgentModelConfigsByThread;
   maxItems?: number;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
@@ -106,6 +108,7 @@ function useOneShotIds(
 export const ConversationEvents = memo(function ConversationEvents({
   messages,
   conversationId,
+  agentModelConfigByThread,
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
@@ -149,6 +152,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     <ChatTimeline
       rows={rows}
       conversationId={conversationId}
+      agentModelConfigByThread={agentModelConfigByThread}
       hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}

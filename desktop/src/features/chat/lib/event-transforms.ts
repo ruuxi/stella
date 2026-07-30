@@ -3,6 +3,7 @@ import {
   type TaskLifecycleStatus,
   type TaskToolActivity,
 } from '../../../../../runtime/contracts/agent-runtime.js'
+import type { AgentModelConfigSnapshot } from '../../../../../runtime/contracts/agent-engine.js'
 import { normalizeDisplayStatusText } from '../status-utils'
 import type {
   FileChangeRecord,
@@ -118,6 +119,8 @@ export type TaskItem = {
   attemptGeneration?: number
   /** Root run that owns the thread's latest lifecycle. */
   runId?: string
+  /** Exact engine/model configuration captured for this thread's run. */
+  modelConfigSnapshot?: AgentModelConfigSnapshot
   anchorTurnId?: string
   parentAgentId?: string
   statusText?: string
@@ -235,6 +238,9 @@ export function buildActivityTasks(
         runId:
           (latestAttemptOwns ? candidateDecoration?.runId : undefined) ??
           record.rootRunId,
+        ...(record.modelConfigSnapshot
+          ? { modelConfigSnapshot: record.modelConfigSnapshot }
+          : {}),
         anchorTurnId: decoration?.anchorTurnId,
         parentAgentId: record.parentAgentId,
         statusText: running

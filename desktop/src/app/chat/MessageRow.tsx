@@ -73,6 +73,7 @@ import type {
   AssistantRowViewModel,
   UserRowViewModel,
 } from "@/features/chat/conversation-row-types";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 
 const getAttachmentLabel = (attachment: Attachment, index: number) => {
   if (attachment.name) return attachment.name;
@@ -512,10 +513,15 @@ export const UserMessageRow = memo(
 type AssistantRowProps = {
   row: AssistantRowViewModel;
   conversationId?: string | null;
+  agentModelConfigByThread?: AgentModelConfigsByThread;
 };
 
 export const AssistantMessageRow = memo(
-  function AssistantMessageRow({ row, conversationId }: AssistantRowProps) {
+  function AssistantMessageRow({
+    row,
+    conversationId,
+    agentModelConfigByThread,
+  }: AssistantRowProps) {
     const text = row.text;
     const hasText = text.trim().length > 0;
     const hasWebSearchResults = (row.webSearchResults?.length ?? 0) > 0;
@@ -609,6 +615,7 @@ export const AssistantMessageRow = memo(
             <AgentCompletionCard
               sections={row.agentCompletion.sections}
               conversationId={conversationId ?? ""}
+              modelConfigByThread={agentModelConfigByThread}
             />
           )}
           {hasWebSearchResults && row.webSearchResults && (
@@ -671,5 +678,6 @@ export const AssistantMessageRow = memo(
   },
   (prev, next) =>
     prev.conversationId === next.conversationId &&
+    prev.agentModelConfigByThread === next.agentModelConfigByThread &&
     eventRowEqual(prev.row, next.row),
 );

@@ -49,6 +49,7 @@ import {
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
+import { useAgentModelConfigs } from "@/features/chat/hooks/use-agent-model-configs";
 import { ChatRuntimeContext } from "@/context/chat-runtime-context";
 import "./chat-sidebar.css";
 
@@ -181,6 +182,9 @@ export function ChatPanelTab({
   // read the runtime optionally. Area annotation is a full-window feature;
   // when there's no provider the "Select area" action is simply omitted.
   const chatRuntime = useContext(ChatRuntimeContext);
+  const agentModelConfigByThread = useAgentModelConfigs(
+    chatRuntime?.conversation.tasks ?? [],
+  );
   const startAnnotation = chatRuntime?.annotation.start;
   // The activity pill reads the shared chat runtime, so it can only mount
   // where a provider exists. The mini window has none, so it keeps the inline
@@ -494,6 +498,7 @@ export function ChatPanelTab({
               scroll={sidebarScrollApi}
               messages={messages}
               conversationId={conversationId}
+              agentModelConfigByThread={agentModelConfigByThread}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}

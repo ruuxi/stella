@@ -22,6 +22,20 @@
   font-family: inherit;
   font-size: var(--font-size-base);
   line-height: 1.3;
+  transition: border-color 160ms ease;
+}
+
+.agent-completion-card[role="button"]:hover {
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 16%,
+    var(--panel-surface-border)
+  );
+}
+
+.agent-completion-card[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--panel-surface-highlight), var(--focus-ring);
 }
 
 .agent-completion-card__head {
@@ -186,6 +200,15 @@
   flex-direction: column;
   gap: 7px;
   min-width: 0;
+}
+
+.agent-completion-card__section[role="button"] {
+  border-radius: var(--radius-md);
+}
+
+.agent-completion-card__section[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .agent-completion-card[data-multi="true"] .agent-completion-card__section {

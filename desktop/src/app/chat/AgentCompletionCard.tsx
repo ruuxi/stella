@@ -17,10 +17,11 @@
  *     header + its own pills per agent, never merged into one flat list.
  *   - At most 5 pills per section, then an animated "+N more" expand/collapse.
  */
-import { useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Check, ChevronDown, Eye } from "@/ui/icons";
+import { Check, ChevronDown } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 import {
   openAgentThreadTab,
   openDisplayPayloadTab,
@@ -32,6 +33,8 @@ import {
 } from "@/features/workspace-display/path-to-viewer";
 import type { ConversationFileEntry } from "@/features/workspace-display/derive-conversation-files";
 import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
+import type { AgentModelConfigSnapshot } from "../../../../runtime/contracts/agent-engine.js";
+import { AgentModelIcon } from "./AgentModelIcon";
 import { Markdown } from "./Markdown";
 import { OpenWithMenu } from "./OpenWithMenu";
 import "./agent-completion-card.css";
@@ -42,7 +45,11 @@ const PILL_CAP = 5;
 const FilePill = ({ entry }: { entry: ConversationFileEntry }) => {
   const localFilePath = localFilePathForPayload(entry.payload);
   return (
-    <span className="agent-completion-card__pill" title={entry.path}>
+    <span
+      className="agent-completion-card__pill"
+      title={entry.path}
+      onClick={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         className="agent-completion-card__pill-open"
@@ -68,11 +75,13 @@ const FilePill = ({ entry }: { entry: ConversationFileEntry }) => {
 const CompletionSection = ({
   section,
   showHeader,
-  conversationId,
+  onOpenThread,
+  modelConfigSnapshot,
 }: {
   section: AgentCompletionSection;
   showHeader: boolean;
-  conversationId: string;
+  onOpenThread: () => void;
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const total = section.files.length;
@@ -82,7 +91,30 @@ const CompletionSection = ({
   const hiddenCount = rest.length;
 
   return (
-    <div className="agent-completion-card__section">
+    <div
+      className="agent-completion-card__section"
+      role={showHeader ? "button" : undefined}
+      tabIndex={showHeader ? 0 : undefined}
+      onClick={
+        showHeader
+          ? (event) => {
+              if ((event.target as Element).closest("button, a")) return;
+              onOpenThread();
+            }
+          : undefined
+      }
+      onKeyDown={
+        showHeader
+          ? (event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              onOpenThread();
+            }
+          : undefined
+      }
+      aria-label={showHeader ? `Open ${section.title} agent thread` : undefined}
+    >
       {showHeader ? (
         <div className="agent-completion-card__section-head">
           <span
@@ -94,7 +126,10 @@ const CompletionSection = ({
           <span className="agent-completion-card__section-title">
             {section.title}
           </span>
-          <ThreadChatButton section={section} conversationId={conversationId} />
+          <ThreadChatButton
+            onOpen={onOpenThread}
+            modelConfigSnapshot={modelConfigSnapshot}
+          />
         </div>
       ) : null}
       {total > 0 ? (
@@ -139,7 +174,10 @@ const CompletionSection = ({
         <button
           type="button"
           className="agent-completion-card__more"
-          onClick={() => setExpanded((value) => !value)}
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpanded((value) => !value);
+          }}
           aria-expanded={expanded}
         >
           <ChevronDown
@@ -157,27 +195,22 @@ const CompletionSection = ({
 };
 
 const ThreadChatButton = ({
-  section,
-  conversationId,
+  onOpen,
+  modelConfigSnapshot,
 }: {
-  section: AgentCompletionSection;
-  conversationId: string;
+  onOpen: () => void;
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
 }) => (
   <button
     type="button"
     className="agent-completion-card__chat"
-    onClick={() =>
-      openAgentThreadTab({
-        threadId: section.agentId,
-        conversationId,
-        agentType: section.agentType ?? "Agent",
-        title: section.title,
-      })
-    }
-    aria-label="View activity"
-    title="View activity"
+    onClick={(event) => {
+      event.stopPropagation();
+      onOpen();
+    }}
+    aria-label="Open agent thread"
   >
-    <Eye size={14} strokeWidth={1.8} aria-hidden="true" />
+    <AgentModelIcon snapshot={modelConfigSnapshot} />
   </button>
 );
 
@@ -185,10 +218,12 @@ export function AgentCompletionCard({
   sections,
   cardId,
   conversationId,
+  modelConfigByThread,
 }: {
   sections: AgentCompletionSection[];
   cardId?: string;
   conversationId: string;
+  modelConfigByThread?: AgentModelConfigsByThread;
 }) {
   // The completion card usually replaces the (shorter) spawn card after the
   // run has settled — no stream text notify fires, so tell the scroll
@@ -196,6 +231,16 @@ export function AgentCompletionCard({
   useLayoutEffect(() => {
     notifyChatContentGrowth();
   }, []);
+  const openSection = useCallback(
+    (section: AgentCompletionSection) =>
+      openAgentThreadTab({
+        threadId: section.agentId,
+        conversationId,
+        agentType: section.agentType ?? "Agent",
+        title: section.title,
+      }),
+    [conversationId],
+  );
 
   // Every completion renders — a fileless agent still finished its task, so
   // the card must not depend on produced files (files only enrich it).
@@ -214,10 +259,34 @@ export function AgentCompletionCard({
   const artifactIds = visible.flatMap((section) =>
     section.files.map((entry) => entry.path),
   );
+  const primarySection = visible[0]!;
 
   return (
     <div
       className="agent-completion-card"
+      role={!multi ? "button" : undefined}
+      tabIndex={!multi ? 0 : undefined}
+      aria-label={
+        !multi ? `Open ${primarySection.title} agent thread` : undefined
+      }
+      onClick={
+        !multi
+          ? (event) => {
+              if ((event.target as Element).closest("button, a")) return;
+              openSection(primarySection);
+            }
+          : undefined
+      }
+      onKeyDown={
+        !multi
+          ? (event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openSection(primarySection);
+            }
+          : undefined
+      }
       data-multi={multi ? "true" : undefined}
       data-activity-card-id={cardId}
       data-agent-ids={visible.map((section) => section.agentId).join(",")}
@@ -235,8 +304,8 @@ export function AgentCompletionCard({
             {visible[0]!.title}
           </span>
           <ThreadChatButton
-            section={visible[0]!}
-            conversationId={conversationId}
+            onOpen={() => openSection(primarySection)}
+            modelConfigSnapshot={modelConfigByThread?.[primarySection.agentId]}
           />
         </div>
       ) : null}
@@ -245,7 +314,8 @@ export function AgentCompletionCard({
           key={section.startEventId ?? section.agentId}
           section={section}
           showHeader={multi}
-          conversationId={conversationId}
+          onOpenThread={() => openSection(section)}
+          modelConfigSnapshot={modelConfigByThread?.[section.agentId]}
         />
       ))}
     </div>

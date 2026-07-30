@@ -1,5 +1,5 @@
 /**
- * The right sidebar's three primary sections plus its Settings utility surface,
+ * The right sidebar's primary sections plus its Settings utility surface,
  * and the "where was I" memory each one keeps.
  *
  * This sits beside `tab-store` rather than inside it because the two answer
@@ -11,7 +11,7 @@
  * which section the user is looking at.
  *
  * Per-section memory is the whole point of the split. Selecting a section never
- * resets it: reopening Files returns to the file you had open, reopening Apps
+ * resets it: reopening Work returns to the item you had open, reopening Apps
  * returns to the running app. Only an explicit in-section back gesture
  * (`clearLocation`) returns a section to its list.
  */
@@ -68,8 +68,8 @@ export const resolvePanelSidebarSection = (
  * Per-section sub-location. `null` always means "show this section's default
  * list view".
  *
- * - `home`  — a display-tab id for an agent-thread drill-down.
- * - `files` — a display-tab id for the open artifact.
+ * - `home`  — reserved legacy Activity location.
+ * - `files` — a display-tab id for an open agent thread or artifact.
  * - `apps`  — a user-app slug.
  * - `settings` — the selected Settings destination.
  */

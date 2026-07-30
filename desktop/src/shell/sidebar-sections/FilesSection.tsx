@@ -1,19 +1,30 @@
 /**
- * Files — the merged Canvas + Media surface.
+ * Work — one recent, searchable index of agent threads and files.
  *
- * One tab for everything Stella can show you: HTML canvases, images, audio,
- * video, PDFs, markdown, office documents, diffs. Its default view is a list;
- * opening an entry renders it in place.
- *
- * Sub-location (`sidebarSections` → `locations.files`) is the display-tab id of
- * the open artifact, or `null` for the list. Artifact payloads arriving from an
- * agent register a viewer in `displayTabs` and point this section at it, so the
- * workspace-display payload system keeps working unchanged — it just targets
- * Files now instead of separate Canvas and Media tabs.
+ * The persisted section id remains `files` so existing locations migrate
+ * without churn. Its default view merges both sources by their latest update;
+ * selecting either kind opens its viewer inside the resizable right sidebar.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { DropOverlay } from "@/app/chat/DropOverlay";
+import { useChatRuntime } from "@/context/use-chat-runtime";
+import { useUiState } from "@/context/ui-state";
+import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import {
+  displaySearchStore,
+  useDisplaySearchFocusRequest,
+  useDisplaySearchOpen,
+  useDisplaySearchQuery,
+} from "@/features/workspace-display/display-search-store";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import {
   forgetArtifactFileEntry,
@@ -21,31 +32,37 @@ import {
   type FileEntry,
 } from "@/features/workspace-display/files-index";
 import {
-  SUPPORTED_MEDIA_ACCEPT,
   dataTransferHasSupportedMedia,
   importLocalMedia,
   isSupportedMediaFile,
 } from "@/features/workspace-display/media-files";
-import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
+import {
+  openAgentThreadTab,
+  openDisplayPayloadTab,
+} from "@/features/workspace-display/open-payload";
 import {
   sidebarSections,
+  useActiveSidebarSection,
   useSidebarSectionLocation,
 } from "@/features/workspace-display/sidebar-sections";
-import { useDisplayTabList } from "@/features/workspace-display/tab-store";
+import {
+  useDisplayPanelOpen,
+  useDisplayTabList,
+} from "@/features/workspace-display/tab-store";
 import { notifyMediaGenerationError } from "@/global/billing/paid-media-tier-toast";
 import {
   loadCanvasHtmlHistory,
   removeCanvasHtmlItem,
 } from "@/shell/display/canvas-tab/canvas-items";
 import { removeGeneratedMediaItem } from "@/shell/display/payload-to-tab-spec";
-import { ChevronLeft, Plus, X } from "@/ui/icons";
+import { ChevronLeft, Search, X } from "@/ui/icons";
 import { DeferredDisplayContent } from "./DeferredDisplayContent";
 import "./files-section.css";
 
-/**
- * Route a removal back to the store that owns the artifact. Canvas and media
- * keep their own tombstones; everything else is only ever known to the index.
- */
+type WorkItem =
+  | { kind: "agent"; id: string; timestamp: number; task: TaskItem }
+  | { kind: "file"; id: string; timestamp: number; entry: FileEntry };
+
 const forgetEntry = (entry: FileEntry): void => {
   switch (entry.source) {
     case "canvas":
@@ -59,35 +76,86 @@ const forgetEntry = (entry: FileEntry): void => {
   }
 };
 
-function FilesList() {
+const workItemLabel = (item: WorkItem): string =>
+  item.kind === "agent" ? item.task.description : item.entry.title;
+
+const taskTimestamp = (task: TaskItem): number =>
+  task.lastUpdatedAtMs || task.completedAtMs || task.startedAtMs;
+
+function WorkList() {
+  const chat = useChatRuntime();
+  const { state } = useUiState();
   const entries = useFileEntries();
+  const panelOpen = useDisplayPanelOpen();
+  const activeSection = useActiveSidebarSection();
+  const searchOpen = useDisplaySearchOpen();
+  const storedQuery = useDisplaySearchQuery();
+  const focusRequest = useDisplaySearchFocusRequest();
+  const [inputValue, setInputValue] = useState(storedQuery);
+  const deferredQuery = useDeferredValue(inputValue.trim().toLowerCase());
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draggingMedia, setDraggingMedia] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
 
-  // Canvases written by an earlier run are on disk but not in the persisted
-  // index until they're enumerated, so the list asks for them once.
   useEffect(() => {
     void loadCanvasHtmlHistory();
   }, []);
 
-  const handlePickFile = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  useEffect(() => {
+    if (!searchOpen) {
+      setInputValue("");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      displaySearchStore.setQuery(inputValue);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [inputValue, searchOpen]);
 
-  const handleFileChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-      if (!file) return;
-      try {
-        await importLocalMedia(file);
-      } catch (err) {
-        notifyMediaGenerationError(err);
-      }
-    },
-    [],
-  );
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequest, searchOpen]);
+
+  useEffect(() => {
+    if (searchOpen && (!panelOpen || activeSection !== "files")) {
+      displaySearchStore.close();
+    }
+  }, [activeSection, panelOpen, searchOpen]);
+
+  const items = useMemo(() => {
+    const query = searchOpen ? deferredQuery : "";
+    const agents: WorkItem[] = chat.conversation.tasks
+      .filter((task) => {
+        if (!query) return true;
+        return `${task.description} ${task.agentType}`
+          .toLowerCase()
+          .includes(query);
+      })
+      .map((task) => ({
+        kind: "agent",
+        id: `agent:${task.id}`,
+        timestamp: taskTimestamp(task),
+        task,
+      }));
+    const files: WorkItem[] = entries
+      .filter((entry) => {
+        if (!query) return true;
+        return `${entry.title} ${entry.filePath ?? ""}`
+          .toLowerCase()
+          .includes(query);
+      })
+      .map((entry) => ({
+        kind: "file",
+        id: `file:${entry.id}`,
+        timestamp: entry.createdAt,
+        entry,
+      }));
+    return [...agents, ...files].sort(
+      (a, b) => b.timestamp - a.timestamp || a.id.localeCompare(b.id),
+    );
+  }, [chat.conversation.tasks, deferredQuery, entries, searchOpen]);
 
   const importDroppedFiles = useCallback(async (files: File[]) => {
     const supported = files.filter(isSupportedMediaFile);
@@ -106,119 +174,136 @@ function FilesList() {
           new Error("Some files were skipped because they are not media."),
         );
       }
-    } catch (err) {
-      notifyMediaGenerationError(err);
+    } catch (error) {
+      notifyMediaGenerationError(error);
     }
   }, []);
-
-  const handleDragEnter = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasSupportedMedia(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragCounterRef.current += 1;
-      if (dragCounterRef.current === 1) setDraggingMedia(true);
-    },
-    [],
-  );
-
-  const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!dataTransferHasSupportedMedia(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    },
-    [],
-  );
-
-  const handleDragLeave = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!draggingMedia) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragCounterRef.current -= 1;
-      if (dragCounterRef.current <= 0) {
-        dragCounterRef.current = 0;
-        setDraggingMedia(false);
-      }
-    },
-    [draggingMedia],
-  );
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      dragCounterRef.current = 0;
-      setDraggingMedia(false);
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length === 0) return;
-      void importDroppedFiles(files);
-    },
-    [importDroppedFiles],
-  );
 
   return (
     <div
       className="files-list"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      data-search-open={searchOpen || undefined}
+      onDragEnter={(event) => {
+        if (!dataTransferHasSupportedMedia(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dragCounterRef.current += 1;
+        if (dragCounterRef.current === 1) setDraggingMedia(true);
+      }}
+      onDragOver={(event) => {
+        if (!dataTransferHasSupportedMedia(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!draggingMedia) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dragCounterRef.current -= 1;
+        if (dragCounterRef.current <= 0) {
+          dragCounterRef.current = 0;
+          setDraggingMedia(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragCounterRef.current = 0;
+        setDraggingMedia(false);
+        const files = Array.from(event.dataTransfer.files);
+        if (files.length > 0) void importDroppedFiles(files);
+      }}
     >
       <DropOverlay visible={draggingMedia} variant="sidebar" />
+      {searchOpen ? (
+        <div className="files-list__search">
+          <Search size={15} strokeWidth={1.75} aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            placeholder="Search agents and files"
+            onChange={(event) => setInputValue(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") displaySearchStore.close();
+            }}
+            aria-label="Search agents and files"
+          />
+        </div>
+      ) : null}
 
-      <div className="files-list__head">
-        <button
-          type="button"
-          className="files-list__import"
-          onClick={handlePickFile}
-          title="Add a file from your computer"
-        >
-          <Plus size={14} strokeWidth={2} aria-hidden="true" />
-          Add a file
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={SUPPORTED_MEDIA_ACCEPT}
-          className="files-list__file-input"
-          onChange={handleFileChange}
-        />
-      </div>
-
-      {entries.length === 0 ? (
+      {items.length === 0 ? (
         <div className="sidebar-section__empty">
-          Files Stella creates or opens will show up here.
+          {deferredQuery
+            ? "No agents or files match that search."
+            : "Agent threads and files will show up here."}
         </div>
       ) : (
         <div className="sidebar-section__scroll">
           <ul className="files-list__items">
-            {entries.map((entry) => (
-              <li key={entry.id} className="files-list__item">
-                <button
-                  type="button"
-                  className="files-list__open"
-                  onClick={() => openDisplayPayloadTab(entry.payload)}
-                  title={entry.filePath ?? entry.title}
-                >
-                  <span className="files-list__icon" aria-hidden="true">
-                    <DisplayTabIcon kind={entry.kind} size={18} />
-                  </span>
-                  <span className="files-list__title">{entry.title}</span>
-                </button>
-                <button
-                  type="button"
-                  className="files-list__remove"
-                  onClick={() => forgetEntry(entry)}
-                  aria-label={`Remove ${entry.title}`}
-                  title={`Remove ${entry.title}`}
-                >
-                  <X size={12} strokeWidth={2.2} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+            {items.map((item) =>
+              item.kind === "agent" ? (
+                <li key={item.id} className="files-list__item">
+                  <button
+                    type="button"
+                    className="files-list__open"
+                    onClick={() =>
+                      state.conversationId
+                        ? openAgentThreadTab({
+                            threadId: item.task.id,
+                            conversationId: state.conversationId,
+                            agentType: item.task.agentType,
+                            title:
+                              item.task.description.trim() ||
+                              item.task.agentType ||
+                              "Agent thread",
+                          })
+                        : undefined
+                    }
+                    title={workItemLabel(item)}
+                  >
+                    <span className="files-list__icon" aria-hidden="true">
+                      <AgentLifecycleStatusIcon
+                        status={item.task.status}
+                        size={17}
+                        strokeWidth={1.75}
+                      />
+                    </span>
+                    <span className="files-list__title">
+                      {workItemLabel(item)}
+                    </span>
+                    <span className="files-list__meta">Agent</span>
+                  </button>
+                </li>
+              ) : (
+                <li key={item.id} className="files-list__item">
+                  <button
+                    type="button"
+                    className="files-list__open"
+                    onClick={() => openDisplayPayloadTab(item.entry.payload)}
+                    title={item.entry.filePath ?? item.entry.title}
+                  >
+                    <span className="files-list__icon" aria-hidden="true">
+                      <DisplayTabIcon kind={item.entry.kind} size={17} />
+                    </span>
+                    <span className="files-list__title">
+                      {workItemLabel(item)}
+                    </span>
+                    <span className="files-list__meta">File</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="files-list__remove"
+                    onClick={() => forgetEntry(item.entry)}
+                    aria-label={`Remove ${item.entry.title}`}
+                    title={`Remove ${item.entry.title}`}
+                  >
+                    <X size={12} strokeWidth={2.2} aria-hidden="true" />
+                  </button>
+                </li>
+              ),
+            )}
           </ul>
         </div>
       )}
@@ -230,13 +315,11 @@ export function FilesSection() {
   const openTabId = useSidebarSectionLocation("files");
   const { tabs } = useDisplayTabList();
 
-  // A remembered id can outlive its tab (the registry is not persisted across
-  // launches). Falling back to the list is the graceful degradation.
   const openTab = openTabId
     ? (tabs.find((tab) => tab.id === openTabId) ?? null)
     : null;
 
-  if (!openTab) return <FilesList />;
+  if (!openTab) return <WorkList />;
 
   return (
     <>
@@ -245,10 +328,10 @@ export function FilesSection() {
           type="button"
           className="sidebar-section__back"
           onClick={() => sidebarSections.clearLocation("files")}
-          aria-label="Back to files"
+          aria-label="Back to work"
         >
           <ChevronLeft size={15} strokeWidth={1.75} aria-hidden="true" />
-          Files
+          Work
         </button>
         <span className="sidebar-section__viewer-title">{openTab.title}</span>
       </div>

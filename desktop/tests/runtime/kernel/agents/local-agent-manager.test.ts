@@ -200,6 +200,7 @@ describe("LocalAgentManager Exec fs locking", () => {
 
   it("threads per-spawn model and engine selections into the agent context fetch", async () => {
     const contextFetches: Array<Record<string, unknown>> = [];
+    const savedRecords: PersistedAgentRecord[] = [];
     const manager = new LocalAgentManager({
       maxConcurrent: 1,
       fetchAgentContext: async (args) => {
@@ -209,10 +210,23 @@ describe("LocalAgentManager Exec fs locking", () => {
           spawnEngine: args.spawnEngine,
           spawnReasoningEffort: args.spawnReasoningEffort,
         });
+        const modelConfigSnapshot =
+          args.spawnEngine?.engine === "claude_code_local"
+            ? {
+                engine: "claude_code_local" as const,
+                routeModel: "anthropic/claude-opus-4-7",
+                engineModel: "opus",
+              }
+            : {
+                engine: "default" as const,
+                routeModel: args.model ?? "stella/standard",
+                reasoningEffort: args.spawnReasoningEffort,
+              };
         return {
           systemPrompt: "",
           dynamicContext: "",
           maxAgentDepth: 3,
+          modelConfigSnapshot,
         };
       },
       runSubagent: async (args) => ({
@@ -224,6 +238,9 @@ describe("LocalAgentManager Exec fs locking", () => {
       completeCloudAgentRecord: async () => undefined,
       getCloudAgentRecord: async () => null,
       cancelCloudAgentRecord: async () => ({ canceled: false }),
+      saveAgentRecord: (record) => {
+        savedRecords.push(record);
+      },
     });
 
     const modelTask = await manager.createAgent({
@@ -262,6 +279,26 @@ describe("LocalAgentManager Exec fs locking", () => {
         spawnReasoningEffort: undefined,
       },
     ]);
+    expect(savedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: modelTask.threadId,
+          modelConfigSnapshot: {
+            engine: "default",
+            routeModel: "stella/light",
+            reasoningEffort: "high",
+          },
+        }),
+        expect.objectContaining({
+          threadId: engineTask.threadId,
+          modelConfigSnapshot: {
+            engine: "claude_code_local",
+            routeModel: "anthropic/claude-opus-4-7",
+            engineModel: "opus",
+          },
+        }),
+      ]),
+    );
   });
 
   it("exposes active background agent root runs", async () => {

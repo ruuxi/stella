@@ -3,7 +3,7 @@
  * sits in the context chip row above the composer.
  *
  * It stays visible whatever the right sidebar is doing, so search is always
- * one click away from the composer. While the sidebar is open on Home, that
+ * one click away from the composer. While the sidebar is open on Work, that
  * section owns live progress and the pill stays in its Search state.
  *
  * The pill does double duty:
@@ -16,7 +16,7 @@
  *     state before quietly reverting to "Search" — a minimum dwell so a quick
  *     task doesn't just flash its progress.
  *
- * Clicking it (in any state) opens the sidebar's Home search.
+ * Clicking it (in any state) opens search in the sidebar's unified Work tab.
  */
 import {
   memo,
@@ -196,7 +196,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
 }: {
   state: PillState;
   runningCount: number;
-  /** Whether the sidebar is already showing Home. */
+  /** Whether the sidebar is already showing Work search. */
   open: boolean;
 }) {
   const label = getActivityPillLabel(state, runningCount);
@@ -220,7 +220,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
       data-state={state}
       data-open={open || undefined}
       onClick={() => {
-        sidebarSections.openLocation("home", null);
+        sidebarSections.openLocation("files", null);
         displaySearchStore.open();
       }}
       aria-label={state === "idle" ? "Search" : `${label} — open search`}
@@ -244,7 +244,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const { state, runningCount } = useActivityPillState(tasks);
   const displayedState = getDisplayedActivityPillState(
     state,
-    panelOpen && activeSection === "home",
+    panelOpen && activeSection === "files",
   );
 
   return (
@@ -259,7 +259,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
       <ActivityPillBody
         state={displayedState}
         runningCount={runningCount}
-        open={searchOpen && panelOpen && activeSection === "home"}
+        open={searchOpen && panelOpen && activeSection === "files"}
       />
     </motion.div>
   );

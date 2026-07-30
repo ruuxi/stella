@@ -5,6 +5,7 @@ import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { ConversationEvents } from "@/app/chat/ConversationEvents";
 import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
+import type { AgentModelConfigsByThread } from "@/features/chat/hooks/use-agent-model-configs";
 import "@/app/chat/full-shell.chat.css";
 import "./compact-conversation.css";
 
@@ -28,6 +29,7 @@ type CompactConversationSurfaceProps = {
   scroll: ChatColumnScroll;
   messages: MessageRecord[];
   conversationId?: string | null;
+  agentModelConfigByThread?: AgentModelConfigsByThread;
   maxItems?: number;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
@@ -52,6 +54,7 @@ export function CompactConversationSurface({
   scroll,
   messages,
   conversationId,
+  agentModelConfigByThread,
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
@@ -86,6 +89,7 @@ export function CompactConversationSurface({
           <ConversationEvents
             messages={paintedMessages}
             conversationId={conversationId}
+            agentModelConfigByThread={agentModelConfigByThread}
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}

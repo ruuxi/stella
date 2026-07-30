@@ -79,7 +79,7 @@ const recordsSignature = (records: ThreadActivityRecord[]): string =>
   records
     .map(
       (record) =>
-        `${record.threadId}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${record.assistantMessagesUpdatedSequence ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
+        `${record.threadId}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${JSON.stringify(record.modelConfigSnapshot ?? null)}\u0000${record.assistantMessagesUpdatedSequence ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
     )
     .join("\n");
 

@@ -2225,6 +2225,11 @@ describe("thread activity rows", () => {
       agentDepth: 0,
       status: "running",
       rootRunId: "root-1",
+      modelConfigSnapshot: {
+        engine: "codex_cli",
+        routeModel: "stella/openai/gpt-5.6-sol",
+        engineModel: "gpt-5.6-sol",
+      },
       startedAt: 1_000,
       completedAt: null,
       updatedAt: 1_500,
@@ -2264,6 +2269,11 @@ describe("thread activity rows", () => {
       status: "running",
       description: "Research flights",
       rootRunId: "root-1",
+      modelConfigSnapshot: {
+        engine: "codex_cli",
+        routeModel: "stella/openai/gpt-5.6-sol",
+        engineModel: "gpt-5.6-sol",
+      },
       startedAt: 1_000,
     });
     expect(rows[1]).toMatchObject({

@@ -5067,6 +5067,7 @@ export class SessionStore {
         a.status,
         a.attempt_generation,
         a.parent_agent_id,
+        a.model_config_json,
         a.started_at,
         a.completed_at,
         substr(a.result, 1, 2000) AS result,
@@ -5086,6 +5087,7 @@ export class SessionStore {
       status: ThreadActivityRecord["status"];
       attempt_generation: number;
       parent_agent_id: string | null;
+      model_config_json: string | null;
       started_at: number;
       completed_at: number | null;
       result: string | null;
@@ -5112,6 +5114,9 @@ export class SessionStore {
       AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
     );
     return rows.map((row) => {
+      const modelConfigSnapshot = parseJsonValue<
+        ThreadActivityRecord["modelConfigSnapshot"]
+      >(row.model_config_json);
       const assistantEntries = assistantMessagesByThread.get(row.thread_id);
       const latestAssistantEntry =
         assistantEntries?.[assistantEntries.length - 1];
@@ -5123,6 +5128,7 @@ export class SessionStore {
         status: row.status,
         attemptGeneration: row.attempt_generation,
         ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+        ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
         startedAt: row.started_at,
         ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
