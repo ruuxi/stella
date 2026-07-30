@@ -128,13 +128,18 @@ const THEME_REGISTRY_MODULE_RE = /^desktop\/src\/shared\/theme\/themes\/[^/]+\.t
 
 /**
  * Renderer files whose ADDITION or DELETION changes an `import.meta.glob`
- * expansion in a registry module. Editing such a file is plain renderer HMR,
- * but creating or deleting one requires re-transforming the glob *importer* —
- * a module the apply batch never names. Targeted `reloadModule` cannot reach
- * it (a brand-new file has no module-graph entry at all), and the synthetic
- * watcher-event path resolves asynchronously after the apply's client-update
- * release window closes, so its importGlob `update` gets suppressed. The only
- * robust apply class for these changes is a full window reload.
+ * expansion in a registry module. Creating or deleting one requires
+ * re-transforming the glob *importer* — a module the apply batch never names.
+ * Targeted `reloadModule` cannot reach it (a brand-new file has no module-graph
+ * entry at all), and the synthetic watcher-event path resolves asynchronously
+ * after the apply's client-update release window closes, so its importGlob
+ * `update` gets suppressed. The only robust apply class for these changes is a
+ * full window reload.
+ *
+ * User-app modules also need that reload when edited in place: the one-file
+ * contract exports both a React component and an object-valued `meta`, which
+ * makes React Fast Refresh invalidate the boundary. A retained, already-open
+ * app can otherwise keep rendering its previous component implementation.
  *
  * Keep in sync with the `import.meta.glob` call sites:
  *   - desktop/src/app/_user/user-apps-registry.ts   -> "./*.tsx"
@@ -143,8 +148,9 @@ const THEME_REGISTRY_MODULE_RE = /^desktop\/src\/shared\/theme\/themes\/[^/]+\.t
  * too, but those are already unconditionally in the full-reload class above;
  * desktop/src/routes/ additions flow through routeTree.gen.ts instead.)
  */
+const USER_APP_MODULE_RE = /^desktop\/src\/app\/_user\/[^/]+\.tsx$/;
 const GLOB_EXPANSION_MEMBER_RES: ReadonlyArray<RegExp> = [
-  /^desktop\/src\/app\/_user\/[^/]+\.tsx$/,
+  USER_APP_MODULE_RE,
   /^desktop\/src\/shared\/i18n\/locales\/[^/]+\.json$/,
 ];
 
@@ -344,17 +350,23 @@ export const isGlobExpansionMemberPath = (repoRelativePath: string): boolean => 
   return false;
 };
 
+const isUserAppModulePath = (repoRelativePath: string): boolean => {
+  if (!repoRelativePath) return false;
+  const normalized = stripTrailingSlash(toPosix(repoRelativePath));
+  return USER_APP_MODULE_RE.test(normalized);
+};
+
 /**
- * Change-kind-aware variant of `isFullWindowReloadRelevantPath`: a created or
- * deleted glob-expansion member escalates to the full-window-reload apply
- * class, while an in-place modification of the same path stays in the
- * targeted renderer-HMR class.
+ * Change-kind-aware variant of `isFullWindowReloadRelevantPath`: user-app
+ * modules always escalate to the full-window-reload apply class, while other
+ * glob-expansion members do so only when created or deleted.
  */
 export const isFullWindowReloadRelevantChange = (
   repoRelativePath: string,
   changeKind: SelfModChangeKind,
 ): boolean =>
   isFullWindowReloadRelevantPath(repoRelativePath) ||
+  isUserAppModulePath(repoRelativePath) ||
   (changeKind !== "modify" && isGlobExpansionMemberPath(repoRelativePath));
 
 export const isRestartRequiredNonHmrPath = (

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  isFullWindowReloadRelevantChange,
   isFullWindowReloadRelevantPath,
   isRendererHmrRelevantPath,
   isRestartRequiredNonHmrPath,
@@ -214,6 +215,40 @@ describe("isFullWindowReloadRelevantPath", () => {
       isFullWindowReloadRelevantPath(
         "desktop/src/app/launch-checklist/LaunchChecklistView.tsx",
       ),
+    ).toBe(false);
+  });
+});
+
+describe("isFullWindowReloadRelevantChange", () => {
+  it("escalates an existing user-app modification to a full window reload", () => {
+    expect(
+      isFullWindowReloadRelevantChange(
+        "desktop/src/app/_user/tower-reader.tsx",
+        "modify",
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves glob create/delete escalation without broadening other modifications", () => {
+    const localePath = "desktop/src/shared/i18n/locales/en.json";
+
+    expect(
+      isFullWindowReloadRelevantChange(
+        "desktop/src/app/_user/tower-reader.tsx",
+        "create",
+      ),
+    ).toBe(true);
+    expect(
+      isFullWindowReloadRelevantChange(
+        "desktop/src/app/_user/tower-reader.tsx",
+        "delete",
+      ),
+    ).toBe(true);
+    expect(isFullWindowReloadRelevantChange(localePath, "create")).toBe(true);
+    expect(isFullWindowReloadRelevantChange(localePath, "delete")).toBe(true);
+    expect(isFullWindowReloadRelevantChange(localePath, "modify")).toBe(false);
+    expect(
+      isFullWindowReloadRelevantChange("desktop/src/app.tsx", "modify"),
     ).toBe(false);
   });
 });
