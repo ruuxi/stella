@@ -28,6 +28,9 @@ import { displayTabs } from "@/features/workspace-display/tab-store";
 vi.mock("@/shell/workspace/WorkspaceSections", () => ({
   WorkspaceSections: () => <div data-stub="workspace-sections" />,
 }));
+vi.mock("@/shell/sidebar-sections/FilesSection", () => ({
+  FilesSection: () => <div data-stub="files-section" />,
+}));
 vi.mock("@/app/apps/PersistentUserAppsHost", () => ({
   PersistentUserAppsHost: () => <div data-stub="apps-host" />,
 }));
