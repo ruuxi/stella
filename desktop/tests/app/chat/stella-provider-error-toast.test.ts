@@ -94,4 +94,93 @@ describe("llm route failure → toast", () => {
       secondaryAction: expect.any(Object),
     });
   });
+
+  it.each([
+    {
+      reason: "Context overflow: model context window is 128000 tokens.",
+      title: "This chat is too long",
+    },
+    {
+      reason: "Agent did not produce activity for 300s.",
+      title: "The response timed out",
+    },
+    {
+      reason: "ECONNRESET: socket connection closed unexpectedly",
+      title: "Stella could not connect",
+    },
+    {
+      reason:
+        'Provider aborted the response (stop reason: "refusal"). This is a provider-side refusal.',
+      title: "The model could not answer that",
+    },
+    {
+      reason: "HTTP status 401: invalid provider credentials",
+      title: "Provider access needed",
+    },
+    {
+      reason: "HTTP status 422: request validation failed",
+      title: "Stella could not send that request",
+    },
+    {
+      reason: "HTTP status 503: upstream model unavailable",
+      title: "Stella is having trouble connecting",
+    },
+    {
+      reason: "HTTP status 429: capacity exhausted",
+      title: "Model usage limit reached",
+    },
+    {
+      reason: "Managed-model limits reached for this billing period.",
+      title: "Stella needs more room",
+    },
+    {
+      reason: "Unknown model selected-model-v9",
+      title: "Model not available on your plan",
+    },
+    {
+      reason: "Invalid token",
+      title: "Please sign in again",
+    },
+    {
+      reason: "Sign in required to continue",
+      title: "Sign in to keep using Stella",
+    },
+  ])("maps $reason to a readable category", ({ reason, title }) => {
+    expect(resolveStellaProviderErrorToast(reason)).toMatchObject({
+      title,
+      variant: "error",
+    });
+  });
+
+  it("shows a cleaned real reason for an unmapped error", () => {
+    expect(
+      resolveStellaProviderErrorToast(
+        "[ERROR 409:CONFLICT] The response was already finalized.",
+      ),
+    ).toMatchObject({
+      title: "Stella could not finish",
+      description: "The response was already finalized.",
+      variant: "error",
+      duration: 10000,
+    });
+  });
+
+  it("unwraps JSON error envelopes and redacts secrets", () => {
+    const toast = resolveStellaProviderErrorToast(
+      'Error: {"error":{"message":"Workspace sync failed for token=sk-supersecretvalue123."}}',
+    );
+
+    expect(toast.title).toBe("Stella could not finish");
+    expect(toast.description).toBe(
+      "Workspace sync failed for token=[redacted]",
+    );
+    expect(toast.description).not.toContain("supersecret");
+  });
+
+  it("keeps opaque unknown failures readable without inventing a cause", () => {
+    expect(resolveStellaProviderErrorToast("Unknown error")).toMatchObject({
+      title: "Stella could not finish",
+      description: "Stella could not finish this response. Please try again.",
+    });
+  });
 });
