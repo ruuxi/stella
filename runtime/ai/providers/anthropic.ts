@@ -30,6 +30,7 @@ import type {
 import { sanitizeInlineImagePayload } from "../utils/image-payload.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
+import { splitDeferredTools } from "../utils/deferred-tools.js";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
 import { anomalousStreamStopError, pausedTurnStopMessage, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
@@ -192,8 +193,21 @@ function getAnthropicCompat(model: Model<"anthropic-messages">): Required<Anthro
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+		supportsToolReferences: model.compat?.supportsToolReferences ?? defaultSupportsToolReferences(model),
 	};
 }
+
+const defaultSupportsToolReferences = (model: Model<"anthropic-messages">): boolean => {
+	if (model.provider !== "anthropic" || model.id.toLowerCase().includes("haiku")) {
+		return false;
+	}
+	const id = model.id.split("/").at(-1)?.replace(/\./g, "-") ?? model.id;
+	const version = id.match(/^claude-(?:opus|sonnet|fable)-(\d+)(?:-(\d+))?(?:-|$)/);
+	if (!version) return false;
+	const major = Number(version[1]);
+	const minor = version[2] && version[2].length < 8 ? Number(version[2]) : 0;
+	return major > 4 || (major === 4 && minor >= 5);
+};
 
 export interface AnthropicOptions extends StreamOptions {
 	/**
@@ -1122,9 +1136,26 @@ function buildParams(
 	options?: AnthropicOptions,
 ): MessageCreateParamsStreaming {
 	const { cacheControl } = getCacheControl(model, options?.cacheRetention);
+	const compat = getAnthropicCompat(model);
+	const normalizeToolName = isOAuthToken ? toClaudeCodeName : (name: string) => name;
+	const toolPlacement = splitDeferredTools(context, compat.supportsToolReferences, normalizeToolName);
+	let immediateTools = toolPlacement.immediate;
+	let deferredTools = [...toolPlacement.deferred.values()];
+	if (immediateTools.length === 0 && deferredTools.length > 0) {
+		immediateTools = deferredTools;
+		deferredTools = [];
+	}
+	const deferredToolNames = new Set(deferredTools.map((tool) => normalizeToolName(tool.name)));
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
-		messages: convertMessages(context.messages, model, isOAuthToken, cacheControl),
+		messages: convertMessages(
+			context.messages,
+			model,
+			isOAuthToken,
+			cacheControl,
+			deferredToolNames,
+			normalizeToolName,
+		),
 		max_tokens: options?.maxTokens || (model.maxTokens / 3) | 0,
 		stream: true,
 	};
@@ -1161,13 +1192,11 @@ function buildParams(
 		params.temperature = options.temperature;
 	}
 
-	if (context.tools && context.tools.length > 0) {
-		params.tools = convertTools(
-			context.tools,
-			isOAuthToken,
-			getAnthropicCompat(model).supportsEagerToolInputStreaming,
-			cacheControl,
-		);
+	if (immediateTools.length > 0 || deferredTools.length > 0) {
+		params.tools = [
+			...convertTools(immediateTools, isOAuthToken, compat.supportsEagerToolInputStreaming, cacheControl),
+			...convertTools(deferredTools, isOAuthToken, compat.supportsEagerToolInputStreaming, undefined, true),
+		];
 	}
 
 	// Configure thinking mode: adaptive (Opus 4.6+ and Sonnet 4.6),
@@ -1542,8 +1571,11 @@ export function convertMessages(
 	model: Model<"anthropic-messages">,
 	isOAuthToken: boolean,
 	cacheControl?: CacheControlEphemeral,
+	deferredToolNames: ReadonlySet<string> = new Set(),
+	normalizeToolName: (name: string) => string = (name) => name,
 ): MessageParam[] {
 	const params: MessageParam[] = [];
+	const loadedToolNames = new Set<string>();
 
 	// Transform messages for cross-provider compatibility
 	const transformedMessages = stripDanglingThinkingFromLatestAssistant(
@@ -1612,25 +1644,32 @@ export function convertMessages(
 		} else if (msg.role === "toolResult") {
 			// Collect all consecutive toolResult messages, needed for z.ai Anthropic endpoint
 			const toolResults: ContentBlockParam[] = [];
+			const siblingContent: ContentBlockParam[] = [];
 
 			// Add the current tool result
-			toolResults.push({
-				type: "tool_result",
-				tool_use_id: msg.toolCallId,
-				content: convertContentBlocks(msg.content),
-				is_error: msg.isError,
-			});
+			const converted = convertToolResult(
+				msg,
+				isOAuthToken,
+				deferredToolNames,
+				loadedToolNames,
+				normalizeToolName,
+			);
+			toolResults.push(converted.toolResult);
+			siblingContent.push(...converted.siblingContent);
 
 			// Look ahead for consecutive toolResult messages
 			let j = i + 1;
 			while (j < transformedMessages.length && transformedMessages[j].role === "toolResult") {
 				const nextMsg = transformedMessages[j] as ToolResultMessage; // We know it's a toolResult
-				toolResults.push({
-					type: "tool_result",
-					tool_use_id: nextMsg.toolCallId,
-					content: convertContentBlocks(nextMsg.content),
-					is_error: nextMsg.isError,
-				});
+				const nextConverted = convertToolResult(
+					nextMsg,
+					isOAuthToken,
+					deferredToolNames,
+					loadedToolNames,
+					normalizeToolName,
+				);
+				toolResults.push(nextConverted.toolResult);
+				siblingContent.push(...nextConverted.siblingContent);
 				j++;
 			}
 
@@ -1640,7 +1679,7 @@ export function convertMessages(
 			// Add a single user message with all tool results
 			params.push({
 				role: "user",
-				content: toolResults,
+				content: [...toolResults, ...siblingContent],
 			});
 		}
 	}
@@ -1672,6 +1711,48 @@ export function convertMessages(
 	return params;
 }
 
+const convertToolResult = (
+	msg: ToolResultMessage,
+	isOAuthToken: boolean,
+	deferredToolNames: ReadonlySet<string>,
+	loadedToolNames: Set<string>,
+	normalizeToolName: (name: string) => string,
+): {
+	toolResult: ContentBlockParam;
+	siblingContent: ContentBlockParam[];
+} => {
+	const references: Array<{
+		type: "tool_reference";
+		tool_name: string;
+	}> = [];
+	for (const name of msg.addedToolNames ?? []) {
+		const normalizedName = normalizeToolName(name);
+		if (!deferredToolNames.has(normalizedName) || loadedToolNames.has(normalizedName)) {
+			continue;
+		}
+		loadedToolNames.add(normalizedName);
+		references.push({
+			type: "tool_reference",
+			tool_name: isOAuthToken ? toClaudeCodeName(name) : name,
+		});
+	}
+	const convertedContent = convertContentBlocks(msg.content);
+	return {
+		toolResult: {
+			type: "tool_result",
+			tool_use_id: msg.toolCallId,
+			content: references.length > 0 ? references : convertedContent,
+			is_error: msg.isError,
+		},
+		siblingContent:
+			references.length === 0
+				? []
+				: typeof convertedContent === "string"
+					? [{ type: "text", text: convertedContent }]
+					: convertedContent,
+	};
+};
+
 function shouldUseFineGrainedToolStreamingBeta(model: Model<"anthropic-messages">, context: Context): boolean {
 	return !!context.tools?.length && !getAnthropicCompat(model).supportsEagerToolInputStreaming;
 }
@@ -1681,6 +1762,7 @@ export function convertTools(
 	isOAuthToken: boolean,
 	supportsEagerToolInputStreaming: boolean,
 	cacheControl?: CacheControlEphemeral,
+	deferLoading = false,
 ): Anthropic.Messages.Tool[] {
 	if (!tools) return [];
 
@@ -1709,6 +1791,7 @@ export function convertTools(
 				properties: schema.properties ?? {},
 				required: schema.required ?? [],
 			} as Anthropic.Messages.Tool["input_schema"],
+			...(deferLoading ? { defer_loading: true } : {}),
 			...(cacheControl && index === tools.length - 1 ? { cache_control: cacheControl } : {}),
 		};
 	});

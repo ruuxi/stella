@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createPiTools } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 import type { ToolMetadata } from "../../../../../runtime/kernel/tools/types.js";
 import { buildLocalHistoryFromEvents } from "../../../../../runtime/kernel/local-history.js";
 
@@ -28,7 +29,7 @@ const toolCatalog: ToolMetadata[] = [
   },
 ];
 
-const makeTools = (provider?: string) =>
+const makeTools = (provider?: string, historyMessages?: AgentMessage[]) =>
   createPiTools({
     runId: "run-1",
     conversationId: "conv-1",
@@ -45,6 +46,7 @@ const makeTools = (provider?: string) =>
       : {}),
     toolsAllowlist: ["tool_search"],
     toolCatalog,
+    historyMessages,
     store: {} as never,
     toolExecutor: async () => ({ error: "should not execute host tools" }),
   });
@@ -57,14 +59,20 @@ describe("deferred tool search", () => {
     expect(tools[0]?.label).toBe("Search tools");
     expect(tools[0]?.workingText).toBe("Searching tools");
     const updates: Array<{ details?: unknown }> = [];
-    const result = await tools[0]!.execute("call-1", {
-      query: "iMessage reactions and rich media",
-    }, undefined, (update) => updates.push(update));
+    const result = await tools[0]!.execute(
+      "call-1",
+      {
+        query: "iMessage reactions and rich media",
+      },
+      undefined,
+      (update) => updates.push(update),
+    );
 
     expect(result.content[0]).toMatchObject({
       type: "text",
     });
     expect(firstText(result.content)).toContain("linq_react_to_message");
+    expect(result.addedToolNames).toEqual(["linq_react_to_message"]);
     expect(new Set(tools.map((tool) => tool.name))).toEqual(
       new Set(["tool_search", "linq_react_to_message"]),
     );
@@ -80,6 +88,25 @@ describe("deferred tool search", () => {
     );
     expect(reactionTool?.label).toBe("React in iMessage");
     expect(reactionTool?.workingText).toBe("Sending iMessage reaction");
+  });
+
+  it("restores tools from durable discovery load points", () => {
+    const tools = makeTools("linq", [
+      {
+        role: "toolResult",
+        toolCallId: "call-search",
+        toolName: "tool_search",
+        content: [{ type: "text", text: "Found one tool." }],
+        addedToolNames: ["linq_react_to_message"],
+        isError: false,
+        timestamp: 1,
+      },
+    ]);
+
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "tool_search",
+      "linq_react_to_message",
+    ]);
   });
 
   it("does not expose Linq tools outside a Linq connector turn", async () => {

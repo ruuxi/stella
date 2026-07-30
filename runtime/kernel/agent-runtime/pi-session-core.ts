@@ -1,11 +1,9 @@
-import path from "node:path";
 import { cleanupSessionResources } from "../../ai/session-resources.js";
 import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { fileSafeId } from "../storage/shared.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import {
   buildSafetyAbortSwapRoute,
@@ -79,6 +77,12 @@ export class PiSessionCore {
 
   protected setResolvedLlm(resolvedLlm: ResolvedLlmRoute): void {
     this.currentResolvedLlm = resolvedLlm;
+  }
+
+  protected historyForToolActivation(
+    agentContext: LocalAgentContext,
+  ): import("../agent-core/types.js").AgentMessage[] {
+    return this.agent?.state.messages ?? buildHistorySource(agentContext);
   }
 
   protected refreshHistoryIfNeeded(
@@ -335,29 +339,16 @@ export class PiSessionCore {
     agentContext: LocalAgentContext;
     hookEmitter?: HookEmitter;
     tools: CreateRuntimeAgentArgs["tools"];
-    /** Enables disk recovery for the byte-size image history backstop. */
-    stellaDataDir?: string;
     afterToolCall?: CreateRuntimeAgentArgs["afterToolCall"];
     onProviderRetry?: CreateRuntimeAgentArgs["onProviderRetry"];
     logContext: SessionLogContext;
   }): Agent {
     if (!this.agent) {
       const historySource = buildHistorySource(args.agentContext);
-      const stellaDataDir = args.stellaDataDir?.trim();
       this.agent = createRuntimeAgent({
         agentType: args.agentType,
         systemPrompt: args.systemPrompt,
         resolvedLlm: args.resolvedLlm,
-        ...(stellaDataDir
-          ? {
-              imageHistorySpillDirPath: path.join(
-                stellaDataDir,
-                "cache",
-                "history-images",
-                fileSafeId(this.threadKey),
-              ),
-            }
-          : {}),
         resolvedLlmOverride: () => this.currentResolvedLlm ?? args.resolvedLlm,
         reasoningEffort: resolveAgentThinkingLevel({
           resolvedLlm: args.resolvedLlm,

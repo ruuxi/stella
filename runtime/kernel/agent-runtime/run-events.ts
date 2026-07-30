@@ -741,7 +741,10 @@ const toPersistedThreadPayload = (
       }
     }
     if (trimmedContent.length === 0) {
-      return null;
+      if (message.stopReason !== "error" && message.stopReason !== "aborted") {
+        return null;
+      }
+      trimmedContent.push({ type: "text", text: "" });
     }
     return {
       ...message,
@@ -754,6 +757,12 @@ const toPersistedThreadPayload = (
       toolCallId: message.toolCallId,
       toolName: message.toolName,
       content: message.content,
+      ...(typeof message.modelOutputTokens === "number"
+        ? { modelOutputTokens: message.modelOutputTokens }
+        : {}),
+      ...(message.addedToolNames?.length
+        ? { addedToolNames: message.addedToolNames }
+        : {}),
       isError: message.isError,
       timestamp: message.timestamp,
     };

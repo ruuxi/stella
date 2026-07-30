@@ -702,9 +702,13 @@ export class Agent {
 				timestamp: Date.now(),
 			};
 
-			this.appendMessage(errorMsg);
 			this._state.error = errorMessage;
-			this.emit({ type: "agent_end", messages: [errorMsg] });
+			this._processLoopEvent({
+				type: "message_start",
+				message: { ...errorMsg },
+			});
+			this._processLoopEvent({ type: "message_end", message: errorMsg });
+			this._processLoopEvent({ type: "agent_end", messages: [errorMsg] });
 		} finally {
 			this._state.isStreaming = false;
 			this._state.streamMessage = null;

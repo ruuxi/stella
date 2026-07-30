@@ -279,6 +279,16 @@ export interface ToolResultMessage<TDetails = any> {
   toolName: string;
   content: (TextContent | ImageContent)[]; // Supports text and images
   details?: TDetails;
+  /**
+   * Optional tool-specific model-facing budget. Durable content remains raw.
+   */
+  modelOutputTokens?: number;
+  /**
+   * Names from `Context.tools` that became available after this result.
+   * Native deferred-tool providers serialize these names at this exact
+   * transcript position; other providers receive the full active tool list.
+   */
+  addedToolNames?: string[];
   isError: boolean;
   timestamp: number; // Unix timestamp in milliseconds
 }
@@ -424,6 +434,8 @@ export interface OpenAICompletionsCompat {
   sendSessionAffinityHeaders?: boolean;
   /** Whether the provider supports long prompt cache retention. Default: true. */
   supportsLongCacheRetention?: boolean;
+  /** Provider-specific deferred tool serialization mode. */
+  deferredToolsMode?: "kimi";
 }
 
 /** Compatibility settings for OpenAI Responses APIs. */
@@ -432,6 +444,8 @@ export interface OpenAIResponsesCompat {
   sendSessionIdHeader?: boolean;
   /** Whether the provider supports `prompt_cache_retention: "24h"`. Default: true. */
   supportsLongCacheRetention?: boolean;
+  /** Whether the model supports client-executed tool search load points. */
+  supportsToolSearch?: boolean;
 }
 
 /** Compatibility settings for Anthropic Messages-compatible APIs. */
@@ -445,6 +459,8 @@ export interface AnthropicMessagesCompat {
   supportsEagerToolInputStreaming?: boolean;
   /** Whether the provider supports Anthropic long cache retention. Default: true. */
   supportsLongCacheRetention?: boolean;
+  /** Whether the provider accepts deferred definitions and tool_reference blocks. */
+  supportsToolReferences?: boolean;
 }
 
 /**
@@ -556,11 +572,19 @@ export interface Model<TApi extends Api> {
   };
   contextWindow: number;
   maxTokens: number;
+  /**
+   * Model-facing tool-output budget. The runtime applies this only while
+   * assembling a provider request. Defaults to 10,000 estimated tokens.
+   */
+  toolOutputTokenLimit?: number;
   headers?: Record<string, string>;
   /** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
   compat?: TApi extends "openai-completions"
     ? OpenAICompletionsCompat
-    : TApi extends "openai-responses"
+    : TApi extends
+          | "openai-responses"
+          | "openai-codex-responses"
+          | "azure-openai-responses"
       ? OpenAIResponsesCompat
       : TApi extends "anthropic-messages"
         ? AnthropicMessagesCompat

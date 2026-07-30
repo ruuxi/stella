@@ -40,6 +40,7 @@ import {
 } from "../utils/diagnostics.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
+import { splitDeferredTools } from "../utils/deferred-tools.js";
 import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions } from "./simple-options.js";
@@ -355,8 +356,11 @@ function buildRequestBody(
 	context: Context,
 	options?: OpenAICodexResponsesOptions,
 ): RequestBody {
+	const supportsToolSearch = model.compat?.supportsToolSearch ?? /^gpt-(?:[6-9]|\d{2,})|^gpt-5\.[4-9]/.test(model.id);
+	const toolPlacement = splitDeferredTools(context, supportsToolSearch);
 	const messages = convertResponsesMessages(model, context, CODEX_TOOL_CALL_PROVIDERS, {
 		includeSystemPrompt: false,
+		deferredTools: toolPlacement.deferred,
 	});
 
 	const body: RequestBody = {
@@ -380,8 +384,10 @@ function buildRequestBody(
 		body.service_tier = options.serviceTier;
 	}
 
-	if (context.tools && context.tools.length > 0) {
-		body.tools = convertResponsesTools(context.tools, { strict: null });
+	if (toolPlacement.immediate.length > 0) {
+		body.tools = convertResponsesTools(toolPlacement.immediate, {
+			strict: null,
+		});
 	}
 
 	if (options?.reasoningEffort !== undefined) {

@@ -50,7 +50,8 @@ export const createWriteStdinTool = (
       },
       max_output_tokens: {
         type: "number",
-        description: "Maximum number of tokens to return. Excess output is truncated.",
+        description:
+          "Output token budget. Defaults to 10000 tokens; larger requests may be capped by the active model policy.",
       },
     },
     required: ["session_id"],

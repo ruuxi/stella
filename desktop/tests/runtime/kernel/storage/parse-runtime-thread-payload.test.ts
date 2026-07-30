@@ -76,6 +76,45 @@ describe("parseRuntimeThreadPayload", () => {
     expect(parsed?.providerHint).toBe("anthropic");
   });
 
+  it("preserves a shell result's model-only output budget", () => {
+    const parsed = parseRuntimeThreadPayload(
+      JSON.stringify({
+        role: "toolResult",
+        toolCallId: "call_shell",
+        toolName: "exec_command",
+        isError: false,
+        content: [{ type: "text", text: "raw output" }],
+        modelOutputTokens: 256,
+        timestamp: 1_700_000_000_000,
+      }),
+    );
+
+    expect(parsed).toMatchObject({
+      role: "toolResult",
+      modelOutputTokens: 256,
+      content: [{ type: "text", text: "raw output" }],
+    });
+  });
+
+  it("preserves durable deferred-tool load points", () => {
+    const parsed = parseRuntimeThreadPayload(
+      JSON.stringify({
+        role: "toolResult",
+        toolCallId: "call_search",
+        toolName: "tool_search",
+        isError: false,
+        content: [{ type: "text", text: "loaded" }],
+        addedToolNames: ["calendar_list"],
+        timestamp: 1_700_000_000_000,
+      }),
+    );
+
+    expect(parsed).toMatchObject({
+      role: "toolResult",
+      addedToolNames: ["calendar_list"],
+    });
+  });
+
   it("still returns undefined for invalid records", () => {
     expect(parseRuntimeThreadPayload(null)).toBeUndefined();
     expect(parseRuntimeThreadPayload("not json")).toBeUndefined();

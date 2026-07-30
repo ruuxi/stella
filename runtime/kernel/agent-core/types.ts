@@ -307,6 +307,10 @@ export interface AgentToolResult<T> {
 	content: (TextContent | ImageContent)[];
 	// Details to be displayed in a UI or logged
 	details: T;
+	// Optional model-facing text budget; durable content remains raw.
+	modelOutputTokens?: number;
+	// Tools activated by this result, anchored at this transcript position.
+	addedToolNames?: string[];
 }
 
 // Callback for streaming tool execution updates

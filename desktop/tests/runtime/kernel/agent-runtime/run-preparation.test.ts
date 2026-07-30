@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   createRuntimePromptAgentMessage,
   createUserPromptMessage,
+  prepareRuntimeAttachments,
 } from "../../../../../runtime/kernel/agent-runtime/run-preparation.js";
 
 describe("run preparation attachments", () => {
+  const validPng =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
   it("only converts image data URLs into image content blocks", () => {
     const message = createUserPromptMessage("Look at this", [
       {
@@ -53,5 +57,22 @@ describe("run preparation attachments", () => {
       ],
       timestamp: 123,
     });
+  });
+
+  it("validates image bytes before native history ingestion", async () => {
+    const prepared = await prepareRuntimeAttachments([
+      {
+        url: `data:image/png;base64,${validPng}`,
+        mimeType: "image/png",
+      },
+      {
+        url: "data:image/png;base64,AAAA",
+        mimeType: "image/png",
+      },
+    ]);
+
+    expect(prepared).toHaveLength(1);
+    expect(prepared?.[0]?.url).toMatch(/^data:image\/(?:png|jpeg);base64,/);
+    expect(prepared?.[0]?.size).toBeGreaterThan(0);
   });
 });

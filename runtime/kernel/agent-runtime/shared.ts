@@ -11,22 +11,18 @@ import type {
 } from "../agent-core/types.js";
 import type { Message } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
-import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
-import { estimateRuntimeTokens } from "../runtime-threads.js";
 import {
   getAgentFollowUpMode,
   getAgentSteeringMode,
   getLocalCliWorkingDirectory,
 } from "../../contracts/agent-runtime.js";
-import { isBootstrapStartupDocMessage } from "./thread-memory.js";
-import { createImageHistoryCompactor } from "./image-history-compaction.js";
 
 const MAX_RESULT_PREVIEW = 200;
-const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
-const CONTEXT_PRUNE_RESERVE_TOKENS = 16_384;
-const MIN_CONTEXT_PRUNE_TOKENS = 8_000;
-const ESTIMATED_IMAGE_TOKENS = 2_000;
+const TOOL_OUTPUT_CHARS_PER_TOKEN = 4;
+const TOOL_OUTPUT_SERIALIZATION_ALLOWANCE = 1.2;
+
+export const DEFAULT_MODEL_TOOL_OUTPUT_TOKENS = 10_000;
 
 export const DEFAULT_MAX_TURNS = 40;
 
@@ -182,86 +178,195 @@ export const toAgentMessages = (
     });
 };
 
-const estimateUnknownTokens = (value: unknown): number => {
-  if (typeof value === "string") {
-    return estimateRuntimeTokens(value);
-  }
-  if (value == null) {
-    return 0;
-  }
-  try {
-    return estimateRuntimeTokens(JSON.stringify(value));
-  } catch {
-    return estimateRuntimeTokens(String(value));
-  }
-};
+const resolvePositiveTokenLimit = (value: unknown, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.floor(value))
+    : fallback;
 
-const estimateContentTokens = (content: unknown): number => {
-  if (typeof content === "string") {
-    return estimateRuntimeTokens(content);
-  }
-  if (!Array.isArray(content)) {
-    return estimateUnknownTokens(content);
-  }
-  return content.reduce((sum, block) => {
-    if (!block || typeof block !== "object") {
-      return sum + estimateUnknownTokens(block);
-    }
-    const candidate = block as Record<string, unknown>;
-    switch (candidate.type) {
-      case "text":
-        return (
-          sum +
-          estimateRuntimeTokens(
-            typeof candidate.text === "string" ? candidate.text : "",
-          )
-        );
-      case "thinking":
-        return (
-          sum +
-          estimateRuntimeTokens(
-            typeof candidate.thinking === "string" ? candidate.thinking : "",
-          )
-        );
-      case "image":
-        return sum + ESTIMATED_IMAGE_TOKENS;
-      case "toolCall":
-        return (
-          sum +
-          estimateUnknownTokens({
-            name: candidate.name,
-            arguments: candidate.arguments,
-          })
-        );
-      default:
-        return sum + estimateUnknownTokens(candidate);
-    }
-  }, 0);
-};
-
-const estimateAgentMessageTokens = (message: AgentMessage): number => {
-  const baseTokens = 8;
-  if (message.role === "toolResult") {
-    return Math.max(
-      1,
-      baseTokens +
-        estimateRuntimeTokens(message.toolName) +
-        estimateContentTokens(message.content),
-    );
-  }
-  return Math.max(1, baseTokens + estimateContentTokens(message.content));
-};
-
-const getContextPruneBudget = (resolvedLlm: ResolvedLlmRoute): number => {
-  const contextWindow = Number(resolvedLlm.model.contextWindow);
-  const safeContextWindow =
-    Number.isFinite(contextWindow) && contextWindow > 0
-      ? Math.floor(contextWindow)
-      : DEFAULT_CONTEXT_WINDOW_TOKENS;
-  return Math.max(
-    MIN_CONTEXT_PRUNE_TOKENS,
-    safeContextWindow - CONTEXT_PRUNE_RESERVE_TOKENS,
+export const resolveModelToolOutputTokenLimit = (
+  resolvedLlm: ResolvedLlmRoute,
+): number =>
+  resolvePositiveTokenLimit(
+    resolvedLlm.model.toolOutputTokenLimit,
+    DEFAULT_MODEL_TOOL_OUTPUT_TOKENS,
   );
+
+const truncateToolText = (
+  text: string,
+  maxChars: number,
+): { text: string; truncated: boolean } => {
+  const boundedMaxChars = Math.max(1, Math.floor(maxChars));
+  if (text.length <= boundedMaxChars) {
+    return { text, truncated: false };
+  }
+
+  const markerFor = (omittedChars: number) =>
+    `\n\n[Tool output truncated: ${omittedChars} characters omitted.]\n\n`;
+  let marker = markerFor(text.length - boundedMaxChars);
+  let available = boundedMaxChars - marker.length;
+  if (available <= 0) {
+    return {
+      text: text.slice(0, boundedMaxChars),
+      truncated: true,
+    };
+  }
+
+  let headChars = Math.ceil(available / 2);
+  let tailChars = Math.floor(available / 2);
+  marker = markerFor(text.length - headChars - tailChars);
+  available = boundedMaxChars - marker.length;
+  if (available <= 0) {
+    return {
+      text: text.slice(0, boundedMaxChars),
+      truncated: true,
+    };
+  }
+  headChars = Math.ceil(available / 2);
+  tailChars = Math.floor(available / 2);
+  return {
+    text: `${text.slice(0, headChars)}${marker}${text.slice(-tailChars)}`,
+    truncated: true,
+  };
+};
+
+const truncateShellPayloadOutput = (
+  text: string,
+  maxTokens: number,
+): string => {
+  const maxChars = maxTokens * TOOL_OUTPUT_CHARS_PER_TOKEN;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as Record<string, unknown>).output === "string"
+    ) {
+      const record = parsed as Record<string, unknown>;
+      const output = record.output as string;
+      const truncated = truncateToolText(output, maxChars);
+      if (!truncated.truncated) return text;
+      return JSON.stringify({ ...record, output: truncated.text }, null, 2);
+    }
+  } catch {
+    // Non-JSON shell results still receive the requested body budget.
+  }
+  return truncateToolText(text, maxChars).text;
+};
+
+const allocateTextBudgets = (
+  lengths: number[],
+  totalBudget: number,
+): number[] => {
+  const budgets = lengths.map(() => 0);
+  let remainingBudget = Math.max(0, Math.floor(totalBudget));
+  let remaining = lengths.map((_, index) => index);
+  while (remaining.length > 0) {
+    const share = Math.floor(remainingBudget / remaining.length);
+    const completed = remaining.filter((index) => lengths[index]! <= share);
+    if (completed.length === 0) {
+      for (const [offset, index] of remaining.entries()) {
+        budgets[index] =
+          share + (offset < remainingBudget % remaining.length ? 1 : 0);
+      }
+      break;
+    }
+    for (const index of completed) {
+      budgets[index] = lengths[index]!;
+      remainingBudget -= lengths[index]!;
+    }
+    const completedSet = new Set(completed);
+    remaining = remaining.filter((index) => !completedSet.has(index));
+  }
+  return budgets;
+};
+
+const truncateToolResultTextBlocks = (
+  message: Extract<AgentMessage, { role: "toolResult" }>,
+  maxChars: number,
+): Extract<AgentMessage, { role: "toolResult" }> => {
+  const textBlocks = message.content.filter(
+    (
+      block,
+    ): block is Extract<(typeof message.content)[number], { type: "text" }> =>
+      block.type === "text",
+  );
+  const totalChars = textBlocks.reduce(
+    (sum, block) => sum + block.text.length,
+    0,
+  );
+  if (totalChars <= maxChars || textBlocks.length === 0) return message;
+
+  const budgets = allocateTextBudgets(
+    textBlocks.map((block) => block.text.length),
+    maxChars,
+  );
+  let textIndex = 0;
+  return {
+    ...message,
+    content: message.content.map((block) => {
+      if (block.type !== "text") return block;
+      const budget = budgets[textIndex++] ?? 0;
+      return {
+        ...block,
+        text: truncateToolText(block.text, budget).text,
+      };
+    }),
+  };
+};
+
+/**
+ * Build a request-only projection of tool results. Durable messages keep the
+ * full sanitized result; text is normalized only immediately before the next
+ * provider call.
+ */
+export const normalizeModelVisibleToolResults = (
+  messages: AgentMessage[],
+  resolvedLlm: ResolvedLlmRoute,
+): AgentMessage[] => {
+  const modelPolicyTokens = resolveModelToolOutputTokenLimit(resolvedLlm);
+  const genericMaxChars =
+    Math.ceil(modelPolicyTokens * TOOL_OUTPUT_SERIALIZATION_ALLOWANCE) *
+    TOOL_OUTPUT_CHARS_PER_TOKEN;
+  let changed = false;
+  const normalized = messages.map((message): AgentMessage => {
+    if (message.role !== "toolResult") return message;
+    let projected = message;
+    const toolBudget =
+      typeof message.modelOutputTokens === "number"
+        ? Math.min(
+            modelPolicyTokens,
+            resolvePositiveTokenLimit(
+              message.modelOutputTokens,
+              DEFAULT_MODEL_TOOL_OUTPUT_TOKENS,
+            ),
+          )
+        : null;
+    if (toolBudget !== null) {
+      const nextContent = projected.content.map((block) =>
+        block.type === "text"
+          ? {
+              ...block,
+              text: truncateShellPayloadOutput(block.text, toolBudget),
+            }
+          : block,
+      );
+      if (
+        nextContent.some(
+          (block, index) =>
+            block.type === "text" &&
+            projected.content[index]?.type === "text" &&
+            block.text !== projected.content[index].text,
+        )
+      ) {
+        projected = { ...projected, content: nextContent };
+      }
+    }
+    projected = truncateToolResultTextBlocks(projected, genericMaxChars);
+    if (projected !== message) changed = true;
+    return projected;
+  });
+  return changed ? normalized : messages;
 };
 
 export const buildDefaultTransformContext = (
@@ -270,46 +375,14 @@ export const buildDefaultTransformContext = (
   messages: AgentMessage[],
   signal?: AbortSignal,
 ) => Promise<AgentMessage[]>) => {
-  const maxTokens = getContextPruneBudget(resolvedLlm);
   return async (messages, signal) => {
     if (signal?.aborted) {
       throw new Error("Aborted");
     }
-    const totalTokens = messages.reduce(
-      (sum, message) => sum + estimateAgentMessageTokens(message),
-      0,
-    );
-    if (totalTokens <= maxTokens) {
-      return messages;
-    }
-    const pinnedStartupDocs = messages.filter(isBootstrapStartupDocMessage);
-    if (pinnedStartupDocs.length > 0) {
-      const pinnedDocSet = new Set<AgentMessage>(pinnedStartupDocs);
-      const pinnedTokens = pinnedStartupDocs.reduce(
-        (sum, message) => sum + estimateAgentMessageTokens(message),
-        0,
-      );
-      const remainingBudget = maxTokens - pinnedTokens;
-      if (remainingBudget > 0) {
-        const recentUnpinned = selectRecentByTokenBudget({
-          itemsNewestFirst: messages
-            .filter((message) => !pinnedDocSet.has(message))
-            .reverse(),
-          maxTokens: remainingBudget,
-          estimateTokens: estimateAgentMessageTokens,
-        });
-        const recentSet = new Set<AgentMessage>(recentUnpinned);
-        return messages.filter(
-          (message) => pinnedDocSet.has(message) || recentSet.has(message),
-        );
-      }
-    }
-    const selected = selectRecentByTokenBudget({
-      itemsNewestFirst: [...messages].reverse(),
-      maxTokens,
-      estimateTokens: estimateAgentMessageTokens,
-    });
-    return [...selected].reverse();
+    // History reduction is durable compaction only. This request projection
+    // may normalize model-visible tool text, but it never drops or rewrites
+    // conversation entries based on a per-request token budget.
+    return normalizeModelVisibleToolResults(messages, resolvedLlm);
   };
 };
 
@@ -465,12 +538,6 @@ export const createRuntimeAgent = (args: {
    * conversation hit the same cache shard.
    */
   cacheSessionId?: string;
-  /**
-   * Directory the byte-size image backstop spills stripped screenshots into
-   * (see `image-history-compaction.ts`). Omitted for callers with no data
-   * dir; stripping then falls back to non-recoverable placeholders.
-   */
-  imageHistorySpillDirPath?: string;
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,
@@ -490,14 +557,6 @@ export const createRuntimeAgent = (args: {
   }) => void;
 }): Agent => {
   const resolveLlm = args.resolvedLlmOverride ?? (() => args.resolvedLlm);
-  // One compactor per Agent: its sticky stripped-set is what keeps the
-  // prompt-cache prefix byte-stable between watermark crossings across the
-  // many LLM calls of this thread's lifetime.
-  const imageHistoryCompactor = createImageHistoryCompactor({
-    ...(args.imageHistorySpillDirPath
-      ? { spillDirPath: args.imageHistorySpillDirPath }
-      : {}),
-  });
   const toolInactivityRaw = process.env.STELLA_TOOL_INACTIVITY_TIMEOUT_MS?.trim();
   const toolInactivityParsed = toolInactivityRaw ? Number(toolInactivityRaw) : Number.NaN;
   return new Agent({
@@ -518,14 +577,8 @@ export const createRuntimeAgent = (args: {
       ? { toolInactivityTimeoutMs: toolInactivityParsed }
       : {}),
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
-    // Byte-size image backstop first (so token pruning sees placeholders,
-    // not base64), then recompute the context budget against the current
-    // model route.
     transformContext: async (messages, signal) =>
-      buildDefaultTransformContext(resolveLlm())(
-        await imageHistoryCompactor.apply(messages),
-        signal,
-      ),
+      buildDefaultTransformContext(resolveLlm())(messages, signal),
     // Only pass steering / follow-up modes when the agent opts out of
     // the Pi default ("one-at-a-time").
     ...(getAgentSteeringMode(args.agentType) === "all"

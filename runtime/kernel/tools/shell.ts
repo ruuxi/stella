@@ -21,7 +21,11 @@ import type {
   ShellRecord,
   ToolUpdateCallback,
 } from "./types.js";
-import { MAX_OUTPUT, truncate } from "./utils.js";
+import { truncate } from "./utils.js";
+import {
+  HeadTailOutputBuffer,
+  RAW_SHELL_OUTPUT_MAX_BYTES,
+} from "./head-tail-output-buffer.js";
 import { resolveBundledRuntimeFile } from "../shared/runtime-paths.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getInstallUpdateCommandDenialReason } from "./install-update-allowlist.js";
@@ -119,13 +123,15 @@ export type ShellExitSnapshot = {
   exitCode: number | null;
   startedAt: number;
   completedAt: number;
-  /** Captured output, tail-capped at `MAX_OUTPUT` by the live buffer. */
+  /** Captured output, raw-capped with equal head and tail retention. */
   output: string;
   owner?: ShellSessionOwner;
 };
 
 type ManagedShellRecord = ShellRecord & {
   unreadOutput: string;
+  outputBuffer: HeadTailOutputBuffer;
+  unreadOutputBuffer: HeadTailOutputBuffer;
   outputVersion: number;
   waiters: Set<() => void>;
   /**
@@ -181,7 +187,7 @@ const MAX_EXEC_YIELD_MS = 30_000;
 // sit out a quiet build inside its turn instead of round-tripping every 30s.
 export const DEFAULT_EMPTY_POLL_YIELD_MS = 5_000;
 const MAX_EMPTY_POLL_YIELD_MS = 5 * 60_000;
-const DEFAULT_EXEC_OUTPUT_TOKENS = 4_000;
+export const DEFAULT_EXEC_OUTPUT_TOKENS = 10_000;
 const MAX_SNAPSHOT_FILES = 20_000;
 const SNAPSHOT_IGNORED_DIRS = new Set([
   ".git",
@@ -1104,24 +1110,10 @@ const resolveShellLaunch = (
 
 type SpawnedShell = ReturnType<typeof spawn>;
 
-const outputCharBudgetFromTokens = (value: unknown): number => {
-  const tokens =
-    typeof value === "number" && Number.isFinite(value)
-      ? Math.max(256, Math.floor(value))
-      : DEFAULT_EXEC_OUTPUT_TOKENS;
-  return Math.max(1_024, Math.min(tokens * 4, 200_000));
-};
-
-// Live shell buffers (`output`, `unreadOutput`) and "recent" drains keep the
-// TAIL: newest output matters most, and once a buffer hits its cap between
-// drains, dropping the head lets a poller keep seeing fresh activity.
-const truncateTail = (value: string, max: number): string =>
-  value.length > max
-    ? `... (truncated) ...\n${value.slice(value.length - max)}`
-    : value;
-
-const truncateRecent = (value: string, max: number): string =>
-  truncateTail(value, max);
+export const resolveExecOutputTokens = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.max(1, Math.floor(value))
+    : DEFAULT_EXEC_OUTPUT_TOKENS;
 
 type DrainedOutput = {
   text: string;
@@ -1129,18 +1121,25 @@ type DrainedOutput = {
   truncated: boolean;
 };
 
-const drainUnreadOutput = (
-  record: ManagedShellRecord,
-  maxChars: number,
-): DrainedOutput => {
-  const unread = record.unreadOutput;
+const drainUnreadOutput = (record: ManagedShellRecord): DrainedOutput => {
+  const unread = record.unreadOutputBuffer.drain();
   record.unreadOutput = "";
-  const text = truncateRecent(unread, maxChars);
   return {
-    text,
-    originalLength: unread.length,
-    truncated: unread.length > maxChars,
+    text: unread.text,
+    originalLength: unread.totalBytes,
+    truncated: unread.omittedBytes > 0,
   };
+};
+
+const refreshShellOutputText = (record: ManagedShellRecord): void => {
+  record.output = record.outputBuffer.snapshot().text;
+  record.unreadOutput = record.unreadOutputBuffer.snapshot().text;
+};
+
+const appendShellOutput = (record: ManagedShellRecord, text: string): void => {
+  record.outputBuffer.pushText(text);
+  record.unreadOutputBuffer.pushText(text);
+  refreshShellOutputText(record);
 };
 
 const notifyShellActivity = (record: ManagedShellRecord) => {
@@ -1401,11 +1400,13 @@ export const startShell = (
       command,
       cwd,
       output: safeLaunchError,
+      outputBuffer: new HeadTailOutputBuffer(RAW_SHELL_OUTPUT_MAX_BYTES),
       running: false,
       exitCode: 127,
       startedAt: Date.now(),
       completedAt: Date.now(),
       unreadOutput: safeLaunchError,
+      unreadOutputBuffer: new HeadTailOutputBuffer(RAW_SHELL_OUTPUT_MAX_BYTES),
       outputVersion: 1,
       waiters: new Set(),
       exitWatchers: new Set(),
@@ -1414,6 +1415,8 @@ export const startShell = (
       externalCandidateSnapshots,
       kill: () => {},
     };
+    record.outputBuffer.pushText(safeLaunchError);
+    record.unreadOutputBuffer.pushText(safeLaunchError);
     state.shells.set(id, record);
     return record;
   }
@@ -1430,12 +1433,14 @@ export const startShell = (
     command,
     cwd,
     output: "",
+    outputBuffer: new HeadTailOutputBuffer(RAW_SHELL_OUTPUT_MAX_BYTES),
     running: true,
     exitCode: null,
     startedAt: Date.now(),
     completedAt: null,
     child,
     unreadOutput: "",
+    unreadOutputBuffer: new HeadTailOutputBuffer(RAW_SHELL_OUTPUT_MAX_BYTES),
     outputVersion: 0,
     waiters: new Set(),
     exitWatchers: new Set(),
@@ -1450,11 +1455,7 @@ export const startShell = (
   const append = (data: Buffer) => {
     const chunk = data.toString();
     const safeChunk = sanitizeToolVisibleText(chunk);
-    record.output = truncateTail(`${record.output}${safeChunk}`, MAX_OUTPUT);
-    record.unreadOutput = truncateTail(
-      `${record.unreadOutput}${safeChunk}`,
-      200_000,
-    );
+    appendShellOutput(record, safeChunk);
     notifyShellActivity(record);
     onActivity?.(record);
   };
@@ -1467,11 +1468,7 @@ export const startShell = (
   });
   child.on("error", (error) => {
     const safeMessage = sanitizeToolVisibleText(error.message);
-    record.output = truncateTail(`${record.output}${safeMessage}`, MAX_OUTPUT);
-    record.unreadOutput = truncateTail(
-      `${record.unreadOutput}${safeMessage}`,
-      200_000,
-    );
+    appendShellOutput(record, safeMessage);
     record.running = false;
     record.exitCode = record.exitCode ?? 1;
     record.completedAt = Date.now();
@@ -1645,17 +1642,16 @@ const buildExecToolPayload = (
   callStartedAt: number,
 ): Record<string, unknown> => {
   const wallTimeSeconds = (Date.now() - callStartedAt) / 1000;
-  // Includes wall_time_seconds and
-  // (when truncation happened) original_token_count so the model can detect
-  // dropped output and react.
+  // Includes wall_time_seconds and original_token_count so the model can
+  // detect output omitted by the raw one-MiB collector and react.
   const payload: Record<string, unknown> = {
     session_id: record.running ? record.id : null,
     running: record.running,
     exit_code: record.running ? null : record.exitCode,
     output: sanitizeToolVisibleText(drained.text),
     wall_time_seconds: wallTimeSeconds,
-    // Always report the pre-truncation token estimate so callers
-    // can distinguish "small output" from "output omitted because it was huge".
+    // Always report the pre-collection-cap token estimate so callers can
+    // distinguish small output from output whose middle was omitted.
     original_token_count: Math.ceil(
       drained.originalLength / APPROX_BYTES_PER_TOKEN,
     ),
@@ -1728,17 +1724,17 @@ export const handleExecCommand = async (
       )
     : { rootSnapshot: null };
   let lastUpdateAt = 0;
-  const maxOutputChars = outputCharBudgetFromTokens(args.max_output_tokens);
+  const modelOutputTokens = resolveExecOutputTokens(args.max_output_tokens);
   const emitUpdate = (record: ManagedShellRecord) => {
     if (!onUpdate) return;
     const now = Date.now();
     if (record.running && now - lastUpdateAt < 250) return;
     lastUpdateAt = now;
-    const unread = record.unreadOutput;
+    const unread = record.unreadOutputBuffer.snapshot();
     const drained = {
-      text: truncateRecent(unread, maxOutputChars),
-      originalLength: unread.length,
-      truncated: unread.length > maxOutputChars,
+      text: unread.text,
+      originalLength: unread.totalBytes,
+      truncated: unread.omittedBytes > 0,
     };
     const payload = buildExecToolPayload(record, drained, callStartedAt);
     onUpdate({ result: payload, details: payload });
@@ -1782,7 +1778,7 @@ export const handleExecCommand = async (
   }
   await settleCompletedShell(record, signal);
 
-  const drained = drainUnreadOutput(record, maxOutputChars);
+  const drained = drainUnreadOutput(record);
   const payload = buildExecToolPayload(record, drained, callStartedAt);
   const producedFiles = !record.running
     ? await takeCompletedProducedFiles(record)
@@ -1790,6 +1786,7 @@ export const handleExecCommand = async (
   return {
     result: payload,
     details: payload,
+    modelOutputTokens,
     ...(producedFiles ? { producedFiles } : {}),
   };
 };
@@ -1850,15 +1847,13 @@ export const handleWriteStdin = async (
   }
   await settleCompletedShell(record, signal);
 
-  const drained = drainUnreadOutput(
-    record,
-    outputCharBudgetFromTokens(args.max_output_tokens),
-  );
+  const drained = drainUnreadOutput(record);
   const payload = buildExecToolPayload(record, drained, callStartedAt);
   const producedFiles = await takeCompletedProducedFiles(record);
   return {
     result: payload,
     details: payload,
+    modelOutputTokens: resolveExecOutputTokens(args.max_output_tokens),
     ...(producedFiles ? { producedFiles } : {}),
   };
 };

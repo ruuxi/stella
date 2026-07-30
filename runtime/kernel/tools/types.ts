@@ -60,6 +60,11 @@ export type ToolResult = {
   details?: unknown;
   error?: string;
   /**
+   * Tool-specific model-facing text budget. The raw result is still returned
+   * and persisted; provider context assembly applies this limit later.
+   */
+  modelOutputTokens?: number;
+  /**
    * Normalized record of any filesystem mutations the tool performed.
    *
    * The runtime worker hoists this field into the persisted `tool_result`

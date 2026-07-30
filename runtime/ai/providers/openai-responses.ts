@@ -16,6 +16,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
+import { splitDeferredTools } from "../utils/deferred-tools.js";
 import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { resilientEventStream } from "../utils/resilient-event-stream.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
@@ -59,6 +60,9 @@ function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCo
 	return {
 		sendSessionIdHeader: model.compat?.sendSessionIdHeader ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+		supportsToolSearch:
+			model.compat?.supportsToolSearch ??
+			(model.provider === "openai" && /^gpt-(?:[6-9]|\d{2,})|^gpt-5\.[4-9]/.test(model.id)),
 	};
 }
 
@@ -347,10 +351,13 @@ function createClient(
 }
 
 function buildParams(model: Model<"openai-responses">, context: Context, options?: OpenAIResponsesOptions) {
-	const messages = convertResponsesMessages(model, context, OPENAI_TOOL_CALL_PROVIDERS);
+	const compat = getCompat(model);
+	const toolPlacement = splitDeferredTools(context, compat.supportsToolSearch);
+	const messages = convertResponsesMessages(model, context, OPENAI_TOOL_CALL_PROVIDERS, {
+		deferredTools: toolPlacement.deferred,
+	});
 
 	const cacheRetention = resolveCacheRetention(options?.cacheRetention);
-	const compat = getCompat(model);
 	const params: ResponseCreateParamsStreaming = {
 		model: model.id,
 		input: messages,
@@ -372,8 +379,8 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		params.service_tier = options.serviceTier;
 	}
 
-	if (context.tools && context.tools.length > 0) {
-		params.tools = convertResponsesTools(context.tools);
+	if (toolPlacement.immediate.length > 0) {
+		params.tools = convertResponsesTools(toolPlacement.immediate);
 	}
 
 	if (model.reasoning) {

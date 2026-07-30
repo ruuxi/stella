@@ -58,7 +58,7 @@ export const createExecCommandTool = (
       max_output_tokens: {
         type: "number",
         description:
-          "Maximum number of tokens to return. Excess output is truncated.",
+          "Output token budget. Defaults to 10000 tokens; larger requests may be capped by the active model policy.",
       },
       login: {
         type: "boolean",

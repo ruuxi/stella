@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 
-import type { AgentTool } from "../agent-core/types.js";
+import type { AgentMessage, AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { TextContent } from "../../ai/types.js";
 import { DEVICE_TOOL_NAMES } from "../tools/schemas.js";
@@ -147,6 +147,10 @@ const formatToolResult = (
   };
 };
 
+// Final native Pi tool results bypass this legacy cap and are normalized
+// request-only in shared.ts. Keep this bound for live partial updates and
+// external-engine dynamic-tool adapters, which do not use the Pi context
+// transform.
 export const MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS = 30_000;
 
 export const truncateModelVisibleToolText = (
@@ -635,6 +639,8 @@ export const createPiTools = (opts: {
   };
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
+  /** Durable transcript used to restore tools exposed on earlier turns. */
+  historyMessages?: AgentMessage[];
   store: RuntimeStore;
   toolExecutor: (
     toolName: string,
@@ -708,10 +714,12 @@ export const createPiTools = (opts: {
             })
             .slice(0, clampToolSearchLimit(args.limit));
 
+          const addedToolNames: string[] = [];
           for (const { tool } of matches) {
             if (activeToolNames.has(tool.name)) continue;
             activeToolNames.add(tool.name);
             activeTools.push(registerTool(tool.name));
+            addedToolNames.push(tool.name);
           }
 
           const toolNames = matches.map(({ tool }) => tool.name);
@@ -750,6 +758,7 @@ export const createPiTools = (opts: {
               query,
               exposedTools: toolNames,
             },
+            ...(addedToolNames.length > 0 ? { addedToolNames } : {}),
           };
         }
         const toolResult = await executeRuntimeToolCall({
@@ -794,16 +803,15 @@ export const createPiTools = (opts: {
         // the screenshot on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text, opts.imageCapTarget);
-        const truncatedText = truncateModelVisibleToolText(forwardedText);
         const content: Array<TextContent | ImageBlock> = [];
         const screenshotNote =
           legacyImages.length > 0
             ? "\n\n[Screenshot attached below. If the accessibility tree is sparse or missing the visible control, inspect this image directly and use screenshot x/y coordinates.]"
             : "";
-        if (truncatedText.text || legacyImages.length === 0) {
+        if (forwardedText || legacyImages.length === 0) {
           content.push({
             type: "text" as const,
-            text: `${truncatedText.text}${screenshotNote}`,
+            text: `${forwardedText}${screenshotNote}`,
           });
         } else if (screenshotNote) {
           content.push({
@@ -815,6 +823,9 @@ export const createPiTools = (opts: {
         return {
           content,
           details: formatted.details,
+          ...(typeof toolResult.modelOutputTokens === "number"
+            ? { modelOutputTokens: toolResult.modelOutputTokens }
+            : {}),
         };
       },
     };
@@ -825,6 +836,30 @@ export const createPiTools = (opts: {
     if (activeToolNames.has(toolName)) continue;
     activeToolNames.add(toolName);
     activeTools.push(registerTool(toolName));
+  }
+
+  const connectorProvider = opts.connectorDeliveryTarget?.provider;
+  const restoreDeferredTool = (toolName: string) => {
+    if (activeToolNames.has(toolName)) return;
+    const metadata = catalog.get(toolName);
+    if (!metadata?.deferred) return;
+    const requiredProvider = metadata.deferred.requiredConnectorProvider;
+    if (requiredProvider && requiredProvider !== connectorProvider) return;
+    activeToolNames.add(toolName);
+    activeTools.push(registerTool(toolName));
+  };
+  for (const message of opts.historyMessages ?? []) {
+    if (message.role === "assistant") {
+      for (const block of message.content) {
+        if (block.type === "toolCall") restoreDeferredTool(block.name);
+      }
+      continue;
+    }
+    if (message.role === "toolResult") {
+      for (const toolName of message.addedToolNames ?? []) {
+        restoreDeferredTool(toolName);
+      }
+    }
   }
 
   return activeTools;

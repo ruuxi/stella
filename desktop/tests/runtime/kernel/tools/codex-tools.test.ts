@@ -540,6 +540,8 @@ EOF`,
     expect(payload.wall_time_seconds as number).toBeGreaterThanOrEqual(0);
     expect(typeof payload.original_token_count).toBe("number");
     expect(payload.original_token_count as number).toBeGreaterThan(256);
+    expect((payload.output as string).length).toBeGreaterThan(256 * 4);
+    expect(result.modelOutputTokens).toBe(256);
   });
 
   it("exec_command payload includes original_token_count even when output is small", async () => {
@@ -565,6 +567,7 @@ EOF`,
     expect(payload.output).toBe("ok");
     expect(typeof payload.original_token_count).toBe("number");
     expect((payload.original_token_count as number) >= 1).toBe(true);
+    expect(result.modelOutputTokens).toBe(10_000);
   });
 
   it("multi_tool_use_parallel rejects write_stdin (non-parallel-safe)", async () => {

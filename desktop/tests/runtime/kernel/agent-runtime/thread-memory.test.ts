@@ -10,7 +10,10 @@ import {
   buildHistorySource,
   buildStartupPromptMessages,
 } from "../../../../../runtime/kernel/agent-runtime/thread-memory.js";
-import { buildDefaultTransformContext } from "../../../../../runtime/kernel/agent-runtime/shared.js";
+import {
+  buildDefaultTransformContext,
+  normalizeModelVisibleToolResults,
+} from "../../../../../runtime/kernel/agent-runtime/shared.js";
 import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 
 describe("buildSystemPrompt", () => {
@@ -532,7 +535,128 @@ describe("buildHistorySource", () => {
 });
 
 describe("buildDefaultTransformContext", () => {
-  it("preserves tool-result images until normal context pruning", async () => {
+  it("normalizes generic tool text using the active model policy without mutating durable content", () => {
+    const rawText = `HEAD-${"x".repeat(2_000)}-TAIL`;
+    const rawMessage: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call-generic",
+      toolName: "Read",
+      content: [{ type: "text", text: rawText }],
+      isError: false,
+      timestamp: 1,
+    };
+
+    const durableMessages = [rawMessage];
+    const normalized = normalizeModelVisibleToolResults(durableMessages, {
+      model: {
+        contextWindow: 128_000,
+        toolOutputTokenLimit: 100,
+      },
+    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
+
+    expect(normalized).not.toBe(durableMessages);
+    expect(normalized[0]).not.toBe(rawMessage);
+    const normalizedText = (
+      normalized[0] as Extract<AgentMessage, { role: "toolResult" }>
+    ).content[0];
+    expect(normalizedText?.type).toBe("text");
+    expect(
+      normalizedText?.type === "text" ? normalizedText.text.length : 0,
+    ).toBeLessThanOrEqual(480);
+    expect(
+      normalizedText?.type === "text" ? normalizedText.text : "",
+    ).toContain("Tool output truncated");
+    expect(normalizedText?.type === "text" ? normalizedText.text : "").toMatch(
+      /^HEAD-/,
+    );
+    expect(normalizedText?.type === "text" ? normalizedText.text : "").toMatch(
+      /-TAIL$/,
+    );
+    expect(
+      (rawMessage as Extract<AgentMessage, { role: "toolResult" }>).content[0],
+    ).toEqual({
+      type: "text",
+      text: rawText,
+    });
+  });
+
+  it("applies shell max_output_tokens to the output body before generic serialization", () => {
+    const rawOutput = `HEAD-${"x".repeat(2_000)}-TAIL`;
+    const rawText = JSON.stringify(
+      {
+        output: rawOutput,
+        exit_code: 0,
+        original_token_count: 503,
+      },
+      null,
+      2,
+    );
+    const rawMessage: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call-shell",
+      toolName: "exec_command",
+      content: [{ type: "text", text: rawText }],
+      modelOutputTokens: 100,
+      isError: false,
+      timestamp: 1,
+    };
+
+    const [normalized] = normalizeModelVisibleToolResults([rawMessage], {
+      model: {
+        contextWindow: 128_000,
+        toolOutputTokenLimit: 10_000,
+      },
+    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
+    const block = (normalized as Extract<AgentMessage, { role: "toolResult" }>)
+      .content[0];
+    expect(block?.type).toBe("text");
+    const parsed = JSON.parse(
+      block?.type === "text" ? block.text : "",
+    ) as Record<string, unknown>;
+
+    expect((parsed.output as string).length).toBeLessThanOrEqual(400);
+    expect(parsed.output).toContain("Tool output truncated");
+    expect(parsed.original_token_count).toBe(503);
+    expect(
+      (
+        JSON.parse(rawText) as {
+          output: string;
+        }
+      ).output,
+    ).toBe(rawOutput);
+  });
+
+  it("caps a larger shell request at the active model policy", () => {
+    const rawText = JSON.stringify({
+      output: `HEAD-${"x".repeat(2_000)}-TAIL`,
+    });
+    const rawMessage: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call-shell-policy",
+      toolName: "exec_command",
+      content: [{ type: "text", text: rawText }],
+      modelOutputTokens: 1_000,
+      isError: false,
+      timestamp: 1,
+    };
+
+    const [normalized] = normalizeModelVisibleToolResults([rawMessage], {
+      model: {
+        contextWindow: 128_000,
+        toolOutputTokenLimit: 200,
+      },
+    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
+    const block = (normalized as Extract<AgentMessage, { role: "toolResult" }>)
+      .content[0];
+    const parsed = JSON.parse(
+      block?.type === "text" ? block.text : "",
+    ) as Record<string, unknown>;
+
+    expect((parsed.output as string).length).toBeLessThanOrEqual(800);
+    expect(parsed.output).toContain("Tool output truncated");
+  });
+
+  it("preserves tool-result images in the request projection", async () => {
     const transform = buildDefaultTransformContext({
       model: { contextWindow: 128_000 },
     } as Parameters<typeof buildDefaultTransformContext>[0]);
@@ -563,7 +687,7 @@ describe("buildDefaultTransformContext", () => {
     ).toHaveLength(10);
   });
 
-  it("preserves bootstrap startup docs when pruning oversized context", async () => {
+  it("does not prune oversized context at request time", async () => {
     const transform = buildDefaultTransformContext({
       model: { contextWindow: 20_000 },
     } as Parameters<typeof buildDefaultTransformContext>[0]);
@@ -589,8 +713,9 @@ describe("buildDefaultTransformContext", () => {
       timestamp: 3,
     };
 
-    const pruned = await transform([personality, oldContext, currentPrompt]);
-    const prunedText = pruned
+    const messages = [personality, oldContext, currentPrompt];
+    const projected = await transform(messages);
+    const projectedText = projected
       .flatMap((message) =>
         Array.isArray(message.content)
           ? message.content.map((block) =>
@@ -600,8 +725,10 @@ describe("buildDefaultTransformContext", () => {
       )
       .join("\n");
 
-    expect(pruned).toContain(personality);
-    expect(prunedText).toContain("Warm and concise.");
-    expect(prunedText).toContain("current user prompt");
+    expect(projected).toBe(messages);
+    expect(projected).toEqual([personality, oldContext, currentPrompt]);
+    expect(projectedText).toContain("Warm and concise.");
+    expect(projectedText).toContain("old context");
+    expect(projectedText).toContain("current user prompt");
   });
 });

@@ -9,11 +9,11 @@ import {
   subscribeRuntimeAgentEvents,
   type RuntimeRunEventRecorder,
 } from "./run-events.js";
-import { createRuntimePromptAgentMessage } from "./run-preparation.js";
 import {
-  getAgentCompletion,
-  now,
-} from "./shared.js";
+  createRuntimePromptAgentMessage,
+  prepareRuntimeAttachments,
+} from "./run-preparation.js";
+import { getAgentCompletion, now } from "./shared.js";
 import type { RuntimeRunCallbacks } from "./types.js";
 import {
   persistThreadCustomMessage,
@@ -23,6 +23,11 @@ import {
 type RuntimeExecutableAgent = {
   state: {
     messages: AgentMessage[];
+    model?: {
+      provider?: string;
+      api?: string;
+      id?: string;
+    };
   };
   subscribe: (listener: (event: AgentEvent) => void) => () => void;
   prompt: (message: AgentMessage | AgentMessage[]) => Promise<void>;
@@ -104,9 +109,17 @@ const materializeRemoteImageAttachment = async (
 
 const materializePromptAttachments = async (
   attachments?: RuntimeAttachmentRef[],
+  target?: {
+    provider?: string;
+    api?: string;
+    modelId?: string;
+  },
 ): Promise<RuntimeAttachmentRef[] | undefined> => {
   if (!attachments?.length) return attachments;
-  return await Promise.all(attachments.map(materializeRemoteImageAttachment));
+  const materialized = await Promise.all(
+    attachments.map(materializeRemoteImageAttachment),
+  );
+  return await prepareRuntimeAttachments(materialized, target);
 };
 
 export const executeRuntimeAgentPrompt = async (args: {
@@ -259,6 +272,13 @@ export const executeRuntimeAgentPrompt = async (args: {
         finalText: completion.finalText.trim(),
       };
     }
+    const imageTarget = args.agent.state.model
+      ? {
+          provider: args.agent.state.model.provider,
+          api: args.agent.state.model.api,
+          modelId: args.agent.state.model.id,
+        }
+      : undefined;
     const promptInputs =
       args.promptMessages && args.promptMessages.length > 0
         ? await Promise.all(
@@ -266,13 +286,19 @@ export const executeRuntimeAgentPrompt = async (args: {
               ...message,
               attachments: await materializePromptAttachments(
                 message.attachments,
+                imageTarget,
               ),
             })),
           )
-        : [{
-            text: args.promptText ?? "",
-            attachments: await materializePromptAttachments(args.attachments),
-          }];
+        : [
+            {
+              text: args.promptText ?? "",
+              attachments: await materializePromptAttachments(
+                args.attachments,
+                imageTarget,
+              ),
+            },
+          ];
     const promptTimestamp = now();
     const promptMessages = promptInputs.map((message, index) => ({
       message: createRuntimePromptAgentMessage(

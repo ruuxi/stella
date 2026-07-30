@@ -27,6 +27,7 @@ export type ModelsJsonModelOverride = Partial<
     | "cost"
     | "contextWindow"
     | "maxTokens"
+    | "toolOutputTokenLimit"
     | "headers"
     | "compat"
   >
@@ -164,6 +165,9 @@ const compatSchema = Type.Object({
   sendSessionIdHeader: Type.Optional(Type.Boolean()),
   supportsLongCacheRetention: Type.Optional(Type.Boolean()),
   supportsEagerToolInputStreaming: Type.Optional(Type.Boolean()),
+  supportsToolReferences: Type.Optional(Type.Boolean()),
+  supportsToolSearch: Type.Optional(Type.Boolean()),
+  deferredToolsMode: Type.Optional(Type.Literal("kimi")),
 });
 const costSchema = Type.Object({
   input: Type.Optional(Type.Number()),
@@ -202,6 +206,7 @@ const modelFields = {
   cost: Type.Optional(costSchema),
   contextWindow: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   maxTokens: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+  toolOutputTokenLimit: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   headers: Type.Optional(stringRecord),
   compat: Type.Optional(compatSchema),
 };
@@ -238,6 +243,7 @@ const remoteCatalogModelFields = {
   cost: remoteCatalogCostSchema,
   contextWindow: Type.Number({ exclusiveMinimum: 0 }),
   maxTokens: Type.Number({ exclusiveMinimum: 0 }),
+  toolOutputTokenLimit: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   headers: Type.Optional(stringRecord),
   compat: Type.Optional(compatSchema),
 };

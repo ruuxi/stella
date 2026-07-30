@@ -2,9 +2,11 @@ import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createPiTools,
   extractAttachImageBlocks,
   truncateModelVisibleToolText,
 } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { MAX_IMAGE_BASE64_BYTES } from "../../../../../runtime/ai/utils/image-payload.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
@@ -334,5 +336,35 @@ describe("truncateModelVisibleToolText", () => {
     expect(result.text).toContain("Total output lines: 2");
     expect(result.text.startsWith("a")).toBe(true);
     expect(result.text.endsWith("b")).toBe(true);
+  });
+});
+
+describe("native tool-result persistence boundary", () => {
+  it("returns full tool text from the adapter for durable history", async () => {
+    const rawText = `HEAD-${"x".repeat(40_000)}-TAIL`;
+    const [tool] = createPiTools({
+      runId: "run-raw-tool-output",
+      conversationId: "conversation-raw-tool-output",
+      agentType: AGENT_IDS.ORCHESTRATOR,
+      deviceId: "device-raw-tool-output",
+      toolsAllowlist: ["raw_output_test"],
+      toolCatalog: [
+        {
+          name: "raw_output_test",
+          description: "Return a large result",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+      toolExecutor: async () => ({ result: rawText }),
+    });
+
+    const result = await tool!.execute("call-raw-tool-output", {});
+    const text = result.content[0];
+
+    expect(text?.type).toBe("text");
+    expect(text?.type === "text" ? text.text : "").toBe(rawText);
+    expect(text?.type === "text" ? text.text.length : 0).toBeGreaterThan(
+      30_000,
+    );
   });
 });

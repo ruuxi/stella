@@ -1,5 +1,14 @@
+import { Buffer } from "node:buffer";
 import type { AgentMessage } from "../agent-core/types.js";
 import type { ImageContent } from "../../ai/types.js";
+import {
+  detectImageMediaType,
+  isCompleteImage,
+} from "../../ai/utils/image-payload.js";
+import {
+  resolveImageCaps,
+  type ImageCapTarget,
+} from "../../ai/utils/image-caps.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -7,6 +16,7 @@ import type {
 import { resolveLocalCliCwd } from "./shared.js";
 import { buildSystemPrompt } from "./thread-memory.js";
 import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
+import { resizeImage } from "../shared/image-resize.js";
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
 
@@ -28,6 +38,53 @@ const toImageContent = (
     mimeType,
     data: match[2],
   };
+};
+
+/**
+ * Validate and resize inline images before they enter native agent history.
+ * Invalid or unshrinkable images are omitted instead of becoming permanent,
+ * replayed request failures.
+ */
+export const prepareRuntimeAttachments = async (
+  attachments: RuntimeAttachmentRef[] | undefined,
+  target: ImageCapTarget = {},
+): Promise<RuntimeAttachmentRef[] | undefined> => {
+  if (!attachments?.length) return attachments;
+  const imageCount = attachments.filter((attachment) =>
+    DATA_URL_RE.test(attachment.url.trim()),
+  ).length;
+  const prepared = await Promise.all(
+    attachments.map(
+      async (attachment): Promise<RuntimeAttachmentRef | null> => {
+        const match = DATA_URL_RE.exec(attachment.url.trim());
+        if (!match) return attachment;
+        const claimedMimeType = (
+          attachment.mimeType?.trim() || match[1]
+        ).toLowerCase();
+        if (!claimedMimeType.startsWith("image/")) return attachment;
+        const bytes = Buffer.from(match[2], "base64");
+        const detectedMimeType = detectImageMediaType(bytes);
+        if (!detectedMimeType || !isCompleteImage(bytes, detectedMimeType)) {
+          return null;
+        }
+        const resized = await resizeImage(
+          bytes,
+          detectedMimeType,
+          resolveImageCaps({ ...target, imageCount }),
+        );
+        if (!resized) return null;
+        return {
+          ...attachment,
+          mimeType: resized.mimeType,
+          url: `data:${resized.mimeType};base64,${resized.data}`,
+          size: Buffer.byteLength(resized.data, "base64"),
+        };
+      },
+    ),
+  );
+  return prepared.filter(
+    (attachment): attachment is RuntimeAttachmentRef => attachment !== null,
+  );
 };
 
 export const createUserPromptMessage = (
