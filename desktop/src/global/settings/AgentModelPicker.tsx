@@ -17,6 +17,7 @@ import {
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
 import { Select } from "@/ui/select";
+import { Switch } from "@/ui/switch";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
 import { useClaudeCodeModelCatalog } from "@/global/settings/hooks/use-claude-code-model-catalog";
@@ -105,14 +106,6 @@ const REASONING_EFFORT_OPTIONS: Array<{
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
   { id: "xhigh", label: "Extra" },
-];
-
-const CODEX_SERVICE_TIER_OPTIONS: Array<{
-  id: CodexServiceTier;
-  label: string;
-}> = [
-  { id: "standard", label: "Standard" },
-  { id: "fast", label: "Fast" },
 ];
 
 const ASSISTANT_TARGET = "__assistant__";
@@ -1819,27 +1812,23 @@ export function AgentModelPicker({
           </span>
           <div className="agent-model-picker-controls">
             {committedEngine === "codex_cli" && selectedChatGptSupportsFast ? (
-              <div className="agent-model-picker-reasoning">
-                <span title="Fast uses more ChatGPT credits.">Speed</span>
-                <Select
-                  value={currentCodexServiceTier}
-                  onValueChange={(value) => {
-                    if (value === "standard" || value === "fast") {
-                      void handleCodexServiceTierSelect(value);
-                    }
-                  }}
-                  disabled={
-                    pendingAgent !== null ||
-                    chatGptConnection !== "connected" ||
-                    codexCatalog.loading
-                  }
-                  aria-label="ChatGPT speed"
-                  options={CODEX_SERVICE_TIER_OPTIONS.map((option) => ({
-                    value: option.id,
-                    label: option.label,
-                  }))}
-                />
-              </div>
+              <Switch
+                className="agent-model-picker-fast-toggle"
+                label="Fast"
+                checked={currentCodexServiceTier === "fast"}
+                onCheckedChange={(checked) => {
+                  void handleCodexServiceTierSelect(
+                    checked ? "fast" : "standard",
+                  );
+                }}
+                title="Fast uses more ChatGPT credits."
+                aria-label="Fast ChatGPT responses"
+                disabled={
+                  pendingAgent !== null ||
+                  chatGptConnection !== "connected" ||
+                  codexCatalog.loading
+                }
+              />
             ) : null}
             <div className="agent-model-picker-reasoning">
               <span>Reasoning</span>

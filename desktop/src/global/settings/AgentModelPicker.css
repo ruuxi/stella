@@ -244,6 +244,18 @@
   white-space: nowrap;
 }
 
+.agent-model-picker-fast-toggle {
+  gap: 6px;
+  color: var(--text-weak);
+  white-space: nowrap;
+}
+
+.agent-model-picker-fast-toggle [data-slot="switch-label"] {
+  color: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+}
+
 .agent-model-picker-reasoning [data-component="select"] {
   min-width: 0;
   width: auto;

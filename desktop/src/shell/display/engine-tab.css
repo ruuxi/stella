@@ -372,45 +372,15 @@
   min-width: 0;
 }
 
-.engine-runtime-model-panel__speed {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid color-mix(in oklch, var(--border) 48%, transparent);
-  border-radius: var(--radius-full);
-  background: var(--surface-inset);
+.engine-runtime-model-panel__fast {
+  gap: 6px;
+  color: var(--text-weak);
 }
 
-.engine-runtime-model-panel__speed > button {
-  appearance: none;
-  min-height: 22px;
-  padding: 2px 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-weak);
-  font: inherit;
+.engine-runtime-model-panel__fast [data-slot="switch-label"] {
+  color: inherit;
   font-size: var(--font-size-2xs);
   font-weight: var(--weight-medium);
-  cursor: default;
-}
-
-.engine-runtime-model-panel__speed > button[data-selected] {
-  color: var(--select-text);
-  border-color: var(--select-border);
-  background: var(--select-fill-raised);
-  box-shadow: var(--select-chip-shadow);
-}
-
-.engine-runtime-model-panel__speed > button:hover:not(:disabled),
-.engine-runtime-model-panel__speed > button:focus-visible {
-  color: var(--text-strong);
-  outline: none;
-}
-
-.engine-runtime-model-panel__speed > button:disabled {
-  opacity: 0.5;
 }
 
 .engine-runtime-model-panel__refresh {

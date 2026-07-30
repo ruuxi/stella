@@ -7,6 +7,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { Switch } from "@/ui/switch";
 import {
   readEngineModelFavorites,
   sortByFavorites,
@@ -128,25 +129,17 @@ export function EngineRuntimeModelPanel({
           </span>
           <div className="engine-runtime-model-panel__head-actions">
             {onSelectServiceTier ? (
-              <div
-                className="engine-runtime-model-panel__speed"
-                role="group"
-                aria-label="ChatGPT speed"
+              <Switch
+                className="engine-runtime-model-panel__fast"
+                label="Fast"
+                checked={serviceTier === "fast"}
+                onCheckedChange={(checked) =>
+                  onSelectServiceTier(checked ? "fast" : "standard")
+                }
+                aria-label="Fast ChatGPT responses"
                 title="Fast uses more ChatGPT credits."
-              >
-                {(["standard", "fast"] as const).map((tier) => (
-                  <button
-                    key={tier}
-                    type="button"
-                    data-selected={serviceTier === tier || undefined}
-                    aria-pressed={serviceTier === tier}
-                    disabled={disabled}
-                    onClick={() => onSelectServiceTier(tier)}
-                  >
-                    {tier === "standard" ? "Standard" : "Fast"}
-                  </button>
-                ))}
-              </div>
+                disabled={disabled}
+              />
             ) : null}
             {onRefresh ? (
               <button
