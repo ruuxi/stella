@@ -159,6 +159,54 @@ describe("provider premature EOF terminal semantics", () => {
       { category: "transport", retryable: true },
     );
   });
+
+  it("normalizes a nested Codex server error as retryable", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      prematureEventStream([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            code: "server_error",
+            message: "An error occurred while processing your request.",
+          },
+          sequence_number: 2,
+        },
+      ]),
+    ) as typeof fetch;
+
+    const model: Model<"openai-codex-responses"> = {
+      id: "gpt-test",
+      name: "Codex test",
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      baseUrl: "https://codex.test/backend-api",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 16_000,
+    };
+    const token = `e30.${btoa(
+      JSON.stringify({
+        "https://api.openai.com/auth": { chatgpt_account_id: "account-test" },
+      }),
+    )}.sig`;
+
+    const result = await streamOpenAICodexResponses(
+      model,
+      { messages: [] },
+      { apiKey: token, transport: "sse" },
+    ).result();
+
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toBe(
+      "Codex error (server_error): An error occurred while processing your request.",
+    );
+    expect(classifyAgentRunFailure(new Error(result.errorMessage))).toMatchObject(
+      { category: "http_5xx", retryable: true },
+    );
+  });
 });
 
 describe("stale terminal status acceptance", () => {

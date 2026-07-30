@@ -27,6 +27,20 @@ describe("agent run transient retry policy", () => {
       category: "http_5xx",
     },
     {
+      name: "Codex streamed server error",
+      error: new Error(
+        'Codex error (server_error): An error occurred while processing your request.',
+      ),
+      category: "http_5xx",
+    },
+    {
+      name: "legacy Codex nested overload payload",
+      error: new Error(
+        'Codex error: {"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded."}}',
+      ),
+      category: "http_5xx",
+    },
+    {
       name: "429 relay buffer quota",
       error: Object.assign(new Error("Transient relay buffer quota exceeded"), {
         status: 429,

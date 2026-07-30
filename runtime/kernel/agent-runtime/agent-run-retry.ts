@@ -115,7 +115,7 @@ const isRateLimit = (message: string, status?: number): boolean =>
 
 const isHttp5xx = (message: string, status?: number): boolean =>
   (typeof status === "number" && status >= 500 && status <= 599) ||
-  /(?:^|\b)(?:http(?: status)?|status(?: code)?|upstream)\s*[:=]?\s*5\d\d\b|(?:^|\b)5\d\d\s+server error\b|\bserver error\s*[:=]?\s*5\d\d\b/i.test(
+  /(?:^|\b)(?:http(?: status)?|status(?: code)?|upstream)\s*[:=]?\s*5\d\d\b|(?:^|\b)5\d\d\s+server error\b|\bserver error\s*[:=]?\s*5\d\d\b|\b(?:server_error|internal_server_error|service_unavailable_error|server_is_overloaded)\b/i.test(
     message,
   );
 

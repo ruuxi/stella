@@ -512,9 +512,21 @@ async function* mapCodexEvents(events: AsyncIterable<Record<string, unknown>>): 
 		if (!type) continue;
 
 		if (type === "error") {
-			const code = (event as { code?: string }).code || "";
-			const message = (event as { message?: string }).message || "";
-			throw new CodexApiError(`Codex error: ${message || code || JSON.stringify(event)}`, {
+			const nestedError =
+				event.error && typeof event.error === "object"
+					? (event.error as { code?: unknown; message?: unknown; type?: unknown })
+					: undefined;
+			const code =
+				(typeof event.code === "string" ? event.code : undefined) ||
+				(typeof nestedError?.code === "string" ? nestedError.code : undefined) ||
+				(typeof nestedError?.type === "string" ? nestedError.type : undefined) ||
+				"";
+			const message =
+				(typeof event.message === "string" ? event.message : undefined) ||
+				(typeof nestedError?.message === "string" ? nestedError.message : undefined) ||
+				"";
+			const summary = message || code || JSON.stringify(event);
+			throw new CodexApiError(`Codex error${code ? ` (${code})` : ""}: ${summary}`, {
 				code: code || undefined,
 				payload: event,
 			});

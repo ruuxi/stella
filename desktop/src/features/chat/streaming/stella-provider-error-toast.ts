@@ -83,6 +83,9 @@ const serviceUnavailableMatchers = [
   'stella runtime error: 5',
   'failed to generate stella completion',
   'streaming completion failed',
+  'server_error',
+  'server_is_overloaded',
+  'service_unavailable_error',
 ] as const
 
 const malformedRequestMatchers = [
