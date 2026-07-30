@@ -48,11 +48,18 @@ import "./composer-activity-pill.css";
 // Keep the full Activity hierarchy off the composer's eager module graph.
 // The standalone surface already loads it lazily, and the tray only needs it
 // after the user opens the popover.
-const ActivityOverview = lazy(() =>
+const loadActivityOverview = () =>
   import("@/shell/sidebar-sections/HomeSection").then((module) => ({
     default: module.ActivityOverview,
-  })),
-);
+  }));
+
+const preloadActivityOverview = (): void => {
+  // Opening the tray will surface a real lazy-load failure through the normal
+  // render boundary; speculative hover must not create an unhandled rejection.
+  void loadActivityOverview().catch(() => undefined);
+};
+
+const ActivityOverview = lazy(loadActivityOverview);
 
 export type PillState = "idle" | "running" | "done" | "error" | "canceled";
 
@@ -234,6 +241,8 @@ const ActivityPillBody = memo(function ActivityPillBody({
           className="composer-activity-pill"
           data-state={state}
           data-open={open || undefined}
+          onMouseEnter={preloadActivityOverview}
+          onFocus={preloadActivityOverview}
           aria-label={
             state === "idle" ? "Activity" : `${label} — open activity`
           }

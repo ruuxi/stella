@@ -137,6 +137,10 @@ describe("chat shell UI contracts", () => {
     expect(activityPill).toContain("<Popover");
     expect(activityPill).toContain("<ActivityOverview");
     expect(activityPill).toContain("showModels={false}");
+    expect(activityPill).toContain(
+      "onMouseEnter={preloadActivityOverview}",
+    );
+    expect(activityPill).toContain("onFocus={preloadActivityOverview}");
     expect(activityPill).toContain("shouldShowActivityPill(");
     expect(activityPill).not.toContain("displaySearchStore");
   });
