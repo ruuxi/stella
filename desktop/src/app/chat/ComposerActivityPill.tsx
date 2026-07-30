@@ -2,32 +2,36 @@
  * Composer activity pill — the compact presentation of background work that
  * sits in the context chip row above the composer.
  *
- * It stays visible whatever the right sidebar is doing, so search is always
- * one click away from the composer. While the sidebar is open on Work, that
- * section owns live progress and the pill stays in its Search state.
+ * It renders only when Activity exists but its standalone surface is hidden:
+ * while the right sidebar replaces Activity, or when the shell automatically
+ * hides Activity at narrower widths.
  *
  * The pill does double duty:
- *   • Idle, it's the entry point to search — a search icon + "Search".
+ *   • Idle, it's the entry point to the Activity tray.
  *   • While Stella has background work in flight it shows a simple,
  *     shimmering count of how many top-level work units are running ("1 task in progress",
  *     "2 tasks in progress", …) — the per-task detail lives in the inline
  *     chat cards and the Tasks section, so the ambient pill just tallies. When
  *     work settles it briefly shows a finished / couldn't-finish / stopped
- *     state before quietly reverting to "Search" — a minimum dwell so a quick
+ *     state before quietly reverting to "Activity" — a minimum dwell so a quick
  *     task doesn't just flash its progress.
  *
- * Clicking it (in any state) opens search in the sidebar's unified Work tab.
+ * Clicking it (in any state) opens the Activity tray. Search lives
+ * permanently in the sidebar's unified Work tab.
  */
 import {
+  lazy,
   memo,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { motion, useReducedMotion } from "motion/react";
-import { AlertCircle, Check, Search } from "@/ui/icons";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AlertCircle, Check, LayoutList } from "@/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import {
   CHAT_ACTIVITY_SHIMMER_GROUP,
   TextShimmer,
@@ -37,16 +41,18 @@ import {
   deriveTopLevelActivityWorkUnits,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
-import {
-  sidebarSections,
-  useActiveSidebarSection,
-} from "@/features/workspace-display/sidebar-sections";
-import {
-  displaySearchStore,
-  useDisplaySearchOpen,
-} from "@/features/workspace-display/display-search-store";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
+import { useShellBreakpointState } from "@/shell/shell-breakpoints";
 import "./composer-activity-pill.css";
+
+// Keep the full Activity hierarchy off the composer's eager module graph.
+// The standalone surface already loads it lazily, and the tray only needs it
+// after the user opens the popover.
+const ActivityOverview = lazy(() =>
+  import("@/shell/sidebar-sections/HomeSection").then((module) => ({
+    default: module.ActivityOverview,
+  })),
+);
 
 export type PillState = "idle" | "running" | "done" | "error" | "canceled";
 
@@ -67,22 +73,18 @@ export const getActivityPillLabel = (
   state: PillState,
   runningCount: number,
 ): string => {
-  if (state === "idle") return "Search";
+  if (state === "idle") return "Activity";
   if (state === "running") {
     return `${runningCount} ${runningCount === 1 ? "task" : "tasks"} in progress`;
   }
   return STATUS_FALLBACK[state];
 };
 
-/**
- * The pill stands down from its live "running" label whenever the Tasks
- * surface is already on screen, so the two never narrate the same progress at
- * once.
- */
-export const getDisplayedActivityPillState = (
-  state: PillState,
-  tasksSurfaceVisible: boolean,
-): PillState => (tasksSurfaceVisible && state === "running" ? "idle" : state);
+export const shouldShowActivityPill = (
+  hasActivity: boolean,
+  panelOpen: boolean,
+  workspaceStripHidden: boolean,
+): boolean => hasActivity && (panelOpen || workspaceStripHidden);
 
 /** Live status of the whole conversation's background work, distilled into
  *  a single pill state (+ running count) with a minimum dwell on terminal
@@ -185,19 +187,30 @@ function PillGlyph({ state }: { state: PillState }) {
     case "canceled":
       return <span className="composer-activity-pill__dot" />;
     case "idle":
-      return <Search size={15} strokeWidth={1.75} aria-hidden="true" />;
+      return <LayoutList size={15} strokeWidth={1.75} aria-hidden="true" />;
   }
+}
+
+function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div className="composer-activity-tray">
+      <Suspense fallback={null}>
+        <ActivityOverview onNavigate={onNavigate} showModels={false} />
+      </Suspense>
+    </div>
+  );
 }
 
 const ActivityPillBody = memo(function ActivityPillBody({
   state,
   runningCount,
   open,
+  onOpenChange,
 }: {
   state: PillState;
   runningCount: number;
-  /** Whether the sidebar is already showing Work search. */
   open: boolean;
+  onOpenChange: (next: boolean) => void;
 }) {
   const label = getActivityPillLabel(state, runningCount);
 
@@ -214,53 +227,77 @@ const ActivityPillBody = memo(function ActivityPillBody({
     );
 
   return (
-    <button
-      type="button"
-      className="composer-activity-pill"
-      data-state={state}
-      data-open={open || undefined}
-      onClick={() => {
-        sidebarSections.openLocation("files", null);
-        displaySearchStore.open();
-      }}
-      aria-label={state === "idle" ? "Search" : `${label} — open search`}
-    >
-      <span className="composer-activity-pill__glyph" aria-hidden="true">
-        <PillGlyph state={state} />
-      </span>
-      <span className="composer-activity-pill__label">{labelNode}</span>
-    </button>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="composer-activity-pill"
+          data-state={state}
+          data-open={open || undefined}
+          aria-label={
+            state === "idle" ? "Activity" : `${label} — open activity`
+          }
+        >
+          <span className="composer-activity-pill__glyph" aria-hidden="true">
+            <PillGlyph state={state} />
+          </span>
+          <span className="composer-activity-pill__label">{labelNode}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="composer-activity-tray-popover"
+      >
+        <ActivityTray onNavigate={() => onOpenChange(false)} />
+      </PopoverContent>
+    </Popover>
   );
 });
 
 export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const panelOpen = useDisplayPanelOpen();
-  const activeSection = useActiveSidebarSection();
-  const searchOpen = useDisplaySearchOpen();
+  const shellBreakpoints = useShellBreakpointState();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
   const tasks = chat.conversation.tasks;
 
   const { state, runningCount } = useActivityPillState(tasks);
-  const displayedState = getDisplayedActivityPillState(
-    state,
-    panelOpen && activeSection === "files",
+  const visible = shouldShowActivityPill(
+    tasks.length > 0,
+    panelOpen,
+    shellBreakpoints.hideWorkspaceStrip,
   );
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!visible && open) setOpen(false);
+  }, [open, visible]);
 
   return (
-    <motion.div
-      className="composer-activity-pill-slot"
-      initial={{ opacity: 0, x: -8, scale: 0.96 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      transition={
-        reduceMotion ? { duration: 0 } : { duration: 0.26, ease: "easeOut" }
-      }
-    >
-      <ActivityPillBody
-        state={displayedState}
-        runningCount={runningCount}
-        open={searchOpen && panelOpen && activeSection === "files"}
-      />
-    </motion.div>
+    <AnimatePresence initial={false}>
+      {visible ? (
+        <motion.div
+          key="composer-activity-pill"
+          className="composer-activity-pill-slot"
+          initial={{ opacity: 0, x: -8, scale: 0.96 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -8, scale: 0.96 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { duration: 0.18, ease: [0.32, 0.72, 0, 1] }
+          }
+        >
+          <ActivityPillBody
+            state={state}
+            runningCount={runningCount}
+            open={open}
+            onOpenChange={setOpen}
+          />
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 });

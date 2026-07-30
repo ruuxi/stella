@@ -16,31 +16,43 @@ import { WorkspaceSections } from "@/shell/workspace/WorkspaceSections";
 import { SlidersHorizontal } from "@/ui/icons";
 import "./home-search.css";
 
-function HomeOverview() {
+export function ActivityOverview({
+  onNavigate,
+  showModels = true,
+}: {
+  onNavigate?: () => void;
+  showModels?: boolean;
+} = {}) {
   const modelsPickerOpen = useEngineOverlayOpen();
 
   return (
     <div className="sidebar-search">
       <div className="sidebar-search__body">
-        <WorkspaceSections variant="overview" searchMode="quick" />
-      </div>
-      <div className="sidebar-home-footer">
-        <ModelsPicker
-          open={modelsPickerOpen}
-          onOpenChange={engineOverlay.setOpen}
-          side="top"
-          align="end"
-          trigger={
-            <button
-              type="button"
-              className="pill-btn sidebar-home-models-button"
-            >
-              <SlidersHorizontal size={14} strokeWidth={1.75} />
-              Models
-            </button>
-          }
+        <WorkspaceSections
+          variant="overview"
+          searchMode="quick"
+          onNavigate={onNavigate}
         />
       </div>
+      {showModels ? (
+        <div className="sidebar-home-footer">
+          <ModelsPicker
+            open={modelsPickerOpen}
+            onOpenChange={engineOverlay.setOpen}
+            side="top"
+            align="end"
+            trigger={
+              <button
+                type="button"
+                className="pill-btn sidebar-home-models-button"
+              >
+                <SlidersHorizontal size={14} strokeWidth={1.75} />
+                Models
+              </button>
+            }
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -56,5 +68,5 @@ export function HomeSection() {
       );
     };
   }, []);
-  return <HomeOverview />;
+  return <ActivityOverview />;
 }

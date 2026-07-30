@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { getContextSuggestionLabel } from "@/app/chat/ComposerAddMenu";
 import {
   getActivityPillLabel,
-  getDisplayedActivityPillState,
+  shouldShowActivityPill,
 } from "@/app/chat/ComposerActivityPill";
 import { displaySearchStore } from "@/features/workspace-display/display-search-store";
 import { isComposerContextMenuTarget } from "@/shell/context-menu/StellaContextMenu";
@@ -18,10 +18,12 @@ const SOURCE_ROOT = path.resolve(
 );
 
 describe("chat shell UI contracts", () => {
-  it("keeps the activity pill visible but suppresses running state while Tasks is on screen", () => {
-    expect(getDisplayedActivityPillState("running", false)).toBe("running");
-    expect(getDisplayedActivityPillState("running", true)).toBe("idle");
-    expect(getDisplayedActivityPillState("done", true)).toBe("done");
+  it("shows the Activity pill only when existing Activity has no standalone surface", () => {
+    expect(shouldShowActivityPill(true, false, false)).toBe(false);
+    expect(shouldShowActivityPill(true, true, false)).toBe(true);
+    expect(shouldShowActivityPill(true, false, true)).toBe(true);
+    expect(shouldShowActivityPill(false, true, true)).toBe(false);
+    expect(getActivityPillLabel("idle", 0)).toBe("Activity");
     expect(getActivityPillLabel("running", 1)).toBe("1 task in progress");
     expect(getActivityPillLabel("running", 2)).toBe("2 tasks in progress");
   });
@@ -117,7 +119,7 @@ describe("chat shell UI contracts", () => {
     expect(contextMenuEnd).toBeGreaterThan(rightSidebar);
   });
 
-  it("moves suggestion UI into + and keeps search one click from the composer", () => {
+  it("moves suggestion UI into + and restores the Activity tray fallback", () => {
     const leadRow = fs.readFileSync(
       path.join(SOURCE_ROOT, "app/chat/ComposerLeadRow.tsx"),
       "utf8",
@@ -132,13 +134,14 @@ describe("chat shell UI contracts", () => {
     );
     expect(leadRow).not.toContain("ComposerSuggestionContextRow");
     expect(addMenu).toContain("<DropdownMenuLabel>Context</DropdownMenuLabel>");
-    expect(activityPill).toContain(
-      'sidebarSections.openLocation("files", null)',
-    );
-    expect(activityPill).toContain("displaySearchStore.open()");
+    expect(activityPill).toContain("<Popover");
+    expect(activityPill).toContain("<ActivityOverview");
+    expect(activityPill).toContain("showModels={false}");
+    expect(activityPill).toContain("shouldShowActivityPill(");
+    expect(activityPill).not.toContain("displaySearchStore");
   });
 
-  it("keeps Activity search-free and reveals optimized search in Work on request", () => {
+  it("keeps Activity search-free and always displays optimized search in Work", () => {
     const home = fs.readFileSync(
       path.join(SOURCE_ROOT, "shell/sidebar-sections/HomeSection.tsx"),
       "utf8",
@@ -150,6 +153,8 @@ describe("chat shell UI contracts", () => {
     expect(home).not.toContain("useDisplaySearch");
     expect(home).not.toContain("sidebar-search__field");
     expect(work).toContain('placeholder="Search agents and files"');
+    expect(work).not.toContain("{searchOpen ? (");
+    expect(work).toContain("if (!searchOpen) displaySearchStore.open()");
     expect(work).toContain("inputRef.current?.focus()");
     expect(work).toContain("useDeferredValue(inputValue.trim().toLowerCase())");
     expect(work).toContain("}, 120)");

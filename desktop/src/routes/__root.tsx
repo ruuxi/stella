@@ -12,7 +12,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
 } from "react";
 import { z } from "zod";
 import { ChatRuntimeProvider } from "@/context/chat-runtime";
@@ -98,8 +97,8 @@ import { usePersistLastLocation } from "@/shell/root-chrome/use-persist-last-loc
 import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel-events";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
-  getShellBreakpointState,
-  type ShellBreakpointState,
+  shellBreakpointStore,
+  useShellBreakpointState,
 } from "@/shell/shell-breakpoints";
 
 /**
@@ -164,13 +163,7 @@ function RootChrome() {
   const chat = useChatRuntime();
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
-  const [shellBreakpoints, setShellBreakpoints] =
-    useState<ShellBreakpointState>(() =>
-      getShellBreakpointState(
-        typeof window === "undefined" ? 0 : window.innerWidth,
-      ),
-    );
-  const shellBreakpointsRef = useRef(shellBreakpoints);
+  const shellBreakpoints = useShellBreakpointState();
   const panelExpandedBeforeTakeoverRef = useRef<boolean | null>(null);
   const displayBreakpointTransitionTimeoutRef = useRef<number | null>(null);
 
@@ -437,16 +430,7 @@ function RootChrome() {
   }, []);
 
   const applyShellBreakpoints = useCallback((width: number) => {
-    const next = getShellBreakpointState(Math.round(width));
-    const previous = shellBreakpointsRef.current;
-    if (
-      next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-      next.displayPanelTakeover === previous.displayPanelTakeover
-    ) {
-      return;
-    }
-    shellBreakpointsRef.current = next;
-    setShellBreakpoints(next);
+    shellBreakpointStore.setWidth(width);
   }, []);
 
   const shellWidthRef = useRef(0);

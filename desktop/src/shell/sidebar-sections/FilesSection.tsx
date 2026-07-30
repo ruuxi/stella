@@ -216,22 +216,23 @@ function WorkList() {
       }}
     >
       <DropOverlay visible={draggingMedia} variant="sidebar" />
-      {searchOpen ? (
-        <div className="files-list__search">
-          <Search size={15} strokeWidth={1.75} aria-hidden="true" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            placeholder="Search agents and files"
-            onChange={(event) => setInputValue(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") displaySearchStore.close();
-            }}
-            aria-label="Search agents and files"
-          />
-        </div>
-      ) : null}
+      <div className="files-list__search">
+        <Search size={15} strokeWidth={1.75} aria-hidden="true" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          placeholder="Search agents and files"
+          onFocus={() => {
+            if (!searchOpen) displaySearchStore.open();
+          }}
+          onChange={(event) => setInputValue(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") displaySearchStore.close();
+          }}
+          aria-label="Search agents and files"
+        />
+      </div>
 
       {items.length === 0 ? (
         <div className="sidebar-section__empty">
