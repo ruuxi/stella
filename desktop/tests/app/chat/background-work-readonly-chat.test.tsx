@@ -134,6 +134,60 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     });
   });
 
+  it("shimmers every simultaneously running inline agent card", async () => {
+    records = [
+      records[0]!,
+      {
+        ...records[0]!,
+        threadId: "agent-thread-2",
+        description: "Verify concurrent work",
+        rootRunId: "root-attempt-2b",
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        <>
+          <BackgroundWorkCard
+            threadIds={["agent-thread-1"]}
+            spawnedAtMs={{ "agent-thread-1": 1_000 }}
+            descriptions={{
+              "agent-thread-1": "Inspect durable routing",
+            }}
+            cardId="concurrent-card-1"
+            startEventIdsByThread={{
+              "agent-thread-1": "start-1",
+            }}
+            conversationId="conversation-1"
+          />
+          <BackgroundWorkCard
+            threadIds={["agent-thread-2"]}
+            spawnedAtMs={{ "agent-thread-2": 1_000 }}
+            descriptions={{
+              "agent-thread-2": "Verify concurrent work",
+            }}
+            cardId="concurrent-card-2"
+            startEventIdsByThread={{
+              "agent-thread-2": "start-2",
+            }}
+            conversationId="conversation-1"
+          />
+        </>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelectorAll(".background-work-card")).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelectorAll(
+        ".background-work-card .text-shimmer__sweep",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("uses Working… for an active tool-only child without exposing tool internals", async () => {
     records = [
       {
