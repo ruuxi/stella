@@ -15,7 +15,9 @@ import { setupEnvironment } from "dugite";
 import type {
   AgentModelReasoningEffort,
   AgentRuntimeEngine,
+  CodexServiceTier,
 } from "../../contracts/agent-engine.js";
+import { DEFAULT_CODEX_SERVICE_TIER } from "../../contracts/agent-engine.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
 import { redactSensitiveText } from "../../contracts/sensitive-data.js";
@@ -121,6 +123,12 @@ type CodexModel = {
   defaultReasoningEffort: CodexReasoningEffort;
   inputModalities: string[];
   additionalSpeedTiers: string[];
+  serviceTiers: Array<{
+    id: string;
+    name: string;
+    description: string;
+  }>;
+  defaultServiceTier?: string | null;
   isDefault: boolean;
 };
 
@@ -177,6 +185,7 @@ type CodexTurnStartParams = {
   sandboxPolicy?: { type: "dangerFullAccess" };
   model?: string | null;
   effort?: CodexReasoningEffort | null;
+  serviceTier?: "default" | "priority";
 };
 
 type CodexTurn = {
@@ -607,7 +616,11 @@ export const getCodexRuntimePreferences = (
   stellaDataDir?: string,
   stellaModel?: string,
   modelOverride?: string,
-): { model: string; reasoningEffort?: CodexReasoningEffort } => {
+): {
+  model: string;
+  reasoningEffort?: CodexReasoningEffort;
+  serviceTier: CodexServiceTier;
+} => {
   const prefs = stellaDataDir ? loadLocalPreferences(stellaDataDir) : null;
   const lightDefault =
     stellaModel?.trim() === "stella/light" ? CODEX_LIGHT_MODEL : undefined;
@@ -640,8 +653,13 @@ export const getCodexRuntimePreferences = (
   return {
     model,
     ...(reasoningEffort ? { reasoningEffort } : {}),
+    serviceTier: prefs?.codexServiceTier ?? DEFAULT_CODEX_SERVICE_TIER,
   };
 };
+
+export const codexServiceTierRequestValue = (
+  serviceTier: CodexServiceTier,
+): "default" | "priority" => (serviceTier === "fast" ? "priority" : "default");
 
 const mimeExtension = (mimeType: string): string => {
   switch (mimeType.trim().toLowerCase()) {
@@ -919,6 +937,7 @@ export const buildCodexTurnStartParams = (args: {
   model: string;
   cwd?: string;
   reasoningEffort?: CodexReasoningEffort;
+  serviceTier?: CodexServiceTier;
 }): CodexTurnStartParams => ({
   threadId: args.threadId,
   input: args.input,
@@ -927,6 +946,9 @@ export const buildCodexTurnStartParams = (args: {
   sandboxPolicy: { type: "dangerFullAccess" },
   model: args.model,
   ...(args.reasoningEffort ? { effort: args.reasoningEffort } : {}),
+  ...(args.serviceTier
+    ? { serviceTier: codexServiceTierRequestValue(args.serviceTier) }
+    : {}),
 });
 
 type PendingRequest = {
@@ -1503,6 +1525,8 @@ export const runCodexAgentTurn = async (request: {
   modelOverride?: string;
   /** Per-spawn reasoning override; never persisted. */
   reasoningEffort?: AgentModelReasoningEffort;
+  /** Captured ChatGPT/Codex service tier; falls back to local preferences. */
+  serviceTier?: CodexServiceTier;
   /** True when the effort was captured from an already-resolved parent turn. */
   reasoningEffortResolved?: boolean;
   /** Automatic utility pass: fixed cheap model and low effort. */
@@ -1552,6 +1576,7 @@ export const runCodexAgentTurn = async (request: {
     request.utility ? CODEX_UTILITY_MODEL : request.modelOverride,
   );
   const model = runtimePreferences.model;
+  const serviceTier = request.serviceTier ?? runtimePreferences.serviceTier;
   let reasoningEffort: CodexReasoningEffort | undefined = request.utility
     ? "low"
     : (request.reasoningEffort ?? runtimePreferences.reasoningEffort);
@@ -2000,6 +2025,7 @@ export const runCodexAgentTurn = async (request: {
         model,
         cwd: request.cwd,
         reasoningEffort,
+        serviceTier,
       }),
     );
     turnId = turn.turn.id;

@@ -49,6 +49,7 @@ import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
   buildEngineTransitionReasoningPatch,
+  codexModelSupportsFast,
   DEFAULT_CHATGPT_MODEL,
   DEFAULT_CLAUDE_CODE_MODEL,
   fromOpenAiCodexModelId,
@@ -77,6 +78,7 @@ type LocalModelPreferences = {
   codexModel: string;
   codexModelExplicit: boolean;
   codexReasoningEffort: ReasoningEffort;
+  codexServiceTier: CodexServiceTier;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
   maxAgentConcurrency: number;
@@ -91,6 +93,7 @@ type ReasoningEffort =
   | "medium"
   | "high"
   | "xhigh";
+type CodexServiceTier = "standard" | "fast";
 
 const REASONING_EFFORT_OPTIONS: Array<{
   id: ReasoningEffort;
@@ -102,6 +105,14 @@ const REASONING_EFFORT_OPTIONS: Array<{
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
   { id: "xhigh", label: "Extra" },
+];
+
+const CODEX_SERVICE_TIER_OPTIONS: Array<{
+  id: CodexServiceTier;
+  label: string;
+}> = [
+  { id: "standard", label: "Standard" },
+  { id: "fast", label: "Fast" },
 ];
 
 const ASSISTANT_TARGET = "__assistant__";
@@ -455,6 +466,12 @@ export function AgentModelPicker({
     : null;
   const selectedChatGptModel =
     savedChatGptOverride ?? preferences?.codexModel ?? DEFAULT_CHATGPT_MODEL;
+  const selectedChatGptLiveModel =
+    codexCatalog.models?.find((model) => model.id === selectedChatGptModel) ??
+    null;
+  const selectedChatGptSupportsFast = codexModelSupportsFast(
+    selectedChatGptLiveModel,
+  );
   const chatGptCatalogSettled =
     !codexCatalog.loading && codexCatalog.models !== null;
   const selectedChatGptModelUnavailable =
@@ -964,6 +981,14 @@ export function AgentModelPicker({
         const patch = {
           ...buildEngineRoutingPatch(preferences, engine, effectiveModelId),
           ...buildEngineTransitionReasoningPatch(preferences, engine),
+          ...(engine === "codex_cli" &&
+          effectiveModelId &&
+          codexCatalog.models?.some(
+            (model) =>
+              model.id === effectiveModelId && !codexModelSupportsFast(model),
+          )
+            ? { codexServiceTier: "standard" as const }
+            : {}),
           // Record provenance only for an explicit ChatGPT model pick so
           // Stella Light honors it; engine switches / auto-matches leave the
           // marker untouched.
@@ -1000,6 +1025,7 @@ export function AgentModelPicker({
       chatGptRegistryIds,
       codexCatalog.error,
       codexCatalog.loading,
+      codexCatalog.models,
       credentials,
       pendingAgent,
       preferences,
@@ -1255,6 +1281,55 @@ export function AgentModelPicker({
     ],
   );
 
+  const handleCodexServiceTierSelect = useCallback(
+    async (serviceTier: CodexServiceTier) => {
+      if (
+        !preferences ||
+        pendingAgent ||
+        preferences.agentRuntimeEngine !== "codex_cli" ||
+        (serviceTier === "fast" && !selectedChatGptSupportsFast)
+      ) {
+        return;
+      }
+      const previousServiceTier = preferences.codexServiceTier;
+      const patch: Partial<LocalModelPreferences> = {
+        codexServiceTier: serviceTier,
+      };
+      setPendingAgent(ENGINE_PENDING_TARGET);
+      setPreferences({ ...preferences, ...patch });
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
+        if (saved) setPreferences(saved);
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
+        setError(null);
+        onSelected?.();
+      } catch (caught) {
+        setPreferences((current) =>
+          current
+            ? { ...current, codexServiceTier: previousServiceTier }
+            : current,
+        );
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Failed to update ChatGPT speed.",
+        );
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [
+      onSelected,
+      pendingAgent,
+      preferences,
+      selectedChatGptSupportsFast,
+      setPreferences,
+    ],
+  );
+
   const ready =
     preferences !== null &&
     (activeProviderSetting || modelDefaults !== undefined);
@@ -1344,6 +1419,7 @@ export function AgentModelPicker({
             preferences?.reasoningEfforts?.general ??
             "default")
           : (preferences?.reasoningEfforts?.[activeAgent] ?? "default");
+  const currentCodexServiceTier = preferences?.codexServiceTier ?? "standard";
 
   /**
    * On free / anonymous / Go plans the backend silently coerces any
@@ -1741,30 +1817,55 @@ export function AgentModelPicker({
               {footerModelLabel}
             </span>
           </span>
-          <div className="agent-model-picker-reasoning">
-            <span>Reasoning</span>
-            <Select
-              value={currentReasoningEffort}
-              onValueChange={(value) => {
-                if (isReasoningEffort(value)) {
-                  void handleReasoningEffortSelect(value);
+          <div className="agent-model-picker-controls">
+            {committedEngine === "codex_cli" && selectedChatGptSupportsFast ? (
+              <div className="agent-model-picker-reasoning">
+                <span title="Fast uses more ChatGPT credits.">Speed</span>
+                <Select
+                  value={currentCodexServiceTier}
+                  onValueChange={(value) => {
+                    if (value === "standard" || value === "fast") {
+                      void handleCodexServiceTierSelect(value);
+                    }
+                  }}
+                  disabled={
+                    pendingAgent !== null ||
+                    chatGptConnection !== "connected" ||
+                    codexCatalog.loading
+                  }
+                  aria-label="ChatGPT speed"
+                  options={CODEX_SERVICE_TIER_OPTIONS.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                  }))}
+                />
+              </div>
+            ) : null}
+            <div className="agent-model-picker-reasoning">
+              <span>Reasoning</span>
+              <Select
+                value={currentReasoningEffort}
+                onValueChange={(value) => {
+                  if (isReasoningEffort(value)) {
+                    void handleReasoningEffortSelect(value);
+                  }
+                }}
+                disabled={
+                  pendingAgent !== null ||
+                  (committedEngine === "codex_cli" &&
+                    (chatGptConnection !== "connected" || codexCatalog.loading))
                 }
-              }}
-              disabled={
-                pendingAgent !== null ||
-                (committedEngine === "codex_cli" &&
-                  (chatGptConnection !== "connected" || codexCatalog.loading))
-              }
-              aria-label="Reasoning effort"
-              options={REASONING_EFFORT_OPTIONS.filter(
-                (option) =>
-                  committedEngine !== "claude_code_local" ||
-                  option.id !== "minimal",
-              ).map((option) => ({
-                value: option.id,
-                label: option.label,
-              }))}
-            />
+                aria-label="Reasoning effort"
+                options={REASONING_EFFORT_OPTIONS.filter(
+                  (option) =>
+                    committedEngine !== "claude_code_local" ||
+                    option.id !== "minimal",
+                ).map((option) => ({
+                  value: option.id,
+                  label: option.label,
+                }))}
+              />
+            </div>
           </div>
         </div>
       )}

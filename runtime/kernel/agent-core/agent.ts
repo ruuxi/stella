@@ -10,6 +10,7 @@ import type {
 	Message,
 	Model,
 	SimpleStreamOptions,
+	ServiceTier,
 	TextContent,
 	ThinkingBudgets,
 	Transport,
@@ -119,6 +120,9 @@ export interface AgentOptions {
 	 */
 	transport?: Transport;
 
+	/** Provider request tier, such as ChatGPT/Codex Standard or Fast. */
+	serviceTier?: ServiceTier;
+
 	/**
 	 * Maximum delay in milliseconds to wait for a retry when the server requests a long wait.
 	 * If the server's requested delay exceeds this value, the request fails immediately,
@@ -182,6 +186,7 @@ export class Agent {
 	private resolveRunningPrompt?: () => void;
 	private _thinkingBudgets?: ThinkingBudgets;
 	private _transport: Transport;
+	private _serviceTier?: ServiceTier;
 	private _maxRetryDelayMs?: number;
 	private _toolExecution: ToolExecutionMode;
 	private _toolInactivityTimeoutMs?: number;
@@ -212,6 +217,7 @@ export class Agent {
 		);
 		this._thinkingBudgets = opts.thinkingBudgets;
 		this._transport = opts.transport ?? "sse";
+		this._serviceTier = opts.serviceTier;
 		this._maxRetryDelayMs = opts.maxRetryDelayMs;
 		this._toolExecution = opts.toolExecution ?? "parallel";
 		this._toolInactivityTimeoutMs = opts.toolInactivityTimeoutMs;
@@ -321,6 +327,10 @@ export class Agent {
 
 	setThinkingLevel(l: ThinkingLevel) {
 		this._state.thinkingLevel = l;
+	}
+
+	setServiceTier(serviceTier: ServiceTier | undefined) {
+		this._serviceTier = serviceTier;
 	}
 
 	setSteeringMode(mode: "all" | "one-at-a-time") {
@@ -584,6 +594,7 @@ export class Agent {
 			onPayload: this._onPayload,
 			onProviderRetry: this._onProviderRetry,
 			transport: this._transport,
+			serviceTier: this._serviceTier,
 			thinkingBudgets: this._thinkingBudgets,
 			maxRetryDelayMs: this._maxRetryDelayMs,
 			toolExecution: this._toolExecution,

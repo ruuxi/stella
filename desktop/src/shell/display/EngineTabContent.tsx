@@ -57,6 +57,7 @@ import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
   buildEngineTransitionReasoningPatch,
+  codexModelSupportsFast,
   intersectChatGptModels,
   listChatGptCatalogModels,
   OPENAI_CODEX_PROVIDER,
@@ -87,6 +88,7 @@ type CodexReasoningEffort =
 type CodexReasoningPreference =
   | Exclude<CodexReasoningEffort, "none">
   | "default";
+type CodexServiceTier = "standard" | "fast";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
 
@@ -106,6 +108,7 @@ type LocalModelPreferences = {
   codexModel: string;
   codexModelExplicit: boolean;
   codexReasoningEffort: CodexReasoningPreference;
+  codexServiceTier: CodexServiceTier;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
   maxAgentConcurrency: number;
@@ -125,6 +128,7 @@ type MediaTab = "agents" | "image" | "voice";
 type SavingKind =
   | "engine"
   | "codex-model"
+  | "codex-service-tier"
   | "claude-code-model"
   | "overrides"
   | "image"
@@ -179,6 +183,7 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
 
 const DEFAULT_CLAUDE_CODE_MODEL = "default";
 const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
+const DEFAULT_CODEX_SERVICE_TIER: CodexServiceTier = "standard";
 const DEFAULT_CLAUDE_CODE_REASONING: ReasoningEffort = "default";
 const PREFS_EVENT = "stella:local-model-preferences-changed";
 const NOTICE_TTL_MS = 2400;
@@ -293,6 +298,7 @@ export function EngineTabContent() {
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         codexReasoningEffort:
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
+        codexServiceTier: saved.codexServiceTier || DEFAULT_CODEX_SERVICE_TIER,
         claudeCodeModel: saved.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL,
         claudeCodeReasoningEffort:
           saved.claudeCodeReasoningEffort || DEFAULT_CLAUDE_CODE_REASONING,
@@ -800,6 +806,11 @@ function ModelsSection({
     codexCatalogSettled &&
     Boolean(selectedRuntimeModelId) &&
     !codexRuntimeModels.some((model) => model.id === selectedRuntimeModelId);
+  const selectedCodexSupportsFast =
+    runtimeModelEngine === "codex_cli" &&
+    codexModelSupportsFast(
+      codexCatalog.models?.find((model) => model.id === selectedRuntimeModelId),
+    );
 
   const claudeRuntimeModels = useMemo(
     () =>
@@ -915,12 +926,18 @@ function ModelsSection({
       if (!preferences || !modelId) return;
       if (runtimeEngine === "codex_cli") {
         onExplicitCodexAction();
+        const selectedModel = codexCatalog.models?.find(
+          (model) => model.id === modelId,
+        );
         await writePreferences(
           {
             ...buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
             // Explicit model-row pick: record provenance so Stella Light
             // honors this model instead of downgrading.
             codexModelExplicit: true,
+            ...(selectedModel && !codexModelSupportsFast(selectedModel)
+              ? { codexServiceTier: DEFAULT_CODEX_SERVICE_TIER }
+              : {}),
           },
           "overrides",
         );
@@ -949,6 +966,7 @@ function ModelsSection({
       batchAssignableAgents,
       onExplicitCodexAction,
       preferences,
+      codexCatalog.models,
       writePreferences,
     ],
   );
@@ -984,10 +1002,44 @@ function ModelsSection({
         ...(runtimeModelEngine === "codex_cli"
           ? { codexModelExplicit: true }
           : {}),
+        ...(runtimeModelEngine === "codex_cli" &&
+        codexCatalog.models?.some(
+          (model) => model.id === modelId && !codexModelSupportsFast(model),
+        )
+          ? { codexServiceTier: DEFAULT_CODEX_SERVICE_TIER }
+          : {}),
       };
       await writePreferences(patch, "overrides");
     },
-    [onExplicitCodexAction, preferences, runtimeModelEngine, writePreferences],
+    [
+      codexCatalog.models,
+      onExplicitCodexAction,
+      preferences,
+      runtimeModelEngine,
+      writePreferences,
+    ],
+  );
+
+  const selectCodexServiceTier = useCallback(
+    async (serviceTier: CodexServiceTier) => {
+      if (
+        !preferences ||
+        runtimeModelEngine !== "codex_cli" ||
+        (serviceTier === "fast" && !selectedCodexSupportsFast)
+      ) {
+        return;
+      }
+      await writePreferences(
+        { codexServiceTier: serviceTier },
+        "codex-service-tier",
+      );
+    },
+    [
+      preferences,
+      runtimeModelEngine,
+      selectedCodexSupportsFast,
+      writePreferences,
+    ],
   );
 
   // Per-row reasoning affordance: applies the model to the agent set at the
@@ -1230,6 +1282,18 @@ function ModelsSection({
                 reasoningEffort={selectedRuntimeReasoning}
                 onSelectReasoning={(modelId, effort) =>
                   void selectRuntimeReasoning(modelId, effort)
+                }
+                serviceTier={
+                  runtimeModelEngine === "codex_cli"
+                    ? (preferences?.codexServiceTier ??
+                      DEFAULT_CODEX_SERVICE_TIER)
+                    : undefined
+                }
+                onSelectServiceTier={
+                  runtimeModelEngine === "codex_cli" &&
+                  selectedCodexSupportsFast
+                    ? (serviceTier) => void selectCodexServiceTier(serviceTier)
+                    : undefined
                 }
               />
               <ProviderModelPanel

@@ -28,6 +28,7 @@ import {
   getSyncMode,
   loadLocalPreferences,
   normalizeImageGenerationPreferences,
+  normalizeCodexServiceTier,
   normalizeRealtimeVoicePreferences,
   saveLocalPreferences,
   setOnboardingCompleted,
@@ -2190,6 +2191,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (payload?.codexReasoningEffort !== undefined) {
         patch.codexReasoningEffort = sanitizeReasoningEffort(
           payload.codexReasoningEffort,
+        );
+      }
+      if (payload?.codexServiceTier !== undefined) {
+        patch.codexServiceTier = normalizeCodexServiceTier(
+          payload.codexServiceTier,
         );
       }
       if (payload?.claudeCodeModel !== undefined) {

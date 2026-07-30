@@ -4,6 +4,7 @@ import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
   buildEngineTransitionReasoningPatch,
+  codexModelSupportsFast,
   DEFAULT_CHATGPT_MODEL,
   intersectChatGptModels,
   listChatGptCatalogModels,
@@ -144,6 +145,22 @@ describe("engine model routing", () => {
         { id: "future-model", hidden: false },
       ]).map((model) => model.modelId),
     ).toEqual(["gpt-5.4"]);
+  });
+
+  it("reads Fast support from the live Codex service-tier metadata", () => {
+    expect(
+      codexModelSupportsFast({
+        id: "gpt-5.6-sol",
+        serviceTiers: [{ id: "priority" }],
+      }),
+    ).toBe(true);
+    expect(
+      codexModelSupportsFast({
+        id: "legacy-fast-model",
+        additionalSpeedTiers: ["fast"],
+      }),
+    ).toBe(true);
+    expect(codexModelSupportsFast({ id: "gpt-5.4-mini" })).toBe(false);
   });
 
   it("routes ChatGPT orchestrator through OAuth and general through Codex", () => {

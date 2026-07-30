@@ -226,6 +226,14 @@
   white-space: nowrap;
 }
 
+.agent-model-picker-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: none;
+}
+
 .agent-model-picker-reasoning {
   display: inline-flex;
   align-items: center;
@@ -367,5 +375,9 @@
   .agent-model-picker-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .agent-model-picker-controls {
+    justify-content: space-between;
   }
 }

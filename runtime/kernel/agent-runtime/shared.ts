@@ -9,7 +9,7 @@ import type {
   AgentTool,
   ThinkingLevel,
 } from "../agent-core/types.js";
-import type { Message } from "../../ai/types.js";
+import type { Message, ServiceTier } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import {
@@ -538,6 +538,8 @@ export const createRuntimeAgent = (args: {
    * conversation hit the same cache shard.
    */
   cacheSessionId?: string;
+  /** Provider request tier, currently used for ChatGPT/Codex Fast mode. */
+  serviceTier?: ServiceTier;
   afterToolCall?: (
     context: AfterToolCallContext,
     signal?: AbortSignal,
@@ -570,6 +572,7 @@ export const createRuntimeAgent = (args: {
       messages: args.historySource,
     },
     sessionId: args.cacheSessionId ?? args.agentType,
+    serviceTier: args.serviceTier,
     // Per-tool inactivity bound (default 10 min in agent-core): a tool that
     // goes fully silent is cancelled with an error tool result instead of
     // tripping the run-level idle watchdog and killing the whole agent.

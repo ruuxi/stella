@@ -1788,6 +1788,7 @@ const runCodexHostedTurn = async (args: {
   const codexReasoningEffort =
     inheritedCodexConfig?.reasoningEffort ??
     args.opts.agentContext.spawnReasoningEffort;
+  const codexServiceTier = inheritedCodexConfig?.serviceTier;
   let finalResult = await runCodexAgentTurn({
     runId,
     sessionKey,
@@ -1812,6 +1813,7 @@ const runCodexHostedTurn = async (args: {
           ...(inheritedCodexConfig ? { reasoningEffortResolved: true } : {}),
         }
       : {}),
+    ...(codexServiceTier ? { serviceTier: codexServiceTier } : {}),
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
     onStatus: (status) => {
@@ -1912,6 +1914,7 @@ const runCodexHostedTurn = async (args: {
             ...(inheritedCodexConfig ? { reasoningEffortResolved: true } : {}),
           }
         : {}),
+      ...(codexServiceTier ? { serviceTier: codexServiceTier } : {}),
       attachments: queuedAttachments,
       abortSignal: args.opts.abortSignal,
       onStatus: (status) => {

@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import type { Model } from "../../../../../runtime/ai/types.js";
 import {
@@ -6,6 +9,7 @@ import {
   resolveSpawnReasoningEffortForModel,
 } from "../../../../../runtime/kernel/runner/context.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
+import { updateLocalModelPreferences } from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 describe("spawn_agent engine precedence", () => {
   it("lets an explicit plain-model spawn override a saved Codex engine", () => {
@@ -137,21 +141,32 @@ describe("spawn_agent model inheritance snapshots", () => {
     });
   });
 
-  it("pins an explicit Codex Orchestrator engine model and effort", () => {
-    expect(
-      captureEffectiveModelConfig({
-        stellaDataDir: "/tmp/stella-spawn-inheritance",
+  it("pins an explicit Codex spawn while inheriting the selected Fast speed", () => {
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-spawn-inheritance-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        codexServiceTier: "fast",
+      });
+      expect(
+        captureEffectiveModelConfig({
+          stellaDataDir,
+          engine: "codex_cli",
+          configuredModel: "stella/standard",
+          engineModelOverride: "gpt-5.6-codex",
+          resolvedLlm: stellaRoute("meta/muse-spark-1.1"),
+          reasoningEffort: "high",
+        }),
+      ).toEqual({
         engine: "codex_cli",
-        configuredModel: "stella/standard",
-        engineModelOverride: "gpt-5.6-codex",
-        resolvedLlm: stellaRoute("meta/muse-spark-1.1"),
+        routeModel: "stella/meta/muse-spark-1.1",
+        engineModel: "gpt-5.6-codex",
         reasoningEffort: "high",
-      }),
-    ).toEqual({
-      engine: "codex_cli",
-      routeModel: "stella/meta/muse-spark-1.1",
-      engineModel: "gpt-5.6-codex",
-      reasoningEffort: "high",
-    });
+        serviceTier: "fast",
+      });
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
   });
 });

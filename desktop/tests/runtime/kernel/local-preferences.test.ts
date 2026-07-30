@@ -281,6 +281,21 @@ describe("loadLocalPreferences", () => {
     );
   });
 
+  it("defaults ChatGPT speed to Standard and persists Fast", () => {
+    const defaultHome = makeStellaDataDir();
+    expect(loadLocalPreferences(defaultHome).codexServiceTier).toBe("standard");
+
+    const saved = updateLocalModelPreferences(defaultHome, {
+      codexServiceTier: "fast",
+    });
+    expect(saved.codexServiceTier).toBe("fast");
+    expect(loadLocalPreferences(defaultHome).codexServiceTier).toBe("fast");
+
+    const invalidHome = makeStellaDataDir();
+    writePreferences(invalidHome, { codexServiceTier: "priority" });
+    expect(loadLocalPreferences(invalidHome).codexServiceTier).toBe("standard");
+  });
+
   it("preserves the Claude Code model preference", () => {
     const stellaDataDir = makeStellaDataDir();
 

@@ -835,6 +835,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    codexServiceTier: "standard" | "fast";
     claudeCodeModel: string;
     claudeCodeReasoningEffort:
       | "default"
@@ -873,6 +874,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    codexServiceTier?: "standard" | "fast";
     claudeCodeModel?: string;
     claudeCodeReasoningEffort?:
       | "default"
@@ -910,6 +912,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    codexServiceTier: "standard" | "fast";
     claudeCodeModel: string;
     claudeCodeReasoningEffort:
       | "default"
@@ -951,6 +954,12 @@ export type ElectronSystemApi = {
         | "xhigh";
       inputModalities: string[];
       additionalSpeedTiers: string[];
+      serviceTiers: Array<{
+        id: string;
+        name: string;
+        description: string;
+      }>;
+      defaultServiceTier?: string | null;
       isDefault: boolean;
     }>;
   }>;

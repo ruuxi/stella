@@ -45,7 +45,24 @@ export type LiveCodexModel = {
   displayName?: string;
   description?: string;
   hidden?: boolean;
+  additionalSpeedTiers?: string[];
+  serviceTiers?: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+  }>;
+  defaultServiceTier?: string | null;
 };
+
+export function codexModelSupportsFast(
+  model: LiveCodexModel | null | undefined,
+): boolean {
+  if (!model) return false;
+  return (
+    model.serviceTiers?.some((tier) => tier.id === "priority") === true ||
+    model.additionalSpeedTiers?.includes("fast") === true
+  );
+}
 
 /** Only models accepted by both the OAuth orchestrator and Codex runtime. */
 export function intersectChatGptModels(

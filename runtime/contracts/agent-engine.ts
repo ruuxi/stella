@@ -3,6 +3,9 @@ export type AgentRuntimeEngine = "default" | "claude_code_local" | "codex_cli";
 export const DEFAULT_AGENT_RUNTIME_ENGINE: AgentRuntimeEngine = "default";
 /** Saved Codex/ChatGPT model preference. Kept even when not in the live catalog. */
 export const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
+/** ChatGPT/Codex service tier selected in Stella's model picker. */
+export type CodexServiceTier = "standard" | "fast";
+export const DEFAULT_CODEX_SERVICE_TIER: CodexServiceTier = "standard";
 
 /** Reasoning levels accepted by spawn_agent's optional model suffix. */
 export type SpawnReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -26,6 +29,8 @@ export type AgentModelConfigSnapshot = {
   /** Exact engine-native model when an external engine owns execution. */
   engineModel?: string;
   reasoningEffort?: AgentModelReasoningEffort;
+  /** Effective ChatGPT/Codex service tier captured for this turn. */
+  serviceTier?: CodexServiceTier;
 };
 
 export const AGENT_RUNTIME_ENGINES: readonly AgentRuntimeEngine[] = [

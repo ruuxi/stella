@@ -20,6 +20,7 @@ export type EngineRuntimeReasoningEffort =
   | "medium"
   | "high"
   | "xhigh";
+export type EngineRuntimeServiceTier = "standard" | "fast";
 
 const REASONING_OPTIONS: ReadonlyArray<{
   id: EngineRuntimeReasoningEffort;
@@ -68,6 +69,8 @@ interface EngineRuntimeModelPanelProps {
     modelId: string,
     effort: EngineRuntimeReasoningEffort,
   ) => void;
+  serviceTier?: EngineRuntimeServiceTier;
+  onSelectServiceTier?: (serviceTier: EngineRuntimeServiceTier) => void;
 }
 
 export function EngineRuntimeModelPanel({
@@ -84,6 +87,8 @@ export function EngineRuntimeModelPanel({
   onSelectModel,
   reasoningEffort,
   onSelectReasoning,
+  serviceTier,
+  onSelectServiceTier,
 }: EngineRuntimeModelPanelProps) {
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>(() =>
@@ -121,21 +126,44 @@ export function EngineRuntimeModelPanel({
           <span className="engine-runtime-model-panel__kicker">
             Tap a model
           </span>
-          {onRefresh ? (
-            <button
-              type="button"
-              className="engine-runtime-model-panel__refresh"
-              disabled={loading || refreshDisabled}
-              onClick={onRefresh}
-            >
-              <RefreshCw
-                size={13}
-                strokeWidth={1.75}
-                data-spinning={loading || undefined}
-              />
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
-          ) : null}
+          <div className="engine-runtime-model-panel__head-actions">
+            {onSelectServiceTier ? (
+              <div
+                className="engine-runtime-model-panel__speed"
+                role="group"
+                aria-label="ChatGPT speed"
+                title="Fast uses more ChatGPT credits."
+              >
+                {(["standard", "fast"] as const).map((tier) => (
+                  <button
+                    key={tier}
+                    type="button"
+                    data-selected={serviceTier === tier || undefined}
+                    aria-pressed={serviceTier === tier}
+                    disabled={disabled}
+                    onClick={() => onSelectServiceTier(tier)}
+                  >
+                    {tier === "standard" ? "Standard" : "Fast"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {onRefresh ? (
+              <button
+                type="button"
+                className="engine-runtime-model-panel__refresh"
+                disabled={loading || refreshDisabled}
+                onClick={onRefresh}
+              >
+                <RefreshCw
+                  size={13}
+                  strokeWidth={1.75}
+                  data-spinning={loading || undefined}
+                />
+                {loading ? "Refreshing…" : "Refresh"}
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <div className="engine-runtime-model-panel__search">

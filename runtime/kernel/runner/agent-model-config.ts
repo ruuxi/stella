@@ -75,6 +75,7 @@ export const captureEffectiveModelConfig = (args: {
       routeModel,
       engineModel: codex.model,
       ...(effort ? { reasoningEffort: effort } : {}),
+      serviceTier: codex.serviceTier,
     };
   }
   if (args.engine === "claude_code_local") {

@@ -95,6 +95,25 @@ describe("standalone Agent degenerate response recovery", () => {
       content: [{ type: "text", text: "recovered" }],
     });
   });
+
+  it("forwards the selected provider service tier on every model call", async () => {
+    const streamFn = vi.fn(() => {
+      const stream = createAssistantMessageEventStream();
+      const message = assistantMessage("done");
+      stream.push({ type: "start", partial: message });
+      stream.push({ type: "done", message });
+      return stream;
+    });
+    const agent = new Agent({
+      initialState: { model },
+      serviceTier: "priority",
+      streamFn,
+    });
+
+    await agent.prompt("Use Fast.");
+
+    expect(streamFn.mock.calls[0]?.[2]?.serviceTier).toBe("priority");
+  });
 });
 
 describe("executePreparedToolCall inactivity bound", () => {

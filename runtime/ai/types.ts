@@ -78,6 +78,13 @@ export interface ThinkingBudgets {
 export type CacheRetention = "none" | "short" | "long";
 
 export type Transport = "sse" | "websocket" | "websocket-cached" | "auto";
+export type ServiceTier =
+  | "auto"
+  | "default"
+  | "flex"
+  | "scale"
+  | "priority"
+  | null;
 
 export interface ProviderResponse {
   status: number;
@@ -106,6 +113,11 @@ export interface StreamOptions {
    * Providers that do not support this option ignore it.
    */
   transport?: Transport;
+  /**
+   * Provider request tier. ChatGPT/Codex maps Stella's Standard/Fast choice
+   * to `default`/`priority`; providers without service tiers ignore it.
+   */
+  serviceTier?: ServiceTier;
   /**
    * Prompt cache retention preference. Providers map this to their supported values.
    * Default: "short".

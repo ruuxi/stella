@@ -20,7 +20,9 @@ import {
 import {
   coerceAgentRuntimeEngine,
   DEFAULT_CODEX_MODEL,
+  DEFAULT_CODEX_SERVICE_TIER,
   type AgentRuntimeEngine,
+  type CodexServiceTier,
 } from "../../contracts/agent-engine.js";
 import {
   isKnownPersonalityId,
@@ -95,6 +97,8 @@ export type LocalPreferences = {
   codexModelExplicit: boolean;
   /** Codex reasoning effort used when the Codex engine is selected. */
   codexReasoningEffort: ReasoningEffort;
+  /** ChatGPT/Codex request speed used when the Codex engine is selected. */
+  codexServiceTier: CodexServiceTier;
   /** Claude Code model or alias used when the Claude Code engine is selected. */
   claudeCodeModel: string;
   /** Claude Code effort/thinking level used when the Claude Code engine is selected. */
@@ -167,6 +171,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "codexModel"
   | "codexModelExplicit"
   | "codexReasoningEffort"
+  | "codexServiceTier"
   | "claudeCodeModel"
   | "claudeCodeReasoningEffort"
   | "maxAgentConcurrency"
@@ -191,6 +196,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   codexModel: DEFAULT_CODEX_MODEL,
   codexModelExplicit: false,
   codexReasoningEffort: "default",
+  codexServiceTier: DEFAULT_CODEX_SERVICE_TIER,
   claudeCodeModel: DEFAULT_CLAUDE_CODE_MODEL,
   claudeCodeReasoningEffort: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
@@ -257,6 +263,7 @@ export const loadLocalPreferences = (
       codexReasoningEffort: normalizeReasoningEffort(
         parsed.codexReasoningEffort,
       ),
+      codexServiceTier: normalizeCodexServiceTier(parsed.codexServiceTier),
       claudeCodeModel: normalizeClaudeCodeModel(parsed.claudeCodeModel),
       claudeCodeReasoningEffort:
         normalizeReasoningEffort(parsed.claudeCodeReasoningEffort) === "minimal"
@@ -387,6 +394,7 @@ export const getLocalModelPreferences = (
     codexModel: prefs.codexModel,
     codexModelExplicit: prefs.codexModelExplicit,
     codexReasoningEffort: prefs.codexReasoningEffort,
+    codexServiceTier: prefs.codexServiceTier,
     claudeCodeModel: prefs.claudeCodeModel,
     claudeCodeReasoningEffort: prefs.claudeCodeReasoningEffort,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
@@ -442,6 +450,10 @@ export const updateLocalModelPreferences = (
       patch.codexReasoningEffort === undefined
         ? prefs.codexReasoningEffort
         : normalizeReasoningEffort(patch.codexReasoningEffort),
+    codexServiceTier:
+      patch.codexServiceTier === undefined
+        ? prefs.codexServiceTier
+        : normalizeCodexServiceTier(patch.codexServiceTier),
     claudeCodeModel:
       patch.claudeCodeModel === undefined
         ? prefs.claudeCodeModel
@@ -601,6 +613,9 @@ const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {
   }
   return "default";
 };
+
+export const normalizeCodexServiceTier = (value: unknown): CodexServiceTier =>
+  value === "fast" ? "fast" : DEFAULT_CODEX_SERVICE_TIER;
 
 const normalizeAssistantPropagatedAgents = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];

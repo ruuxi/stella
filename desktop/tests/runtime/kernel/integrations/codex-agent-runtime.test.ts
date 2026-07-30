@@ -374,6 +374,26 @@ describe("Codex agent runtime", () => {
     });
   });
 
+  it("maps Stella's ChatGPT speed choice onto Codex service tiers", () => {
+    const input = [{ type: "text" as const, text: "hello", text_elements: [] }];
+    expect(
+      buildCodexTurnStartParams({
+        threadId: "thread-1",
+        model: DEFAULT_CODEX_MODEL,
+        input,
+        serviceTier: "standard",
+      }).serviceTier,
+    ).toBe("default");
+    expect(
+      buildCodexTurnStartParams({
+        threadId: "thread-1",
+        model: DEFAULT_CODEX_MODEL,
+        input,
+        serviceTier: "fast",
+      }).serviceTier,
+    ).toBe("priority");
+  });
+
   it("uses the Codex mini model for agents that default to Stella Light", () => {
     const previousModel = process.env.STELLA_CODEX_MODEL;
     delete process.env.STELLA_CODEX_MODEL;
@@ -396,6 +416,23 @@ describe("Codex agent runtime", () => {
   it("keeps automatic utility work on Luna, separate from Light agent spawns", () => {
     expect(CODEX_UTILITY_MODEL).toBe("gpt-5.6-luna");
     expect(CODEX_LIGHT_MODEL).toBe("gpt-5.4-mini");
+  });
+
+  it("resolves Standard by default and the saved Fast preference explicitly", () => {
+    expect(getCodexRuntimePreferences(undefined).serviceTier).toBe("standard");
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-service-tier-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        codexServiceTier: "fast",
+      });
+      expect(getCodexRuntimePreferences(stellaDataDir).serviceTier).toBe(
+        "fast",
+      );
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
   });
 
   it("honors a per-spawn pinned Codex model over env and preferences", () => {
