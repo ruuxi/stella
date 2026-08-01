@@ -10,7 +10,6 @@ import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMobileHelloHandlers } from "../ipc/mobile-hello-handlers.js";
 import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
-import { registerMigrationHandlers } from "../ipc/migration-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerNativeIntegrationHandlers } from "../ipc/native-integration-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
@@ -213,12 +212,6 @@ export const registerBootstrapIpcHandlers = (
     setController: (controller) => {
       state.chronicleController = controller;
     },
-    assertPrivilegedSender: (event, channel) =>
-      services.externalLinkService.assertPrivilegedSender(event, channel),
-  });
-
-  registerMigrationHandlers({
-    getStellaDataDir: lifecycle.getStellaDataDir,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

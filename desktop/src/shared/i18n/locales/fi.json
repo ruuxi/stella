@@ -81,12 +81,6 @@
       "description": "Antaa Stellan nähdä sivun, jolla olet, ja toimia selaimessasi.",
       "action": "Hanki laajennus"
     },
-    "migration": {
-      "title": "Tuo Hermesistä tai OpenClaw'sta",
-      "action": "Tuo",
-      "description": "Tuo muisti, taidot, istunnot ja mallivalinnat toisesta paikallisesta avustaja-asennuksesta.",
-      "dialogClose": "Sulje tuonti"
-    },
     "permissions": {
       "title": "Käyttöoikeudet",
       "enable": "Ota käyttöön",

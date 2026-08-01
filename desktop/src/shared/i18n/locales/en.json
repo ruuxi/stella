@@ -81,12 +81,6 @@
       "description": "Lets Stella see the page you're on and take actions in your browser.",
       "action": "Get extension"
     },
-    "migration": {
-      "title": "Import from Hermes or OpenClaw",
-      "action": "Import",
-      "description": "Bring over memory, skills, sessions, and model choices from another local assistant install.",
-      "dialogClose": "Close import"
-    },
     "permissions": {
       "title": "Permissions",
       "enable": "Enable",
@@ -453,7 +447,6 @@
     },
     "stepTitles": {
       "shapeshift": "This app can rewrite itself.",
-      "import": "Bring your setup into Stella.",
       "engine": "Pick what powers Stella.",
       "extension": "Add Stella to your browser.",
       "browser": "Let Stella get to know you.",

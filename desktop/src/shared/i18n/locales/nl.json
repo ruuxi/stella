@@ -81,12 +81,6 @@
       "description": "Laat Stella de pagina zien waar je bent en acties uitvoeren in je browser.",
       "action": "Extensie ophalen"
     },
-    "migration": {
-      "title": "Importeren uit Hermes of OpenClaw",
-      "action": "Importeren",
-      "description": "Neem geheugen, vaardigheden, sessies en modelkeuzes over van een andere lokale assistent-installatie.",
-      "dialogClose": "Import sluiten"
-    },
     "permissions": {
       "title": "Machtigingen",
       "enable": "Inschakelen",

@@ -81,12 +81,6 @@
       "description": "Stella'nın bulunduğunuz sayfayı görmesine ve tarayıcınızda işlem yapmasına olanak tanır.",
       "action": "Uzantıyı al"
     },
-    "migration": {
-      "title": "Hermes veya OpenClaw'dan içe aktar",
-      "action": "İçe aktar",
-      "description": "Başka bir yerel asistan kurulumundan belleği, becerileri, oturumları ve model seçimlerini getirin.",
-      "dialogClose": "İçe aktarmayı kapat"
-    },
     "permissions": {
       "title": "İzinler",
       "enable": "Etkinleştir",

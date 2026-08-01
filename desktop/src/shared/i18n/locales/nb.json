@@ -81,12 +81,6 @@
       "description": "Lar Stella se siden du er på og utføre handlinger i nettleseren din.",
       "action": "Hent utvidelse"
     },
-    "migration": {
-      "title": "Importer fra Hermes eller OpenClaw",
-      "action": "Importer",
-      "description": "Ta med minne, ferdigheter, økter og modellvalg fra en annen lokal assistentinstallasjon.",
-      "dialogClose": "Lukk import"
-    },
     "permissions": {
       "title": "Tillatelser",
       "enable": "Aktiver",

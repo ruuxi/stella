@@ -112,13 +112,6 @@ import type {
   BackupSummary as SharedBackupSummary,
   RestoreBackupResult as SharedRestoreBackupResult,
 } from "../contracts/backup";
-import type {
-  ThirdPartyMigrationPreview,
-  ThirdPartyMigrationReport,
-  ThirdPartyMigrationSelection,
-  ThirdPartyMigrationSource,
-} from "../contracts/migration";
-
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
 export type ChatContextUpdate = SharedChatContextUpdate;
@@ -1006,8 +999,6 @@ export type ElectronSystemApi = {
       | "codex-cli"
       | "opencode-cli"
       | "pi-cli"
-      | "openclaw-cli"
-      | "hermes-cli"
     >;
   }>;
   resetMessages: () => Promise<{ ok: boolean }>;
@@ -1802,19 +1793,6 @@ export type ElectronOfficePreviewApi = {
   onUpdate: (callback: (snapshot: OfficePreviewSnapshot) => void) => () => void;
 };
 
-export type ElectronMigrationApi = {
-  detectSources: () => Promise<ThirdPartyMigrationPreview[]>;
-  preview: (payload: {
-    source: ThirdPartyMigrationSource;
-    sourceRoot?: string;
-  }) => Promise<ThirdPartyMigrationPreview>;
-  run: (payload: {
-    source: ThirdPartyMigrationSource;
-    sourceRoot?: string;
-    selection?: ThirdPartyMigrationSelection;
-  }) => Promise<ThirdPartyMigrationReport>;
-};
-
 export type ElectronApi = {
   platform: string;
   arch: string;
@@ -1824,7 +1802,6 @@ export type ElectronApi = {
   };
   display: ElectronDisplayApi;
   officePreview: ElectronOfficePreviewApi;
-  migration: ElectronMigrationApi;
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;

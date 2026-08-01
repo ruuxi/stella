@@ -3,7 +3,6 @@ import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
 import { Switch } from "@/ui/switch";
 import { LanguageSettingsRow } from "@/global/settings/LanguageSettingsRow";
-import { ThirdPartyMigrationWizard } from "@/global/migration/ThirdPartyMigrationWizard";
 import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
@@ -25,14 +24,6 @@ import {
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useT } from "@/shared/i18n";
 import type { LockedComputerUseStatus } from "@/shared/types/electron";
-import {
-  Dialog,
-  DialogBody,
-  DialogCloseButton,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/ui/dialog";
 import {
   DEFAULT_PERSONALITY_ID,
   PERSONALITY_OPTIONS,
@@ -96,7 +87,6 @@ export function GeneralTab() {
   const [personalityVoiceError, setPersonalityVoiceError] = useState<
     string | null
   >(null);
-  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -826,24 +816,6 @@ export function GeneralTab() {
         <div className="settings-card">
           <div className="settings-card-header">
             <h3 className="settings-card-title">
-              {t("settings.migration.title")}
-            </h3>
-            <Button
-              type="button"
-              variant="ghost"
-              className="pill-btn"
-              onClick={() => setMigrationDialogOpen(true)}
-            >
-              {t("settings.migration.action")}
-            </Button>
-          </div>
-          <p className="settings-card-desc">
-            {t("settings.migration.description")}
-          </p>
-        </div>
-        <div className="settings-card">
-          <div className="settings-card-header">
-            <h3 className="settings-card-title">
               {t("settings.browserExtension.title")}
             </h3>
             <Button
@@ -860,17 +832,6 @@ export function GeneralTab() {
           </p>
         </div>
       </div>
-      <Dialog open={migrationDialogOpen} onOpenChange={setMigrationDialogOpen}>
-        <DialogContent fit className="settings-migration-dialog">
-          <DialogHeader>
-            <DialogTitle>{t("settings.migration.title")}</DialogTitle>
-            <DialogCloseButton aria-label={t("settings.migration.dialogClose")} />
-          </DialogHeader>
-          <DialogBody>
-            <ThirdPartyMigrationWizard />
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

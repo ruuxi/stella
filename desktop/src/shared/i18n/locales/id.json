@@ -81,12 +81,6 @@
       "description": "Memungkinkan Stella melihat halaman yang sedang Anda buka dan melakukan tindakan di browser Anda.",
       "action": "Dapatkan ekstensi"
     },
-    "migration": {
-      "title": "Impor dari Hermes atau OpenClaw",
-      "action": "Impor",
-      "description": "Bawa memori, keterampilan, sesi, dan pilihan model dari instalasi asisten lokal lain.",
-      "dialogClose": "Tutup impor"
-    },
     "permissions": {
       "title": "Izin",
       "enable": "Aktifkan",

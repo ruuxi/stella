@@ -81,12 +81,6 @@
       "description": "Pozwala Stelli widzieć stronę, na której jesteś, i wykonywać działania w przeglądarce.",
       "action": "Pobierz rozszerzenie"
     },
-    "migration": {
-      "title": "Importuj z Hermes lub OpenClaw",
-      "action": "Importuj",
-      "description": "Przenieś pamięć, umiejętności, sesje i wybory modeli z innej lokalnej instalacji asystenta.",
-      "dialogClose": "Zamknij import"
-    },
     "permissions": {
       "title": "Uprawnienia",
       "enable": "Włącz",

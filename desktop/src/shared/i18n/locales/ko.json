@@ -81,12 +81,6 @@
       "description": "Stella가 현재 보고 있는 페이지를 확인하고 브라우저에서 작업을 수행할 수 있게 합니다.",
       "action": "확장 프로그램 받기"
     },
-    "migration": {
-      "title": "Hermes 또는 OpenClaw에서 가져오기",
-      "action": "가져오기",
-      "description": "다른 로컬 어시스턴트 설치에서 메모리, 스킬, 세션, 모델 선택을 가져옵니다.",
-      "dialogClose": "가져오기 닫기"
-    },
     "permissions": {
       "title": "권한",
       "enable": "사용",

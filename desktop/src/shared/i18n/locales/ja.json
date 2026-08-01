@@ -81,12 +81,6 @@
       "description": "開いているページを Stella が確認し、ブラウザ内で操作できるようにします。",
       "action": "拡張機能を入手"
     },
-    "migration": {
-      "title": "Hermes または OpenClaw からインポート",
-      "action": "インポート",
-      "description": "別のローカルアシスタントのインストールから、メモリ・スキル・セッション・モデルの選択を引き継ぎます。",
-      "dialogClose": "インポートを閉じる"
-    },
     "permissions": {
       "title": "アクセス権",
       "enable": "有効にする",

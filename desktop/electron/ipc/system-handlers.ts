@@ -263,9 +263,7 @@ type TechnicalUserSignal =
   | "claude-cli"
   | "codex-cli"
   | "opencode-cli"
-  | "pi-cli"
-  | "openclaw-cli"
-  | "hermes-cli";
+  | "pi-cli";
 
 const macAppPaths = (appName: string): string[] => {
   const home = os.homedir();
@@ -331,21 +329,7 @@ const findCliOnPathAsync = async (binName: string): Promise<boolean> => {
               path.join(home, ".opencode", "bin", "opencode"),
               path.join(home, ".bun", "bin", "opencode"),
             ]
-          : binName === "hermes"
-            ? // Per Hermes install docs: per-user / pip installer drops
-              // `~/.local/bin/hermes` (symlink); root-mode installer drops
-              // `/usr/local/bin/hermes`. `~/.local/bin` is often missing
-              // from a service user's PATH, so we check it explicitly.
-              process.platform === "win32"
-              ? []
-              : [
-                  path.join(home, ".local", "bin", "hermes"),
-                  "/usr/local/bin/hermes",
-                ]
-            : // pi & openclaw: install via npm-global / curl installers
-              // that drop `pi` / `openclaw` straight onto PATH; no
-              // documented sub-bin path to short-circuit on.
-              [];
+          : [];
   if (await anyExistsAsync(wellKnown)) return true;
 
   const pathEnv = process.env.PATH ?? "";
@@ -368,20 +352,6 @@ const detectTechnicalUserSignalsAsync = async (): Promise<
   TechnicalUserSignal[]
 > => {
   const home = os.homedir();
-
-  // OpenClaw state-dir resolution mirrors the legacy sync path.
-  const openclawStateDir =
-    process.env.OPENCLAW_STATE_DIR ??
-    (process.env.OPENCLAW_HOME
-      ? path.join(process.env.OPENCLAW_HOME, ".openclaw")
-      : path.join(home, ".openclaw"));
-
-  const hermesDataDirs: string[] = [];
-  if (process.env.HERMES_HOME) hermesDataDirs.push(process.env.HERMES_HOME);
-  hermesDataDirs.push(path.join(home, ".hermes"));
-  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
-    hermesDataDirs.push(path.join(process.env.LOCALAPPDATA, "hermes"));
-  }
 
   // Run every probe in parallel. Each probe resolves to a signal id or null.
   // Wall time is dominated by the slowest single `fs.access`, not the sum of
@@ -424,15 +394,6 @@ const detectTechnicalUserSignalsAsync = async (): Promise<
       pathExists(path.join(home, ".pi", "agent")),
       findCliOnPathAsync("pi"),
     ]).then(([a, b]) => (a || b ? "pi-cli" : null)),
-    Promise.all([
-      pathExists(openclawStateDir),
-      pathExists(path.join(home, ".config", "openclaw")),
-      findCliOnPathAsync("openclaw"),
-    ]).then(([a, b, c]) => (a || b || c ? "openclaw-cli" : null)),
-    Promise.all([
-      anyExistsAsync(hermesDataDirs),
-      findCliOnPathAsync("hermes"),
-    ]).then(([a, b]) => (a || b ? "hermes-cli" : null)),
   );
 
   const results = await Promise.all(probes);

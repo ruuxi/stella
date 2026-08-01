@@ -81,12 +81,6 @@
       "description": "Umožní Stelle vidět stránku, na které jste, a provádět akce ve vašem prohlížeči.",
       "action": "Získat rozšíření"
     },
-    "migration": {
-      "title": "Importovat z Hermes nebo OpenClaw",
-      "action": "Importovat",
-      "description": "Přeneste paměť, dovednosti, relace a výběr modelů z jiné místní instalace asistenta.",
-      "dialogClose": "Zavřít import"
-    },
     "permissions": {
       "title": "Oprávnění",
       "enable": "Povolit",

@@ -81,12 +81,6 @@
       "description": "Permite Stellei să vadă pagina pe care te afli și să efectueze acțiuni în browserul tău.",
       "action": "Obține extensia"
     },
-    "migration": {
-      "title": "Importă din Hermes sau OpenClaw",
-      "action": "Importă",
-      "description": "Adu memoria, abilitățile, sesiunile și alegerile de modele dintr-o altă instalare locală de asistent.",
-      "dialogClose": "Închide importul"
-    },
     "permissions": {
       "title": "Permisiuni",
       "enable": "Activează",

@@ -30,7 +30,6 @@ import "./Onboarding.css";
  * can't reproduce the jump. */
 import { OnboardingCapabilitiesPhase } from "./OnboardingCapabilitiesPhase";
 import { OnboardingShapeshiftPhase } from "./OnboardingShapeshiftPhase";
-import { OnboardingMigrationPhase } from "./OnboardingMigrationPhase";
 import { OnboardingEnginePhase } from "./OnboardingEnginePhase";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
@@ -57,7 +56,6 @@ const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
   personality: "onboarding.stepTitles.personality",
   voice: "onboarding.stepTitles.voice",
   memory: "onboarding.stepTitles.memory",
-  import: "onboarding.stepTitles.import",
   enter: "onboarding.stepTitles.enter",
 };
 
@@ -103,13 +101,6 @@ export const OnboardingStep1 = ({
   // resolved so non-technical users never even see the phase. Detection
   // completes in milliseconds, long before navigation can reach `engine`.
   const [showEnginePhase, setShowEnginePhase] = useState(false);
-  const [showMigrationPhase, setShowMigrationPhase] = useState(false);
-  const [migrationDetectionResolved, setMigrationDetectionResolved] =
-    useState(false);
-  // When a personality is imported from another tool, its file becomes
-  // ~/.stella/PERSONALITY.md. Skip the personality-selection phase so the
-  // onboarding picker doesn't overwrite the imported personality.
-  const [personalityImported, setPersonalityImported] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
@@ -128,42 +119,12 @@ export const OnboardingStep1 = ({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const probe = async () => {
-      try {
-        const result = await window.electronAPI?.migration?.detectSources?.();
-        if (cancelled) return;
-        setShowMigrationPhase(
-          Boolean(result?.some((preview) => preview.found)),
-        );
-      } catch {
-        // Best-effort; users can still import later from Settings.
-      } finally {
-        if (!cancelled) setMigrationDetectionResolved(true);
-      }
-    };
-    void probe();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const skippedPhases = useMemo(() => {
     const skipped = new Set<Phase>();
     if (!discoveryWelcomeExpected) skipped.add("enter");
     if (!showEnginePhase) skipped.add("engine");
-    if (!migrationDetectionResolved || !showMigrationPhase)
-      skipped.add("import");
-    if (personalityImported) skipped.add("personality");
     return skipped.size > 0 ? skipped : undefined;
-  }, [
-    discoveryWelcomeExpected,
-    migrationDetectionResolved,
-    personalityImported,
-    showEnginePhase,
-    showMigrationPhase,
-  ]);
+  }, [discoveryWelcomeExpected, showEnginePhase]);
   const discoverySelectionsRef = useRef(false);
   const initialNotificationSentRef = useRef(false);
   const handlePhaseChange = useCallback(
@@ -306,23 +267,6 @@ export const OnboardingStep1 = ({
             onContinue={nextSplitStep}
           />
         );
-      case "import":
-        return (
-          <OnboardingMigrationPhase
-            splitTransitionActive={leaving}
-            onContinue={nextSplitStep}
-            onImported={(report) => {
-              if (
-                report.items.some(
-                  (item) =>
-                    item.kind === "personality" && item.status === "imported",
-                )
-              ) {
-                setPersonalityImported(true);
-              }
-            }}
-          />
-        );
       case "permissions":
         return (
           <OnboardingPermissions
@@ -364,7 +308,6 @@ export const OnboardingStep1 = ({
             sortedThemes={appearance.sortedThemes}
             splitTransitionActive={leaving}
             themeId={appearance.themeId}
-            continueBlocked={!migrationDetectionResolved}
             onContinue={nextSplitStep}
             onSelectColorMode={appearance.setColorMode}
             onSelectGradientColor={appearance.setGradientColor}

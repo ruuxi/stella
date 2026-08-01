@@ -81,12 +81,6 @@
       "description": "Lehetővé teszi a Stellának, hogy lássa az oldalt, amelyen vagy, és műveleteket végezzen a böngésződben.",
       "action": "Bővítmény beszerzése"
     },
-    "migration": {
-      "title": "Importálás Hermesből vagy OpenClawból",
-      "action": "Importálás",
-      "description": "Hozd át a memóriát, a képességeket, a munkameneteket és a modellválasztásokat egy másik helyi asszisztens-telepítésből.",
-      "dialogClose": "Importálás bezárása"
-    },
     "permissions": {
       "title": "Engedélyek",
       "enable": "Engedélyezés",

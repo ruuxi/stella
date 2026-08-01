@@ -81,12 +81,6 @@
       "description": "מאפשר ל-Stella לראות את הדף שאתה נמצא בו ולבצע פעולות בדפדפן שלך.",
       "action": "קבל הרחבה"
     },
-    "migration": {
-      "title": "ייבוא מ-Hermes או OpenClaw",
-      "action": "ייבא",
-      "description": "הבא זיכרון, מיומנויות, שיחות ובחירות מודלים מהתקנת עוזר מקומית אחרת.",
-      "dialogClose": "סגור ייבוא"
-    },
     "permissions": {
       "title": "הרשאות",
       "enable": "הפעל",

@@ -81,12 +81,6 @@
       "description": "Consente a Stella di vedere la pagina su cui ti trovi e di agire nel tuo browser.",
       "action": "Ottieni estensione"
     },
-    "migration": {
-      "title": "Importa da Hermes o OpenClaw",
-      "action": "Importa",
-      "description": "Porta memoria, abilità, sessioni e scelte di modello da un'altra installazione di assistente locale.",
-      "dialogClose": "Chiudi importazione"
-    },
     "permissions": {
       "title": "Autorizzazioni",
       "enable": "Abilita",

@@ -81,12 +81,6 @@
       "description": "让 Stella 查看你所在的页面并在浏览器中执行操作。",
       "action": "获取扩展"
     },
-    "migration": {
-      "title": "从 Hermes 或 OpenClaw 导入",
-      "action": "导入",
-      "description": "从另一个本地助手安装中迁移记忆、技能、会话和模型选择。",
-      "dialogClose": "关闭导入"
-    },
     "permissions": {
       "title": "权限",
       "enable": "启用",

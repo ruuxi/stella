@@ -12,12 +12,6 @@ import type {
 import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
-import type {
-  ThirdPartyMigrationPreview,
-  ThirdPartyMigrationReport,
-  ThirdPartyMigrationSelection,
-  ThirdPartyMigrationSource,
-} from "../src/shared/contracts/migration.js";
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
@@ -29,9 +23,6 @@ import {
   IPC_MEDIA_COPY_IMAGE,
   IPC_MEDIA_GET_DIR,
   IPC_MEDIA_SAVE_OUTPUT,
-  IPC_MIGRATION_DETECT_SOURCES,
-  IPC_MIGRATION_PREVIEW,
-  IPC_MIGRATION_RUN,
   IPC_DISCOVERY_COLLECT_BROWSER_DATA,
   IPC_DISCOVERY_CORE_MEMORY_EXISTS,
   IPC_DISCOVERY_DETECT_PREFERRED_BROWSER,
@@ -305,30 +296,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         sourcePath: string;
       }>,
     onUpdate: onIpc<OfficePreviewSnapshot>(IPC_OFFICE_PREVIEW_UPDATE),
-  },
-
-  migration: {
-    detectSources: () =>
-      ipcRenderer.invoke(IPC_MIGRATION_DETECT_SOURCES) as Promise<
-        ThirdPartyMigrationPreview[]
-      >,
-    preview: (payload: {
-      source: ThirdPartyMigrationSource;
-      sourceRoot?: string;
-    }) =>
-      ipcRenderer.invoke(
-        IPC_MIGRATION_PREVIEW,
-        payload,
-      ) as Promise<ThirdPartyMigrationPreview>,
-    run: (payload: {
-      source: ThirdPartyMigrationSource;
-      sourceRoot?: string;
-      selection?: ThirdPartyMigrationSelection;
-    }) =>
-      ipcRenderer.invoke(
-        IPC_MIGRATION_RUN,
-        payload,
-      ) as Promise<ThirdPartyMigrationReport>,
   },
 
   ui: {
@@ -1437,8 +1404,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "codex-cli"
           | "opencode-cli"
           | "pi-cli"
-          | "openclaw-cli"
-          | "hermes-cli"
         >;
       }>,
     resetMessages: () =>

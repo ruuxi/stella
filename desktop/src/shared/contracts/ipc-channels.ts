@@ -295,12 +295,6 @@ export const IPC_UPDATES_ROLLBACK_CANCELED =
 export const IPC_ONBOARDING_SYNTHESIZE =
   "onboarding:synthesizeCoreMemory" as const;
 
-// ── Migration ───────────────────────────────────────────────────────────────
-
-export const IPC_MIGRATION_DETECT_SOURCES = "migration:detectSources" as const;
-export const IPC_MIGRATION_PREVIEW = "migration:preview" as const;
-export const IPC_MIGRATION_RUN = "migration:run" as const;
-
 // ── Discovery ───────────────────────────────────────────────────────────────
 
 export const IPC_DISCOVERY_CORE_MEMORY_EXISTS =

@@ -81,12 +81,6 @@
       "description": "Cho phép Stella xem trang bạn đang ở và thực hiện thao tác trong trình duyệt của bạn.",
       "action": "Tải tiện ích"
     },
-    "migration": {
-      "title": "Nhập từ Hermes hoặc OpenClaw",
-      "action": "Nhập",
-      "description": "Mang bộ nhớ, kỹ năng, phiên và lựa chọn mô hình từ một bản cài đặt trợ lý cục bộ khác.",
-      "dialogClose": "Đóng nhập"
-    },
     "permissions": {
       "title": "Quyền",
       "enable": "Bật",

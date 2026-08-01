@@ -81,12 +81,6 @@
       "description": "Permet à Stella de voir la page sur laquelle vous êtes et d'agir dans votre navigateur.",
       "action": "Obtenir l'extension"
     },
-    "migration": {
-      "title": "Importer depuis Hermes ou OpenClaw",
-      "action": "Importer",
-      "description": "Récupère la mémoire, les compétences, les sessions et les choix de modèle depuis une autre installation d'assistant local.",
-      "dialogClose": "Fermer l'importation"
-    },
     "permissions": {
       "title": "Autorisations",
       "enable": "Activer",

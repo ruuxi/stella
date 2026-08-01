@@ -191,22 +191,6 @@ export const SETTINGS_SEARCH_ENTRY_DEFS: SettingsSearchEntryDef[] = [
   },
   {
     tab: "general",
-    titleKey: "settings.migration.title",
-    descriptionKey: "settings.migration.description",
-    keywords: [
-      "migration",
-      "migrate",
-      "import",
-      "hermes",
-      "openclaw",
-      "skills",
-      "session history",
-      "model config",
-      "assistant",
-    ],
-  },
-  {
-    tab: "general",
     titleKey: "settings.permissions.title",
     descriptionKey: "settings.search.descriptions.permissions",
     keywords: [

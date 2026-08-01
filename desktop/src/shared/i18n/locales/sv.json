@@ -81,12 +81,6 @@
       "description": "Låter Stella se sidan du är på och utföra åtgärder i din webbläsare.",
       "action": "Hämta tillägg"
     },
-    "migration": {
-      "title": "Importera från Hermes eller OpenClaw",
-      "action": "Importera",
-      "description": "Ta med minne, färdigheter, sessioner och modellval från en annan lokal assistentinstallation.",
-      "dialogClose": "Stäng import"
-    },
     "permissions": {
       "title": "Behörigheter",
       "enable": "Aktivera",

@@ -6,7 +6,6 @@ export type Phase =
   | "shapeshift"
   | "theme"
   | "personality"
-  | "import"
   | "permissions"
   | "browser"
   | "extension"
@@ -22,7 +21,6 @@ export const SPLIT_PHASES = new Set<Phase>([
   "shapeshift",
   "theme",
   "personality",
-  "import",
   "permissions",
   "browser",
   "extension",
@@ -36,7 +34,7 @@ export const SPLIT_PHASES = new Set<Phase>([
  * The onboarding story, told in five acts:
  *
  *   Discover      — what Stella can do, and the shape-shifting app itself
- *   Make it yours — theme, personality, imported setup
+ *   Make it yours — theme and personality
  *   Connect       — permissions, browser discovery, extension, engine
  *   Your flow     — voice and memory
  *   Ready         — the final gate
@@ -50,7 +48,6 @@ export const SPLIT_STEP_ORDER: Phase[] = [
   "shapeshift",
   "theme",
   "personality",
-  "import",
   "permissions",
   "browser",
   "extension",
@@ -72,7 +69,6 @@ export const PHASE_ACTS: Partial<Record<Phase, OnboardingAct>> = {
   shapeshift: "discover",
   theme: "personalize",
   personality: "personalize",
-  import: "personalize",
   permissions: "connect",
   browser: "connect",
   extension: "connect",

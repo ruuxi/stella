@@ -13,7 +13,6 @@ type ThemePhaseProps = {
   sortedThemes: ThemeSummary[];
   splitTransitionActive: boolean;
   themeId: string;
-  continueBlocked?: boolean;
   onContinue: () => void;
   onSelectColorMode: (mode: "light" | "dark" | "system") => void;
   onSelectGradientColor: (color: "relative" | "strong") => void;
@@ -90,7 +89,6 @@ export function OnboardingThemePhase({
   sortedThemes,
   splitTransitionActive,
   themeId,
-  continueBlocked = false,
   onContinue,
   onSelectColorMode,
   onSelectGradientColor,
@@ -220,12 +218,12 @@ export function OnboardingThemePhase({
   // Regular themes use click-to-reveal: Theme → Appearance → Gradient
   // Style → Gradient Color.
   const canContinue =
-    (forcedMode
+    forcedMode
       ? true
       : showAppearance &&
         showGradientStyle &&
         showGradientColor &&
-        hasSelectedGradientColor) && !continueBlocked;
+        hasSelectedGradientColor;
 
   return (
     <div className="onboarding-step-content">

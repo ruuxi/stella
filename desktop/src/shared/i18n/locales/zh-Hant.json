@@ -81,12 +81,6 @@
       "description": "讓 Stella 查看你所在的頁面並在瀏覽器中執行操作。",
       "action": "取得擴充功能"
     },
-    "migration": {
-      "title": "從 Hermes 或 OpenClaw 匯入",
-      "action": "匯入",
-      "description": "從另一個本機助理安裝中帶入記憶、技能、工作階段和模型選擇。",
-      "dialogClose": "關閉匯入"
-    },
     "permissions": {
       "title": "權限",
       "enable": "啟用",
