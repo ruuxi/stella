@@ -121,6 +121,19 @@ describe("AgentCompletionCard fileless summary rendering", () => {
     expect(css).toContain(".agent-model-icon > img");
   });
 
+  it("keeps the completed-card chat target from clipping its provider glyph", () => {
+    const css = fs.readFileSync(CARD_CSS_PATH, "utf8");
+    const chatButtonStart = css.indexOf(".agent-completion-card__chat {");
+    const chatButtonBlock = css.slice(
+      chatButtonStart,
+      css.indexOf("}", chatButtonStart),
+    );
+    expect(chatButtonBlock).toContain("flex: 0 0 28px;");
+    expect(chatButtonBlock).toContain("min-width: 28px;");
+    expect(chatButtonBlock).toContain("padding: 0;");
+    expect(chatButtonBlock).toContain("overflow: visible;");
+  });
+
   it("emits bold/code/link as data-streamdown nodes — the shape the scoped CSS must target", async () => {
     await renderCard(SUMMARY);
     const scope = ".agent-completion-card__summary .markdown";
