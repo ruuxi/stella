@@ -41,8 +41,11 @@
  */
 import {
   memo,
+  startTransition,
   useCallback,
+  useEffect,
   useMemo,
+  useState,
   type CSSProperties,
   type RefObject,
 } from "react";
@@ -221,6 +224,49 @@ type TimelineListItem = ChatTimelineItem & {
   gapAfter: number;
 };
 
+/**
+ * Keep the first list paint close to Legend's default, then use idle time to
+ * mount a wider runway around the viewport before the user scrolls. Chat rows
+ * are unusually expensive virtual items (Streamdown markdown, cards, images,
+ * and variable-height measurement), so the library's 250px default can be
+ * exhausted within one trackpad frame and briefly expose an unpainted recycled
+ * container. Warming to roughly two viewports keeps that work ahead of direct
+ * input without adding it to the conversation's initial render.
+ */
+export const CHAT_DRAW_DISTANCE_COLD_PX = 300;
+export const CHAT_DRAW_DISTANCE_WARM_PX = 1_200;
+const CHAT_DRAW_DISTANCE_FALLBACK_DELAY_MS = 240;
+
+const useChatDrawDistance = (dataKey: string | null): number => {
+  const [warmedDataKey, setWarmedDataKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dataKey || warmedDataKey === dataKey) return;
+    const scheduleIdle =
+      window.requestIdleCallback ??
+      ((callback: IdleRequestCallback) =>
+        window.setTimeout(
+          () =>
+            callback({
+              didTimeout: false,
+              timeRemaining: () => 0,
+            }),
+          CHAT_DRAW_DISTANCE_FALLBACK_DELAY_MS,
+        ));
+    const cancelIdle =
+      window.cancelIdleCallback ??
+      ((handle: number) => window.clearTimeout(handle));
+    const handle = scheduleIdle(() => {
+      startTransition(() => setWarmedDataKey(dataKey));
+    });
+    return () => cancelIdle(handle as number);
+  }, [dataKey, warmedDataKey]);
+
+  return warmedDataKey === dataKey
+    ? CHAT_DRAW_DISTANCE_WARM_PX
+    : CHAT_DRAW_DISTANCE_COLD_PX;
+};
+
 const ItemSeparator = ({ leadingItem }: { leadingItem: TimelineListItem }) => (
   <div style={{ height: leadingItem.gapAfter }} aria-hidden="true" />
 );
@@ -328,6 +374,9 @@ export const ChatTimeline = memo(function ChatTimeline({
   const hasQueuedTimelineItem = listItems.some(
     (item) => item.type === "queued-users",
   );
+  const drawDistance = useChatDrawDistance(
+    rows.length > 0 ? (conversationId ?? listItems[0]?.id ?? null) : null,
+  );
 
   /**
    * Header: only the older-loading status banner. Empty/loading-history
@@ -407,6 +456,7 @@ export const ChatTimeline = memo(function ChatTimeline({
       keyExtractor={keyExtractor}
       renderItem={renderItem}
       estimatedItemSize={estimatedItemSize}
+      drawDistance={drawDistance}
       recycleItems={recycleItems}
       alignItemsAtEnd={alignItemsAtEnd}
       maintainVisibleContentPosition

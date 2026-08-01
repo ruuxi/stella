@@ -581,6 +581,7 @@ export const AssistantMessageRow = memo(
               <Markdown
                 text={text}
                 cacheKey={row.cacheKey}
+                mode={row.isStreaming ? "streaming" : "static"}
                 hideHorizontalRules
               />
             </StreamingTextReveal>

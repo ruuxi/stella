@@ -24,6 +24,8 @@ interface MarkdownProps {
   text: string;
   cacheKey?: string;
   className?: string;
+  /** Settled content skips Streamdown's live-block transition machinery. */
+  mode?: "static" | "streaming";
   /** Suppress GFM horizontal rules (`---`). Used in chat bubbles where
    *  models often append a trailing rule that reads as a message divider. */
   hideHorizontalRules?: boolean;
@@ -97,6 +99,7 @@ const areMarkdownPropsEqual = (
   prev.text === next.text &&
   prev.cacheKey === next.cacheKey &&
   prev.className === next.className &&
+  prev.mode === next.mode &&
   Boolean(prev.hideHorizontalRules) === Boolean(next.hideHorizontalRules);
 
 const MarkdownImage = ({
@@ -142,6 +145,7 @@ export const Markdown = memo(function Markdown({
   text,
   cacheKey,
   className,
+  mode = "static",
   hideHorizontalRules = false,
 }: MarkdownProps) {
   /*
@@ -189,6 +193,7 @@ export const Markdown = memo(function Markdown({
     <div style={emojiVars}>
       <Streamdown
         key={streamdownKey}
+        mode={mode}
         className={cn("markdown", className)}
         remarkPlugins={remarkPlugins}
         components={components}
