@@ -108,7 +108,9 @@ import {
   IPC_UI_STATE_KV_CHANGED,
   IPC_UI_STATE_KV_CLEAR,
   IPC_VOICE_GET_RUNTIME_STATE,
+  IPC_VOICE_EXECUTE_MOBILE_TOOL,
   IPC_VOICE_ORCHESTRATOR_CHAT,
+  IPC_VOICE_ORCHESTRATOR_CONFIG,
   IPC_VOICE_PERSIST_TRANSCRIPT,
   IPC_VOICE_RUNTIME_STATE,
   IPC_VOICE_WEB_SEARCH,
@@ -283,6 +285,8 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
 
   send("voice.persistTranscript", IPC_VOICE_PERSIST_TRANSCRIPT),
   invoke("voice.orchestratorChat", IPC_VOICE_ORCHESTRATOR_CHAT),
+  invoke("voice.orchestratorConfig", IPC_VOICE_ORCHESTRATOR_CONFIG),
+  invoke("voice.executeTool", IPC_VOICE_EXECUTE_MOBILE_TOOL),
   invoke("voice.webSearch", IPC_VOICE_WEB_SEARCH),
   invoke("voice.getRuntimeState", IPC_VOICE_GET_RUNTIME_STATE),
   event("voice.onRuntimeState", IPC_VOICE_RUNTIME_STATE),
@@ -463,6 +467,8 @@ export const PHONE_ONLY_REQUEST_CHANNELS: Readonly<Record<string, string>> = {
   "mobile:hello": "One-RTT connect handshake; only the phone ever calls it.",
   "localChat:getEventCount":
     "Registered in local-chat-handlers for the phone; the desktop UI reads counts from its own store.",
+  [IPC_VOICE_EXECUTE_MOBILE_TOOL]:
+    "The phone owns this Realtime session, so it executes the desktop voice catalog without activating the desktop microphone.",
 };
 
 /**

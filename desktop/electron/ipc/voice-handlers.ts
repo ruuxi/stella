@@ -30,6 +30,7 @@ import type {
 } from "../../../runtime/protocol/index.js";
 import {
   IPC_VOICE_CREATE_OPENAI_SESSION,
+  IPC_VOICE_EXECUTE_MOBILE_TOOL,
   IPC_VOICE_EXECUTE_TOOL,
   IPC_VOICE_ORCHESTRATOR_CONFIG,
   IPC_VOICE_CREATE_XAI_SESSION,
@@ -671,36 +672,44 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     },
   );
 
+  const executeVoiceTool = async (payload: RuntimeVoiceToolCallPayload) => {
+    const stellaHostRunner = options.getStellaHostRunner();
+    if (!stellaHostRunner) {
+      throw new Error("Stella runtime not initialized");
+    }
+    emitVoiceToolStart(payload);
+    try {
+      const result = await stellaHostRunner.executeVoiceTool(payload);
+      emitVoiceToolEnd(payload, result);
+      const displayPayload = htmlDisplayPayloadFromVoiceTool(payload, result);
+      if (displayPayload) {
+        emitVoiceDisplayPayload(displayPayload);
+      }
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      emitVoiceToolEnd(payload, {
+        output: `Error: ${message}`,
+        error: message,
+      });
+      throw error;
+    }
+  };
+
   ipcMain.handle(
     IPC_VOICE_EXECUTE_TOOL,
-    async (
-      _event,
-      payload: RuntimeVoiceToolCallPayload,
-    ) => {
+    async (_event, payload: RuntimeVoiceToolCallPayload) => {
       if (!options.uiState.isVoiceRtcActive) {
         throw new Error("Voice mode is no longer active.");
       }
-      const stellaHostRunner = options.getStellaHostRunner();
-      if (!stellaHostRunner) {
-        throw new Error("Stella runtime not initialized");
-      }
-      emitVoiceToolStart(payload);
-      try {
-        const result = await stellaHostRunner.executeVoiceTool(payload);
-        emitVoiceToolEnd(payload, result);
-        const displayPayload = htmlDisplayPayloadFromVoiceTool(payload, result);
-        if (displayPayload) {
-          emitVoiceDisplayPayload(displayPayload);
-        }
-        return result;
-      } catch (error) {
-        const message = errorMessage(error);
-        emitVoiceToolEnd(payload, {
-          output: `Error: ${message}`,
-          error: message,
-        });
-        throw error;
-      }
+      return await executeVoiceTool(payload);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_VOICE_EXECUTE_MOBILE_TOOL,
+    async (_event, payload: RuntimeVoiceToolCallPayload) => {
+      return await executeVoiceTool(payload);
     },
   );
 
