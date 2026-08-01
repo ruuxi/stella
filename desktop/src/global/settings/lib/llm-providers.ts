@@ -15,12 +15,15 @@ export type LlmProviderEntry = {
 
 const PROVIDER_RAIL_PRIORITY: readonly string[] = [
   "stella",
-  "openrouter",
   "anthropic",
-  "openai-codex",
   "openai",
+  "openai-codex",
   "xai",
-  "local",
+  "github-copilot",
+  "google",
+  "kimi-coding",
+  "zai",
+  "openrouter",
 ];
 
 export const compareProviderRailOrder = (

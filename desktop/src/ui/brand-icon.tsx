@@ -9,6 +9,7 @@
  */
 import type { ReactElement } from "react";
 import { AudioLines, Box, type IconProps } from "@/ui/icons";
+import { ClaudeLogoIcon } from "@/ui/claude-logo-icon";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import {
   BRAND_ICON_COLOR_MARKUP,
@@ -29,7 +30,6 @@ const BRAND_KEY_ALIASES: Record<string, string> = {
  */
 const BRAND_TINTS: Record<string, string> = {
   openai: "#10a37f",
-  anthropic: "#d97757",
   groq: "#f55036",
   openrouter: "#6467f2",
 };
@@ -48,6 +48,9 @@ const FALLBACK_ICONS: Record<string, (props: IconProps) => ReactElement> = {
 export function BrandIcon({ brand, size = 16, className }: BrandIconProps) {
   if (brand === "stella") {
     return <StellaLogoIcon size={size} className={className} aria-hidden />;
+  }
+  if (brand === "anthropic") {
+    return <ClaudeLogoIcon size={size} className={className} aria-hidden />;
   }
   const key = BRAND_KEY_ALIASES[brand] ?? brand;
   const colorMarkup = BRAND_ICON_COLOR_MARKUP[key];
