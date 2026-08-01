@@ -45,6 +45,10 @@
   list-style: none;
 }
 
+.files-list__page-end {
+  height: 1px;
+}
+
 .files-list__item {
   display: flex;
   align-items: center;

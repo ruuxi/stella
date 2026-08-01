@@ -164,6 +164,14 @@ describe("chat shell UI contracts", () => {
     expect(work).toContain("}, 120)");
     expect(work).not.toContain("Add a file");
     expect(work).toContain("return [...agents, ...files].sort(");
+    expect(work).toContain("export const WORK_PAGE_SIZE = 50");
+    expect(work).toContain("items.slice(0, visibleItemCount)");
+    expect(work).toContain("current + WORK_PAGE_SIZE");
+    expect(work).toContain("WORK_PAGE_END_THRESHOLD_PX");
+    expect(work).toContain("new IntersectionObserver(");
+    expect(work).toContain("rootMargin:");
+    expect(work).toContain('className="files-list__page-end"');
+    expect(work).not.toContain("Show older");
   });
 
   it("threads conversation and model identity into full-chat agent cards", () => {

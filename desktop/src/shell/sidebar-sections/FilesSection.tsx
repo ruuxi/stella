@@ -7,6 +7,7 @@
  */
 
 import {
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -63,6 +64,14 @@ type WorkItem =
   | { kind: "agent"; id: string; timestamp: number; task: TaskItem }
   | { kind: "file"; id: string; timestamp: number; entry: FileEntry };
 
+/**
+ * Keep the Work panel cheap to open even after a long-running conversation.
+ * Fifty rows covers more than a typical sidebar viewport while avoiding a
+ * large burst of buttons, icons, and hover handlers on the initial render.
+ */
+export const WORK_PAGE_SIZE = 50;
+export const WORK_PAGE_END_THRESHOLD_PX = 160;
+
 const forgetEntry = (entry: FileEntry): void => {
   switch (entry.source) {
     case "canvas":
@@ -94,7 +103,10 @@ function WorkList() {
   const [inputValue, setInputValue] = useState(storedQuery);
   const deferredQuery = useDeferredValue(inputValue.trim().toLowerCase());
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pageEndRef = useRef<HTMLDivElement>(null);
   const [draggingMedia, setDraggingMedia] = useState(false);
+  const [visibleItemCount, setVisibleItemCount] = useState(WORK_PAGE_SIZE);
   const dragCounterRef = useRef(0);
 
   useEffect(() => {
@@ -156,6 +168,41 @@ function WorkList() {
       (a, b) => b.timestamp - a.timestamp || a.id.localeCompare(b.id),
     );
   }, [chat.conversation.tasks, deferredQuery, entries, searchOpen]);
+
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleItemCount),
+    [items, visibleItemCount],
+  );
+  const hasOlderItems = visibleItemCount < items.length;
+
+  useEffect(() => {
+    setVisibleItemCount(WORK_PAGE_SIZE);
+  }, [deferredQuery, searchOpen, state.conversationId]);
+
+  const revealOlderItems = useCallback(() => {
+    startTransition(() => {
+      setVisibleItemCount((current) =>
+        Math.min(items.length, current + WORK_PAGE_SIZE),
+      );
+    });
+  }, [items.length]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    const pageEnd = pageEndRef.current;
+    if (!root || !pageEnd || !hasOlderItems) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) revealOlderItems();
+      },
+      {
+        root,
+        rootMargin: `0px 0px ${WORK_PAGE_END_THRESHOLD_PX}px`,
+      },
+    );
+    observer.observe(pageEnd);
+    return () => observer.disconnect();
+  }, [hasOlderItems, revealOlderItems, visibleItemCount]);
 
   const importDroppedFiles = useCallback(async (files: File[]) => {
     const supported = files.filter(isSupportedMediaFile);
@@ -241,9 +288,9 @@ function WorkList() {
             : "Agent threads and files will show up here."}
         </div>
       ) : (
-        <div className="sidebar-section__scroll">
+        <div ref={scrollRef} className="sidebar-section__scroll">
           <ul className="files-list__items">
-            {items.map((item) =>
+            {visibleItems.map((item) =>
               item.kind === "agent" ? (
                 <li key={item.id} className="files-list__item">
                   <button
@@ -306,6 +353,14 @@ function WorkList() {
               ),
             )}
           </ul>
+          {hasOlderItems ? (
+            <div
+              key={visibleItemCount}
+              ref={pageEndRef}
+              className="files-list__page-end"
+              aria-hidden="true"
+            />
+          ) : null}
         </div>
       )}
     </div>
