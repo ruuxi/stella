@@ -25,14 +25,15 @@ describe("provider presentation", () => {
     container.remove();
   });
 
-  it("uses the Claude app mark for Anthropic", async () => {
+  it("uses the standalone Claude mark for Anthropic", async () => {
     await act(async () => {
       root.render(<BrandIcon brand="anthropic" size={18} />);
     });
 
     const icon = container.querySelector("svg");
     expect(icon?.getAttribute("viewBox")).toBe("0 0 691 691");
-    expect(icon?.querySelector('rect[rx="161.953"]')).not.toBeNull();
+    expect(icon?.querySelector("rect")).toBeNull();
+    expect(icon?.querySelector('path[fill="#D97757"]')).not.toBeNull();
   });
 
   it("uses the preferred provider rail order before the remaining providers", () => {

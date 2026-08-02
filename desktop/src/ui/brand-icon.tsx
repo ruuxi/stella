@@ -50,7 +50,14 @@ export function BrandIcon({ brand, size = 16, className }: BrandIconProps) {
     return <StellaLogoIcon size={size} className={className} aria-hidden />;
   }
   if (brand === "anthropic") {
-    return <ClaudeLogoIcon size={size} className={className} aria-hidden />;
+    return (
+      <ClaudeLogoIcon
+        size={size}
+        variant="mark"
+        className={className}
+        aria-hidden
+      />
+    );
   }
   const key = BRAND_KEY_ALIASES[brand] ?? brand;
   const colorMarkup = BRAND_ICON_COLOR_MARKUP[key];
