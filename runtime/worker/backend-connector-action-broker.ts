@@ -10,7 +10,10 @@ import {
   getNativeConnectorTools,
   isNativeConnectorEnabled,
 } from "../kernel/connectors/native-integrations.js";
-import type { BackendConnectorActionResult } from "../kernel/connectors/cli-broker-client.js";
+import type {
+  BackendConnectorActionResult,
+  BackendConnectorActionsResult,
+} from "../kernel/connectors/cli-broker-client.js";
 import {
   redactSensitiveText,
   sanitizeSensitiveData,
@@ -31,6 +34,7 @@ const MAX_INPUT_DEPTH = 20;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const ACTION_TIMEOUT_MS = 30_000;
 const SAFE_ACTION = /^[A-Z][A-Z0-9_]{1,127}$/u;
+const SAFE_CONNECTOR_ID = /^[a-z0-9][a-z0-9_-]{0,127}$/u;
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
 
 const isPlainJsonValue = (value: unknown, depth = 0): boolean => {
@@ -137,6 +141,224 @@ const requestIdFromResponse = (response: Response, fallback: string) => {
   return candidate && SAFE_REQUEST_ID.test(candidate) ? candidate : fallback;
 };
 
+const readCanonicalAction = (
+  payload: unknown,
+  expectedName: string,
+): { name: string; inputSchema: Record<string, unknown> } | null => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const actions = (payload as { actions?: unknown }).actions;
+  if (!Array.isArray(actions) || actions.length !== 1) return null;
+  const action = actions[0];
+  if (!action || typeof action !== "object" || Array.isArray(action)) {
+    return null;
+  }
+  const record = action as Record<string, unknown>;
+  if (record.name !== expectedName || !isPlainJsonValue(record.inputSchema)) {
+    return null;
+  }
+  const inputSchema = record.inputSchema;
+  return inputSchema &&
+    typeof inputSchema === "object" &&
+    !Array.isArray(inputSchema)
+    ? {
+        name: expectedName,
+        inputSchema: inputSchema as Record<string, unknown>,
+      }
+    : null;
+};
+
+const readCanonicalActionPage = (
+  payload: unknown,
+  expectedId: string,
+): Extract<BackendConnectorActionsResult, { ok: true }> | null => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  if (
+    record.id !== expectedId ||
+    typeof record.actionCount !== "number" ||
+    !Number.isSafeInteger(record.actionCount) ||
+    record.actionCount < 0 ||
+    !Array.isArray(record.actions)
+  ) {
+    return null;
+  }
+  const actions = record.actions.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const action = value as Record<string, unknown>;
+    if (
+      typeof action.name !== "string" ||
+      !SAFE_ACTION.test(action.name) ||
+      !action.inputSchema ||
+      typeof action.inputSchema !== "object" ||
+      Array.isArray(action.inputSchema) ||
+      !isPlainJsonValue(action.inputSchema)
+    ) {
+      return [];
+    }
+    return [
+      {
+        name: action.name,
+        ...(typeof action.title === "string" ? { title: action.title } : {}),
+        ...(typeof action.description === "string"
+          ? { description: action.description }
+          : {}),
+        inputSchema: action.inputSchema as Record<string, unknown>,
+      },
+    ];
+  });
+  if (actions.length !== record.actions.length) return null;
+  return {
+    ok: true,
+    id: expectedId,
+    actionCount: record.actionCount,
+    actions,
+    nextCursor:
+      typeof record.nextCursor === "string" ? record.nextCursor : null,
+  };
+};
+
+export const createBackendConnectorActionsBroker =
+  (options: BackendConnectorActionBrokerOptions) =>
+  async (params: {
+    connectorId: string;
+    query?: string;
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<BackendConnectorActionsResult> => {
+    const connectorId = params.connectorId.trim().toLowerCase();
+    const query = params.query?.trim();
+    const cursor = params.cursor?.trim();
+    const limit = params.limit ?? 25;
+    if (
+      !SAFE_CONNECTOR_ID.test(connectorId) ||
+      (query !== undefined && (query.length === 0 || query.length > 200)) ||
+      (cursor !== undefined &&
+        (cursor.length === 0 || cursor.length > 2_048)) ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 25
+    ) {
+      return {
+        ok: false,
+        reason: "connector_unavailable",
+        message: "The connector action-list request is not valid.",
+      };
+    }
+
+    let auth = options.getSiteAuth();
+    const initialStatus = auth ? jwtStatus(auth.authToken) : "expired";
+    if (!auth || initialStatus === "expired" || initialStatus === "malformed") {
+      auth = await options.refreshSiteAuth();
+    }
+    if (!auth?.baseUrl.trim() || !auth.authToken.trim()) {
+      return {
+        ok: false,
+        reason: "not_signed_in",
+        message: "Sign in to Stella before using this integration.",
+      };
+    }
+    const refreshedStatus = jwtStatus(auth.authToken);
+    if (refreshedStatus === "expired" || refreshedStatus === "malformed") {
+      return {
+        ok: false,
+        reason: "auth_expired",
+        message: "Stella sign-in refresh did not return a usable session.",
+      };
+    }
+
+    const catalog = options.resolveCatalog
+      ? await options.resolveCatalog(auth)
+      : await resolveNativeConnectorCatalog({
+          stellaDataDir: options.stellaDataDir,
+          getStellaSiteAuth: () => auth,
+          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        });
+    const entry = getNativeConnectorCatalogEntry(connectorId, catalog.entries);
+    const enabled = options.isEnabled
+      ? await options.isEnabled(connectorId)
+      : await isNativeConnectorEnabled(options.stellaDataDir, connectorId);
+    if (!entry || !enabled) {
+      return {
+        ok: false,
+        reason: "connector_unavailable",
+        message: "This connector is not enabled for backend execution.",
+      };
+    }
+
+    const url = new URL(
+      `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/actions`,
+    );
+    url.searchParams.set("id", connectorId);
+    url.searchParams.set("limit", String(limit));
+    if (query) url.searchParams.set("query", query);
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort("timeout"),
+      ACTION_TIMEOUT_MS,
+    );
+    const abort = () => controller.abort(params.signal?.reason ?? "cancelled");
+    params.signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const response = await (options.fetchImpl ?? fetch)(url, {
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${auth.authToken}`,
+        },
+        signal: controller.signal,
+      });
+      if (response.status === 401) {
+        return {
+          ok: false,
+          reason: "auth_expired",
+          status: 401,
+          message:
+            "Stella sign-in expired. Sign in again before using this integration.",
+        };
+      }
+      if (!response.ok) {
+        return {
+          ok: false,
+          reason:
+            response.status === 404 ? "connector_unavailable" : "backend_error",
+          status: response.status,
+          message: `The connector action catalog failed (${response.status}).`,
+        };
+      }
+      const page = readCanonicalActionPage(
+        await readBoundedJson(response),
+        connectorId,
+      );
+      return (
+        page ?? {
+          ok: false,
+          reason: "backend_error",
+          message: "The backend returned an invalid connector action page.",
+        }
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        reason: "backend_error",
+        message: controller.signal.aborted
+          ? "The connector action-list request was cancelled or timed out."
+          : redactSensitiveText(
+              error instanceof Error
+                ? error.message
+                : "The connector action catalog could not be reached.",
+            ),
+      };
+    } finally {
+      clearTimeout(timeout);
+      params.signal?.removeEventListener("abort", abort);
+    }
+  };
+
 export const createBackendConnectorActionBroker =
   (options: BackendConnectorActionBrokerOptions) =>
   async (params: {
@@ -199,14 +421,12 @@ export const createBackendConnectorActionBroker =
     const enabled = options.isEnabled
       ? await options.isEnabled(connectorId)
       : await isNativeConnectorEnabled(options.stellaDataDir, connectorId);
-    const toolkit = entry?.backendConnector?.toolkit.trim().toUpperCase();
     if (
       !entry ||
       entry.provider !== "backend-composio" ||
       entry.connectable !== true ||
       getNativeConnectorTools(entry).length === 0 ||
-      !enabled ||
-      !toolkit
+      !enabled
     ) {
       return {
         ok: false,
@@ -215,14 +435,102 @@ export const createBackendConnectorActionBroker =
         requestId,
       };
     }
-    const canonicalAction = entry.actions?.find(
-      (candidate) => candidate.name === action,
-    );
-    if (!canonicalAction || !action.startsWith(`${toolkit}_`)) {
+    if (!action.startsWith(`${entry.backendConnector.toolkit}_`)) {
       return {
         ok: false,
         reason: "action_not_allowed",
         message: "That action does not belong to the resolved connector.",
+        requestId,
+      };
+    }
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const actionLookupUrl = new URL(
+      `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/actions`,
+    );
+    actionLookupUrl.searchParams.set("id", connectorId);
+    actionLookupUrl.searchParams.set("action", action);
+    let actionResponse: Response;
+    const lookupController = new AbortController();
+    const lookupTimeout = setTimeout(
+      () => lookupController.abort("timeout"),
+      ACTION_TIMEOUT_MS,
+    );
+    const abortLookup = () =>
+      lookupController.abort(params.signal?.reason ?? "cancelled");
+    params.signal?.addEventListener("abort", abortLookup, { once: true });
+    try {
+      actionResponse = await fetchImpl(actionLookupUrl, {
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${auth.authToken}`,
+          "x-stella-request-id": requestId,
+        },
+        signal: lookupController.signal,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        reason: "backend_error",
+        message: lookupController.signal.aborted
+          ? "The connector action catalog request was cancelled or timed out."
+          : redactSensitiveText(
+              error instanceof Error
+                ? error.message
+                : "The connector action catalog could not be reached.",
+            ),
+        requestId,
+      };
+    } finally {
+      clearTimeout(lookupTimeout);
+      params.signal?.removeEventListener("abort", abortLookup);
+    }
+    if (!actionResponse) {
+      return {
+        ok: false,
+        reason: "backend_error",
+        message: "The connector action catalog returned no response.",
+        requestId,
+      };
+    }
+    if (actionResponse.status === 401) {
+      return {
+        ok: false,
+        reason: "auth_expired",
+        status: 401,
+        message:
+          "Stella sign-in expired. Sign in again before using this integration.",
+        requestId: requestIdFromResponse(actionResponse, requestId),
+      };
+    }
+    if (!actionResponse.ok) {
+      return {
+        ok: false,
+        reason:
+          actionResponse.status === 404
+            ? "action_not_allowed"
+            : "backend_error",
+        status: actionResponse.status,
+        message:
+          actionResponse.status === 404
+            ? "That action does not belong to the resolved connector."
+            : `The connector action catalog failed (${actionResponse.status}).`,
+        requestId: requestIdFromResponse(actionResponse, requestId),
+      };
+    }
+    let canonicalAction: ReturnType<typeof readCanonicalAction>;
+    try {
+      canonicalAction = readCanonicalAction(
+        await readBoundedJson(actionResponse),
+        action,
+      );
+    } catch {
+      canonicalAction = null;
+    }
+    if (!canonicalAction) {
+      return {
+        ok: false,
+        reason: "action_not_allowed",
+        message: "The backend did not return a valid canonical action schema.",
         requestId,
       };
     }
@@ -248,7 +556,7 @@ export const createBackendConnectorActionBroker =
     const abort = () => controller.abort(params.signal?.reason ?? "cancelled");
     params.signal?.addEventListener("abort", abort, { once: true });
     try {
-      response = await (options.fetchImpl ?? fetch)(
+      response = await fetchImpl(
         `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/run`,
         {
           method: "POST",
@@ -329,4 +637,6 @@ export const __test = {
   jwtStatus,
   validateActionInput,
   readBoundedJson,
+  readCanonicalAction,
+  readCanonicalActionPage,
 };

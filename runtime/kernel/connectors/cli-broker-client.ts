@@ -1,9 +1,7 @@
 /**
- * Client for the worker's CLI bridge UDS. The CLI dials it when an
- * MCP/REST call fails with auth, the worker pops a credential dialog
- * via the host, the user submits, the host writes the token directly
- * to `~/.stella/connectors/.credentials.json`, and we get `{ ok: true }`
- * back so the CLI can retry the original operation.
+ * Client for the worker's private CLI bridge. Connector actions and inline
+ * Store connection requests cross this narrow local socket; credentials and
+ * arbitrary transports do not.
  *
  * Wire protocol mirrors `runtime/worker/cli-bridge-server.ts`: one
  * connection = one line of JSON request, one line of JSON response,
@@ -13,10 +11,6 @@
  */
 
 import { connect, type Socket } from "node:net";
-
-export type ConnectorCredentialResult =
-  | { ok: true }
-  | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string };
 
 export type BackendConnectorActionResult =
   | { ok: true; result: unknown }
@@ -33,6 +27,32 @@ export type BackendConnectorActionResult =
       status?: number;
       message?: string;
       requestId?: string;
+    };
+
+export type BackendConnectorActionsResult =
+  | {
+      ok: true;
+      id: string;
+      actionCount: number;
+      actions: Array<{
+        name: string;
+        title?: string;
+        description?: string;
+        inputSchema: Record<string, unknown>;
+      }>;
+      nextCursor: string | null;
+    }
+  | {
+      ok: false;
+      reason:
+        | "not_signed_in"
+        | "auth_expired"
+        | "connector_unavailable"
+        | "backend_error"
+        | "bridge_unavailable"
+        | string;
+      status?: number;
+      message?: string;
     };
 
 export type DesktopPermissionRequestResult =
@@ -116,86 +136,6 @@ const sendRequest = (
       fail(new Error("cli-bridge: connection closed without a response"));
     });
   });
-
-export const requestConnectorCredentialFromBridge = async ({
-  socketPath,
-  tokenKey,
-  displayName,
-  authType,
-  resourceUrl,
-  oauthClientId,
-  oauthResource,
-  scopes,
-  preregisteredOAuth,
-  description,
-  placeholder,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-}: {
-  socketPath: string;
-  tokenKey: string;
-  displayName: string;
-  /** `"oauth"` switches the host to the browser-based flow and requires `resourceUrl`. */
-  authType?: "api_key" | "oauth";
-  /** MCP server URL used for protected-resource metadata discovery when `authType==="oauth"`. */
-  resourceUrl?: string;
-  oauthClientId?: string;
-  oauthResource?: string;
-  scopes?: string[];
-  preregisteredOAuth?: {
-    clientId: string;
-    authorizationEndpoint: string;
-    tokenEndpoint?: string;
-    responseType?: "code" | "token";
-    resourceUrl?: string;
-    oauthResource?: string | null;
-    callbackUrl?: string;
-    callbackId?: string;
-    callbackMode?: "local" | "external";
-    scopeSeparator?: string;
-    usesPkce?: boolean;
-    authorizationRedirectParam?: string;
-    authorizationParams?: Record<string, string>;
-    tokenRedirectParam?: string;
-    tokenAuth?: "body" | "basic";
-    tokenExchange?: {
-      type: "backend";
-      provider: string;
-    };
-  };
-  description?: string;
-  placeholder?: string;
-  timeoutMs?: number;
-}): Promise<ConnectorCredentialResult> => {
-  const result = await sendRequest(
-    socketPath,
-    "connector.requestCredential",
-    {
-      tokenKey,
-      displayName,
-      authType,
-      resourceUrl,
-      oauthClientId,
-      oauthResource,
-      scopes,
-      preregisteredOAuth,
-      description,
-      placeholder,
-    },
-    timeoutMs,
-  );
-  if (!result || typeof result !== "object") {
-    return { ok: false, reason: "invalid_response" };
-  }
-  const record = result as Record<string, unknown>;
-  if (record.ok === true) return { ok: true };
-  return {
-    ok: false,
-    reason:
-      typeof record.reason === "string" && record.reason
-        ? record.reason
-        : "unknown",
-  };
-};
 
 /**
  * Ask the desktop to offer connecting a native Store integration via an
@@ -289,6 +229,88 @@ export const requestBackendConnectorActionFromBridge = async ({
     ...(typeof record.requestId === "string"
       ? { requestId: record.requestId }
       : {}),
+  };
+};
+
+export const requestBackendConnectorActionsFromBridge = async ({
+  socketPath,
+  connectorId,
+  query,
+  cursor,
+  limit = 25,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: {
+  socketPath: string;
+  connectorId: string;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  timeoutMs?: number;
+}): Promise<BackendConnectorActionsResult> => {
+  const result = await sendRequest(
+    socketPath,
+    "connector.listBackendActions",
+    { connectorId, query, cursor, limit },
+    timeoutMs,
+  );
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return { ok: false, reason: "invalid_response" };
+  }
+  const record = result as Record<string, unknown>;
+  if (record.ok !== true) {
+    return {
+      ok: false,
+      reason:
+        typeof record.reason === "string" && record.reason
+          ? record.reason
+          : "bridge_unavailable",
+      ...(typeof record.status === "number" ? { status: record.status } : {}),
+      ...(typeof record.message === "string" ? { message: record.message } : {}),
+    };
+  }
+  const rawActions = Array.isArray(record.actions) ? record.actions : null;
+  const actions = rawActions
+    ? rawActions.flatMap((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return [];
+        }
+        const action = value as Record<string, unknown>;
+        if (
+          typeof action.name !== "string" ||
+          !action.inputSchema ||
+          typeof action.inputSchema !== "object" ||
+          Array.isArray(action.inputSchema)
+        ) {
+          return [];
+        }
+        return [
+          {
+            name: action.name,
+            ...(typeof action.title === "string"
+              ? { title: action.title }
+              : {}),
+            ...(typeof action.description === "string"
+              ? { description: action.description }
+              : {}),
+            inputSchema: action.inputSchema as Record<string, unknown>,
+          },
+        ];
+      })
+    : [];
+  if (
+    typeof record.id !== "string" ||
+    typeof record.actionCount !== "number" ||
+    !rawActions ||
+    actions.length !== rawActions.length
+  ) {
+    return { ok: false, reason: "invalid_response" };
+  }
+  return {
+    ok: true,
+    id: record.id,
+    actionCount: record.actionCount,
+    actions,
+    nextCursor: typeof record.nextCursor === "string" ? record.nextCursor : null,
   };
 };
 

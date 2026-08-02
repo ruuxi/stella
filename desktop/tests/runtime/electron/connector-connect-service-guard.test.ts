@@ -5,70 +5,62 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const send = vi.fn();
-const fakeWindow = {
-  isDestroyed: () => false,
-  webContents: { send },
-};
-
+const fakeWindow = { isDestroyed: () => false, webContents: { send } };
 vi.mock("electron", () => ({
   BrowserWindow: { getAllWindows: () => [fakeWindow] },
   shell: { openExternal: vi.fn() },
 }));
 
 import { writeCachedServerCatalog } from "../../../../runtime/kernel/connectors/catalog-cache.js";
-import { getNativeConnectorReadiness } from "../../../../runtime/kernel/connectors/connection-status.js";
-import {
-  buildNativeConnectorCatalog,
-  enableNativeConnector,
-  type NativeConnectorCatalogEntry,
-} from "../../../../runtime/kernel/connectors/native-integrations.js";
-import { setConnectorTokenStoreBroker } from "../../../../runtime/kernel/connectors/oauth.js";
+import type { NativeConnectorCatalogEntry } from "../../../../runtime/kernel/connectors/native-integrations.js";
+import { ensureNativeCredential } from "../../../electron/ipc/native-integration-handlers.js";
 import { ConnectorConnectService } from "../../../electron/services/connector-connect-service.js";
 
 const roots: string[] = [];
-const backendEntry = (
-  id: string,
-  name: string,
-): NativeConnectorCatalogEntry => ({
-  id,
-  name,
-  category: "productivity",
+const entry = (toolkit = "OUTLOOK"): NativeConnectorCatalogEntry => ({
+  id: "outlook",
+  name: "Outlook",
+  category: "email",
   auth: ["OAUTH2"],
   catalogToolCount: 12,
   availability: "ready",
   provider: "backend-composio",
-  description: `Canonical ${name} description.`,
+  description: "Canonical Outlook description.",
   iconUrl: "https://example.com/canonical.png",
   connectable: true,
-  backendConnector: { type: "composio", toolkit: id.toUpperCase() },
+  backendConnector: { type: "composio", toolkit },
 });
 
-const makeService = (root: string, withSiteAuth = false) => {
-  const credentialService = {
-    requestPreregisteredOAuth: vi.fn(),
-    requestExternalOAuthApproval: vi.fn(),
-    requestDeviceOAuth: vi.fn(),
+const makeService = (root: string) => {
+  const connectorOAuthService = {
+    requestExternalOAuthApproval: vi.fn(async () => ({ ok: true as const })),
   };
-  const service = new ConnectorConnectService({
-    getStellaAppDir: () => root,
-    getConvexAuthToken: async () => (withSiteAuth ? "site-token" : null),
-    getConvexSiteUrl: () => (withSiteAuth ? "https://stella.test" : null),
-    windowManagerTarget: { getWindowManager: () => null } as never,
-    connectorCredentialService: credentialService as never,
-  });
-  return { service, credentialService };
+  return {
+    service: new ConnectorConnectService({
+      getStellaAppDir: () => root,
+      getConvexAuthToken: async () => "site-token",
+      getConvexSiteUrl: () => "https://stella.test",
+      windowManagerTarget: { getWindowManager: () => null } as never,
+      connectorOAuthService: connectorOAuthService as never,
+    }),
+    connectorOAuthService,
+  };
 };
 
-const waitFor = async (predicate: () => boolean) => {
+const waitForCard = async () => {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (predicate()) return;
+    if (send.mock.calls.length > 0)
+      return send.mock.calls[0]![1] as {
+        requestId: string;
+        name: string;
+        description: string;
+      };
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  throw new Error("condition not reached");
+  throw new Error("card not emitted");
 };
 
 afterEach(async () => {
-  setConnectorTokenStoreBroker(null);
   vi.unstubAllGlobals();
   send.mockReset();
   await Promise.all(
@@ -77,182 +69,101 @@ afterEach(async () => {
 });
 
 describe("ConnectorConnectService canonical guards", () => {
-  it("rejects direct bundled-only Outlook requests before emitting a card", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
+  it("rejects requests absent from the backend catalog", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-card-"));
     roots.push(root);
-    const { service, credentialService } = makeService(root);
-
-    await expect(
-      service.requestConnection({
-        id: "outlook",
-        name: "Caller supplied Outlook",
-        description: "Untrusted description",
-      }),
-    ).resolves.toEqual({ ok: false, reason: "connector_unavailable" });
-    expect(send).not.toHaveBeenCalled();
-    expect(credentialService.requestPreregisteredOAuth).not.toHaveBeenCalled();
-    expect(
-      credentialService.requestExternalOAuthApproval,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("uses canonical card metadata and revalidates before credential side effects", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
-    roots.push(root);
-    await writeCachedServerCatalog(root, [backendEntry("outlook", "Outlook")]);
+    const { service } = makeService(root);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value.endsWith("/api/native-oauth/providers")) {
-          return new Response(
-            JSON.stringify({ providers: [{ id: "google-workspace" }] }),
-            { status: 200 },
-          );
-        }
-        return new Response("offline", { status: 503 });
-      }),
+      vi.fn(async () => new Response("offline", { status: 503 })),
     );
-    const { service, credentialService } = makeService(root, true);
+    await expect(
+      service.requestConnection({ id: "outlook", name: "Spoofed" }),
+    ).resolves.toEqual({ ok: false, reason: "connector_unavailable" });
+    expect(send).not.toHaveBeenCalled();
+  });
 
+  it("uses canonical card metadata and revalidates before OAuth", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-card-"));
+    roots.push(root);
+    await writeCachedServerCatalog(root, [entry()]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("offline", { status: 503 })),
+    );
+    const { service, connectorOAuthService } = makeService(root);
     const outcome = service.requestConnection({
       id: "OUTLOOK",
-      name: "Spoofed name",
-      description: "Spoofed description",
-      iconUrl: "https://example.com/spoofed.png",
-      category: "spoofed",
+      name: "Spoofed",
+      description: "Spoofed",
     });
-    await waitFor(() => send.mock.calls.length === 1);
-    const card = send.mock.calls[0]![1] as {
-      requestId: string;
-      id: string;
-      name: string;
-      description: string;
-      iconUrl: string;
-      category: string;
-    };
+    const card = await waitForCard();
     expect(card).toMatchObject({
-      id: "outlook",
       name: "Outlook",
       description: "Canonical Outlook description.",
-      iconUrl: "https://example.com/canonical.png",
-      category: "productivity",
     });
-
     await unlink(path.join(root, "connectors/catalog-cache.json"));
-    expect(
-      service.respond({ requestId: card.requestId, action: "accept" }),
-    ).toEqual({
-      ok: true,
-    });
+    service.respond({ requestId: card.requestId, action: "accept" });
     await expect(outcome).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining("no longer available"),
     });
-    expect(credentialService.requestPreregisteredOAuth).not.toHaveBeenCalled();
     expect(
-      credentialService.requestExternalOAuthApproval,
+      connectorOAuthService.requestExternalOAuthApproval,
     ).not.toHaveBeenCalled();
-    expect(credentialService.requestDeviceOAuth).not.toHaveBeenCalled();
   });
 
-  it("blocks a same-id backend Gmail to bundled Google Workspace provider swap", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
+  it("blocks a toolkit identity change while the card is open", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-card-"));
     roots.push(root);
-    await writeCachedServerCatalog(root, [backendEntry("gmail", "Gmail")]);
-    const { service, credentialService } = makeService(root);
-
-    const outcome = service.requestConnection({ id: "gmail", name: "Gmail" });
-    await waitFor(() => send.mock.calls.length === 1);
-    const card = send.mock.calls[0]![1] as { requestId: string };
-    await unlink(path.join(root, "connectors/catalog-cache.json"));
-    service.respond({ requestId: card.requestId, action: "accept" });
-
-    await expect(outcome).resolves.toMatchObject({
-      ok: false,
-      reason: expect.stringContaining("connector changed"),
+    await writeCachedServerCatalog(root, [entry()]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("offline", { status: 503 })),
+    );
+    const { service, connectorOAuthService } = makeService(root);
+    const outcome = service.requestConnection({
+      id: "outlook",
+      name: "Outlook",
     });
-    expect(credentialService.requestPreregisteredOAuth).not.toHaveBeenCalled();
-    expect(
-      credentialService.requestExternalOAuthApproval,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("blocks a same-provider backend toolkit semantic change", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
-    roots.push(root);
-    await writeCachedServerCatalog(root, [backendEntry("notion", "Notion")]);
-    const { service, credentialService } = makeService(root);
-
-    const outcome = service.requestConnection({ id: "notion", name: "Notion" });
-    await waitFor(() => send.mock.calls.length === 1);
-    const card = send.mock.calls[0]![1] as { requestId: string };
-    await writeCachedServerCatalog(root, [
-      {
-        ...backendEntry("notion", "Notion"),
-        backendConnector: { type: "composio", toolkit: "NOTION_V2" },
-      },
-    ]);
+    const card = await waitForCard();
+    await writeCachedServerCatalog(root, [entry("OUTLOOK_V2")]);
     service.respond({ requestId: card.requestId, action: "accept" });
-
     await expect(outcome).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining("connector changed"),
     });
     expect(
-      credentialService.requestExternalOAuthApproval,
+      connectorOAuthService.requestExternalOAuthApproval,
     ).not.toHaveBeenCalled();
   });
 
-  it("reconnects enabled Gmail with a missing token and restores executable readiness", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
+  it("fails before OAuth when verified connection status is unsupported", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-card-"));
     roots.push(root);
-    await enableNativeConnector(root, "gmail", "store");
-    let token: { accessToken: string } | null = null;
-    setConnectorTokenStoreBroker({
-      load: async () => token,
-      save: async () => undefined,
-      delete: async () => undefined,
-    });
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
-      const value = String(url);
-      if (value.endsWith("/api/native-oauth/providers")) {
-        return new Response(
-          JSON.stringify({ providers: [{ id: "google-workspace" }] }),
-          { status: 200 },
-        );
-      }
-      return new Response("offline", { status: 503 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { service, credentialService } = makeService(root, true);
-    credentialService.requestPreregisteredOAuth.mockImplementation(async () => {
-      token = { accessToken: "restored-token" };
-      return { ok: true };
-    });
-
-    const outcome = service.requestConnection({ id: "gmail", name: "spoofed" });
-    await waitFor(() => send.mock.calls.length === 1);
-    const card = send.mock.calls[0]![1] as { requestId: string; name: string };
-    expect(card.name).toBe("Gmail");
-    service.respond({ requestId: card.requestId, action: "accept" });
-    await expect(outcome).resolves.toEqual({ ok: true, status: "connected" });
-    expect(credentialService.requestPreregisteredOAuth).toHaveBeenCalledOnce();
-    expect(
-      fetchMock.mock.calls.filter(([url]) =>
-        String(url).endsWith("/api/native-integrations/catalog"),
-      ),
-    ).toHaveLength(2);
-
-    const gmail = buildNativeConnectorCatalog().find(
-      (entry) => entry.id === "gmail",
-    )!;
+    const requestExternalOAuthApproval = vi.fn(async () => ({
+      ok: true as const,
+    }));
     await expect(
-      getNativeConnectorReadiness(root, gmail),
-    ).resolves.toMatchObject({
-      enabled: true,
-      accountVerified: true,
-      executable: true,
-    });
+      ensureNativeCredential(
+        {
+          getConvexAuthToken: async () => "site-token",
+          getConvexSiteUrl: () => "https://stella.test",
+          requestExternalOAuthApproval,
+          fetchImpl: async () => new Response(null, { status: 404 }),
+        },
+        root,
+        "outlook",
+        {
+          catalog: {
+            entries: [entry()],
+            source: "cache",
+            sources: { outlook: "cache" },
+          },
+          entry: entry(),
+        },
+      ),
+    ).rejects.toThrow("connection-status service is unavailable");
+    expect(requestExternalOAuthApproval).not.toHaveBeenCalled();
   });
 });

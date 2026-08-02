@@ -298,10 +298,6 @@ export const registerBootstrapIpcHandlers = (
       services.credentialService.submitCredential(payload),
     cancelCredential: (payload) =>
       services.credentialService.cancelCredential(payload),
-    submitConnectorCredential: (payload) =>
-      services.connectorCredentialService.submitCredential(payload),
-    cancelConnectorCredential: (payload) =>
-      services.connectorCredentialService.cancelCredential(payload),
     respondConnectorConnect: (payload) =>
       services.connectorConnectService.respond(payload),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -455,19 +451,10 @@ export const registerBootstrapIpcHandlers = (
 
   registerNativeIntegrationHandlers({
     getStellaAppDir: lifecycle.getStellaDataDir,
-    requestPreregisteredOAuth: (payload) =>
-      services.connectorCredentialService.requestPreregisteredOAuth(payload),
-    requestDeviceOAuth: (payload) =>
-      services.connectorCredentialService.requestDeviceOAuth(payload),
     requestExternalOAuthApproval: (payload) =>
-      services.connectorCredentialService.requestExternalOAuthApproval(payload),
+      services.connectorOAuthService.requestExternalOAuthApproval(payload),
     getConvexAuthToken: () => services.authService.getConvexAuthToken(),
     getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
-    disconnectGoogleWorkspace: async () => {
-      const runner = lifecycle.getRunner();
-      if (!runner) return { ok: false };
-      return await runner.googleWorkspaceDisconnect();
-    },
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

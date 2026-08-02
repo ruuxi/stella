@@ -32,6 +32,8 @@ export type ExtensionServices = {
   selfModMonitor: SelfModMonitor | null;
   /** Runtime SQLite store. Hooks that need to read/write per-conversation counters or thread summaries reach in here. */
   store: RuntimeStore;
+  /** Current Stella site credentials. Read lazily because sign-in can change after startup. */
+  getStellaSiteAuth: () => { baseUrl: string; authToken: string } | null;
 };
 
 /**

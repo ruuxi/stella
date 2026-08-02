@@ -12,11 +12,6 @@ import { createStoreOperations } from "./runner/store-operations.js";
 import { createAgentOrchestration } from "./runner/agent-orchestration.js";
 import { buildRuntimeSystemPrompt } from "./agent-runtime/run-preparation.js";
 import { getRuntimeToolMetadata } from "./agent-runtime/tool-adapters.js";
-import { loadGoogleWorkspaceTools } from "./google-workspace/load-google-workspace-tools.js";
-import {
-  deleteConnectorAccessTokens,
-  loadConnectorAccessToken,
-} from "./connectors/oauth.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
@@ -43,7 +38,6 @@ export {
   shouldStopRemoteTurnForAuthFailure,
 } from "./runner/remote-turn-auth.js";
 
-import type { ToolResult } from "./tools/types.js";
 import type { RuntimeRunCallbacks } from "./agent-runtime/types.js";
 import type { RuntimeVoiceHistoryItem } from "../protocol/index.js";
 import {
@@ -87,87 +81,6 @@ const buildVoiceHistoryItems = (
     });
   }
   return history;
-};
-
-type GoogleWorkspaceAuthResult = {
-  connected: boolean;
-  unavailable?: boolean;
-  email?: string;
-  name?: string;
-};
-
-const getGoogleWorkspaceRecord = (
-  value: unknown,
-): Record<string, unknown> | null =>
-  value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
-
-const getGoogleWorkspaceString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() ? value.trim() : undefined;
-
-const getGoogleWorkspacePrimaryArrayField = (
-  value: unknown,
-  fieldName: string,
-): string | undefined => {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  for (const entry of value) {
-    const record = getGoogleWorkspaceRecord(entry);
-    const fieldValue = getGoogleWorkspaceString(record?.[fieldName]);
-    if (fieldValue) {
-      return fieldValue;
-    }
-  }
-
-  return undefined;
-};
-
-export const parseGoogleWorkspaceProfile = (
-  value: unknown,
-): { email?: string; name?: string } => {
-  const record = getGoogleWorkspaceRecord(value);
-  if (!record) {
-    return {};
-  }
-
-  return {
-    email:
-      getGoogleWorkspacePrimaryArrayField(record.emailAddresses, "value") ??
-      getGoogleWorkspaceString(record.emailAddress) ??
-      getGoogleWorkspaceString(record.email),
-    name:
-      getGoogleWorkspacePrimaryArrayField(record.names, "displayName") ??
-      getGoogleWorkspacePrimaryArrayField(record.names, "unstructuredName") ??
-      getGoogleWorkspaceString(record.displayName),
-  };
-};
-
-const parseGoogleProfileResult = (
-  result: ToolResult,
-): GoogleWorkspaceAuthResult => {
-  if ("error" in result) return { connected: false };
-  const response = result.result;
-  if (typeof response === "string") {
-    try {
-      const data = JSON.parse(response);
-      return {
-        connected: true,
-        ...parseGoogleWorkspaceProfile(data),
-      };
-    } catch {
-      return { connected: false };
-    }
-  }
-  if (!response || typeof response !== "object") {
-    return { connected: false };
-  }
-  return {
-    connected: true,
-    ...parseGoogleWorkspaceProfile(response),
-  };
 };
 
 export const createStellaHostRunner = (
@@ -516,36 +429,6 @@ export const createStellaHostRunner = (
       return (
         client as { action: (ref: unknown, args: unknown) => Promise<unknown> }
       ).action(ref, args);
-    },
-
-    googleWorkspaceGetAuthStatus: async () => {
-      return {
-        connected: Boolean(
-          await loadConnectorAccessToken(
-            context.stellaDataDir,
-            "google-workspace",
-          ),
-        ),
-      };
-    },
-
-    googleWorkspaceConnect: async () => {
-      const { callTool, disconnect } = await loadGoogleWorkspaceTools({
-        stellaAppDir: context.stellaDataDir,
-      });
-      try {
-        if (!callTool) return { connected: false, unavailable: true };
-        return parseGoogleProfileResult(await callTool("people.getMe", {}));
-      } finally {
-        await disconnect().catch(() => undefined);
-      }
-    },
-
-    googleWorkspaceDisconnect: async () => {
-      await deleteConnectorAccessTokens(context.stellaDataDir, [
-        "google-workspace",
-      ]);
-      return { ok: true };
     },
 
     triggerDreamNow: async (trigger = "manual") => {

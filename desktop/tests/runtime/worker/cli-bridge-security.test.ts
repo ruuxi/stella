@@ -9,12 +9,7 @@ import { createSecureCliBridgeEndpoint } from "../../../../runtime/worker/runtim
 
 const roots: string[] = [];
 const servers: Array<{ stop: () => Promise<void> }> = [];
-const handlers = {
-  requestConnectorCredential: async () => ({
-    ok: false as const,
-    reason: "unused",
-  }),
-};
+const handlers = {};
 
 const makeRoot = () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "stella-cli-security-"));

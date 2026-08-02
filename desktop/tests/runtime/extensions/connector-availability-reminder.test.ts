@@ -67,10 +67,17 @@ const basePayload = (userPrompt: string): BeforeUserMessagePayload => ({
 const makeHook = (
   root: string,
   windowMessages: Array<{ content: string; timestamp: number }> = [],
+  connected = false,
 ) =>
   createConnectorAvailabilityReminderHook({
     stellaDataDir: root,
     store: storeWith(windowMessages),
+    getStellaSiteAuth: () => ({
+      baseUrl: "https://stella.test",
+      authToken: "token",
+    }),
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ connected }), { status: 200 }),
   });
 
 describe("connector-availability reminder hook", () => {
@@ -92,8 +99,8 @@ describe("connector-availability reminder hook", () => {
   it("injects the connected variant when the integration is usable", async () => {
     const root = makeRoot();
     await writeCachedServerCatalog(root, [notionEntry]);
-    await enableNativeConnector(root, "notion", "store", {}, [notionEntry]);
-    const hook = makeHook(root);
+    await enableNativeConnector(root, "notion", "store", [notionEntry]);
+    const hook = makeHook(root, [], true);
     const result = await hook.handler(
       basePayload("add a row to my notion database"),
     );
@@ -150,9 +157,9 @@ describe("connector-availability reminder hook", () => {
     await writeCachedServerCatalog(root, [notionEntry]);
     // Connected first, then a (stale) decline on record: the connected
     // variant is just useful info and stays eligible.
-    await enableNativeConnector(root, "notion", "store", {}, [notionEntry]);
+    await enableNativeConnector(root, "notion", "store", [notionEntry]);
     await recordConnectorDecline(root, "notion");
-    const hook = makeHook(root);
+    const hook = makeHook(root, [], true);
     const result = await hook.handler(basePayload("update my notion tracker"));
     expect(result?.prependMessages?.[0]?.text).toContain(
       "is connected via stella-connect",

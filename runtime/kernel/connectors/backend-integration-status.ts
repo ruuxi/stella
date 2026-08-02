@@ -1,24 +1,8 @@
-/**
- * Backend Composio connection-status probe.
- *
- * `requestExternalOAuthApproval` can only confirm that the browser was
- * opened with the user's consent — Composio OAuth completes on a hosted
- * page with no deep-link back to the desktop. Before that, the enable
- * paths treated "browser opened" as "connected", so the connect card /
- * Store could report success while the user was still mid-OAuth (or had
- * closed the tab).
- *
- * This module polls the backend's `/api/native-integrations/status`
- * endpoint (which asks Composio whether the user's session actually has
- * a connected account for the toolkit) and only reports `connected`
- * on a real completion signal. Pure + fetch-injectable so it is
- * unit-testable without Electron.
- */
+/** Backend Composio account-status checks shared by desktop and runtime. */
 
 export type BackendIntegrationProbeResult =
   | "connected"
   | "not_connected"
-  /** Endpoint missing (older backend deploy) or auth unavailable. */
   | "unsupported"
   | "error";
 
@@ -27,11 +11,6 @@ export type BackendIntegrationWaitResult =
   | "timeout"
   | "cancelled"
   | "unsupported"
-  /**
-   * siteUrl/authToken missing — completion cannot be confirmed. Callers
-   * must treat this as a failure, never as an optimistic success (only
-   * the explicit 404/405 "unsupported" rollout path may degrade).
-   */
   | "auth_unavailable";
 
 const readConnected = (payload: unknown): boolean =>
@@ -49,6 +28,7 @@ export const probeBackendIntegrationConnection = async (options: {
 }): Promise<BackendIntegrationProbeResult> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.siteUrl.trim().replace(/\/+$/u, "");
+  if (!base || !options.authToken.trim()) return "error";
   const response = await fetchImpl(
     `${base}/api/native-integrations/status?id=${encodeURIComponent(options.id)}`,
     {
@@ -59,10 +39,7 @@ export const probeBackendIntegrationConnection = async (options: {
     },
   ).catch(() => null);
   if (!response) return "error";
-  if (response.status === 404 || response.status === 405) {
-    // Endpoint not deployed yet — completion can't be confirmed.
-    return "unsupported";
-  }
+  if (response.status === 404 || response.status === 405) return "unsupported";
   if (!response.ok) return "error";
   const payload = (await response.json().catch(() => null)) as unknown;
   return readConnected(payload) ? "connected" : "not_connected";
@@ -79,11 +56,6 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", finish, { once: true });
   });
 
-/**
- * Poll until the backend confirms the connection, the timeout elapses,
- * the signal aborts, or the endpoint turns out to be unsupported.
- * Transient probe errors are retried until the timeout.
- */
 export const waitForBackendIntegrationConnection = async (options: {
   siteUrl: string;
   authToken: string;
@@ -92,7 +64,6 @@ export const waitForBackendIntegrationConnection = async (options: {
   intervalMs?: number;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
-  /** Injectable clock for tests. */
   now?: () => number;
 }): Promise<BackendIntegrationWaitResult> => {
   if (!options.siteUrl.trim() || !options.authToken.trim()) {

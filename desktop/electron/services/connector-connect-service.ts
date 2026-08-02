@@ -2,8 +2,8 @@
 // runtime CLI bridge (`stella-connect request-connection <id>`) into an
 // inline connect card in the chat surfaces. Accepting the card runs the
 // exact same enable + OAuth flow as the Store (`ensureNativeCredential`
-// + `enableNativeConnector`), with the OAuth dialogs suppressed — the
-// card click IS the launch gesture, so the browser opens directly. The
+// + `enableNativeConnector`) — the card click is the launch gesture, so
+// the browser opens directly. The
 // CLI blocks on the outcome, which is what lets the agent continue the
 // user's original task the moment the connection lands.
 
@@ -19,12 +19,11 @@ import { isStellaExtensionInstalled } from "./stella-browser-bridge-service.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
 import {
   ensureNativeCredential,
-  loadConfiguredOAuthProviders,
   resolveDesktopNativeConnectorEntry,
   type NativeCredentialFlowOptions,
   type ResolvedNativeCredentialTarget,
 } from "../ipc/native-integration-handlers.js";
-import type { ConnectorCredentialService } from "./connector-credential-service.js";
+import type { ConnectorOAuthService } from "./connector-oauth-service.js";
 import type {
   ConnectorConnectPhase,
   ConnectorConnectRequestPayload,
@@ -73,11 +72,7 @@ const isCanonicalConnectorConnectable = (
   entry: NativeConnectorCatalogEntry | undefined,
 ) =>
   Boolean(
-    entry &&
-    entry.connectable &&
-    getNativeConnectorTools(entry).length > 0 &&
-    (entry.provider === "backend-composio" ||
-      entry.localExecution === "production-ready"),
+    entry && entry.connectable && getNativeConnectorTools(entry).length > 0,
   );
 
 const connectorIdentityFingerprint = (
@@ -89,13 +84,10 @@ const connectorIdentityFingerprint = (
     catalogSource: catalog.sources[entry.id] ?? catalog.source,
     provider: entry.provider,
     backendToolkit: entry.backendConnector?.toolkit ?? null,
-    localExecution: entry.localExecution ?? null,
-    toolPrefix: entry.toolPrefix ?? null,
     tools: getNativeConnectorTools(entry).map((tool) => tool.name),
     connectable: entry.connectable,
     auth: [...entry.auth],
     catalogToolCount: entry.catalogToolCount,
-    oauthConfig: entry.oauthConfig ?? null,
   });
 };
 
@@ -107,7 +99,7 @@ export class ConnectorConnectService {
     private readonly options: {
       windowManagerTarget: WindowManagerTarget<BrowserWindow>;
       getStellaAppDir: () => string | null;
-      connectorCredentialService: ConnectorCredentialService;
+      connectorOAuthService: ConnectorOAuthService;
       getConvexAuthToken?: () => Promise<string | null>;
       getConvexSiteUrl?: () => string | null;
     },
@@ -361,30 +353,14 @@ export class ConnectorConnectService {
       );
       return;
     }
-    const credentialService = this.options.connectorCredentialService;
     const flowOptions: NativeCredentialFlowOptions = {
       getConvexAuthToken: this.options.getConvexAuthToken,
       getConvexSiteUrl: this.options.getConvexSiteUrl,
       // Cancels the backend Composio completion wait too, so a
       // dismissed/aborted card doesn't keep polling for minutes.
       abortSignal: meta.oauthAbort.signal,
-      // Headless: the card click was the launch gesture, so the browser
-      // opens directly instead of routing through the approval modal.
-      requestPreregisteredOAuth: (payload) =>
-        credentialService.requestPreregisteredOAuth({
-          ...payload,
-          presentation: "headless",
-          oauthAbort: meta.oauthAbort,
-        }),
       requestExternalOAuthApproval: (payload) =>
-        credentialService.requestExternalOAuthApproval({
-          ...payload,
-          presentation: "headless",
-        }),
-      // Device flow needs to show the user a pairing code — keep the
-      // modal for that rare shape rather than losing the code.
-      requestDeviceOAuth: (payload) =>
-        credentialService.requestDeviceOAuth(payload),
+        this.options.connectorOAuthService.requestExternalOAuthApproval(payload),
     };
     try {
       const target = await resolveDesktopNativeConnectorEntry(
@@ -414,17 +390,10 @@ export class ConnectorConnectService {
         entry!.id,
         acceptedTarget,
       );
-      const configuredOAuthProviders =
-        await loadConfiguredOAuthProviders(flowOptions);
       await enableNativeConnector(
         stellaAppDir,
         entry!.id,
         "store",
-        {
-          configuredBackendProviders: configuredOAuthProviders.backend,
-          configuredExternalCallbackProviders:
-            configuredOAuthProviders.externalCallback,
-        },
         catalog.entries,
       );
       this.settle(requestId, { ok: true, status: "connected" }, "connected");

@@ -441,6 +441,8 @@ export type RunnerContext = {
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
   notifyThreadActivityUpdated?: StellaHostRunnerOptions["notifyThreadActivityUpdated"];
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
+  /** Live Stella site credentials used by runtime-owned, authenticated catalog reads. */
+  getStellaSiteAuth: () => { baseUrl: string; authToken: string } | null;
   paths: RunnerPaths;
   state: RunnerState;
   hookEmitter: HookEmitter;
@@ -611,19 +613,6 @@ export type RunnerPublicApi = {
     payload: RuntimeVoiceOrchestratorConfigRequest,
   ) => Promise<RuntimeVoiceOrchestratorConfig>;
   convexAction: (ref: unknown, args: unknown) => Promise<unknown>;
-  googleWorkspaceGetAuthStatus: () => Promise<{
-    connected: boolean;
-    unavailable?: boolean;
-    email?: string;
-    name?: string;
-  }>;
-  googleWorkspaceConnect: () => Promise<{
-    connected: boolean;
-    unavailable?: boolean;
-    email?: string;
-    name?: string;
-  }>;
-  googleWorkspaceDisconnect: () => Promise<{ ok: boolean }>;
   /**
    * Ask the Dream scheduler to run now. Trigger names are advisory and used
    * for diagnostics; eligibility gates apply to non-`manual` triggers.

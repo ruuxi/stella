@@ -58,8 +58,6 @@ export const IPC_PAYLOAD_CONTRACT: Readonly<
   "chronicle:status": { kind: "none" },
   "chronicle:wipeMemories": { kind: "none" },
   "connector-connect:respond": { kind: "passthrough" },
-  "connector-credential:cancel": { kind: "passthrough" },
-  "connector-credential:submit": { kind: "passthrough" },
   "credential:cancel": { kind: "passthrough" },
   "credential:submit": { kind: "passthrough" },
   "device:getId": { kind: "none" },

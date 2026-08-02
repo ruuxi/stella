@@ -68,6 +68,7 @@ export const createRuntimeInitialization = (
     stellaAppDir: context.stellaAppDir,
     selfModMonitor: context.selfModMonitor ?? null,
     store: context.runtimeStore,
+    getStellaSiteAuth: context.getStellaSiteAuth,
   });
 
   /**

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   probeBackendIntegrationConnection,
   waitForBackendIntegrationConnection,
-} from "../../../electron/ipc/backend-integration-status.js";
+} from "../../../../runtime/kernel/connectors/backend-integration-status.js";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -31,7 +31,9 @@ const baseOptions = {
 
 describe("probeBackendIntegrationConnection", () => {
   it("reports connected only on an explicit true", async () => {
-    const { fetchImpl } = fetchSequence([() => jsonResponse({ connected: true })]);
+    const { fetchImpl } = fetchSequence([
+      () => jsonResponse({ connected: true }),
+    ]);
     expect(
       await probeBackendIntegrationConnection({ ...baseOptions, fetchImpl }),
     ).toBe("connected");
@@ -46,7 +48,7 @@ describe("probeBackendIntegrationConnection", () => {
     ).toBe("not_connected");
   });
 
-  it("treats a missing endpoint as unsupported (older backend)", async () => {
+  it("treats a missing endpoint as unsupported", async () => {
     const { fetchImpl } = fetchSequence([() => jsonResponse({}, 404)]);
     expect(
       await probeBackendIntegrationConnection({ ...baseOptions, fetchImpl }),
@@ -78,7 +80,7 @@ describe("waitForBackendIntegrationConnection", () => {
     expect(calls[0]).toContain("/api/native-integrations/status?id=notion");
   });
 
-  it("short-circuits to unsupported so callers can degrade gracefully", async () => {
+  it("short-circuits to unsupported so callers fail closed", async () => {
     const { fetchImpl, calls } = fetchSequence([() => jsonResponse({}, 404)]);
     expect(
       await waitForBackendIntegrationConnection({

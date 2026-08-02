@@ -51,6 +51,14 @@ const catalog = (entry = composioEntry): ResolvedNativeCatalog => ({
   sources: { [entry.id]: "cache" },
 });
 
+const canonicalActionResponse = (name: string) => {
+  const action = composioEntry.actions?.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!action) return new Response(null, { status: 404 });
+  return new Response(JSON.stringify({ actions: [action] }), { status: 200 });
+};
+
 const makeBroker = (options: {
   fetchImpl?: typeof fetch;
   authToken?: string;
@@ -81,13 +89,16 @@ describe("backend connector action broker", () => {
   it.each([401, 403])(
     "dispatches a mutating action only once after backend %s",
     async (status) => {
-      const fetchImpl = vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: "auth rejected" }), {
-            status,
-            headers: { "content-type": "application/json" },
-          }),
-      );
+      const fetchImpl = vi.fn(async (input) => {
+        const url = String(input);
+        if (url.includes("/actions")) {
+          return canonicalActionResponse("OUTLOOK_SEND_EMAIL");
+        }
+        return new Response(JSON.stringify({ error: "auth rejected" }), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
+      });
       const refreshSiteAuth = vi.fn(async () => ({
         baseUrl: "https://site.invalid",
         authToken: "must-not-be-used-after-dispatch",
@@ -101,7 +112,11 @@ describe("backend connector action broker", () => {
         input: { to: "example@example.com", body: "hello" },
       });
       expect(result).toMatchObject({ ok: false, status });
-      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(
+        fetchImpl.mock.calls.filter(([input]) =>
+          String(input).includes("/run"),
+        ),
+      ).toHaveLength(1);
       expect(refreshSiteAuth).not.toHaveBeenCalled();
     },
   );
@@ -110,10 +125,13 @@ describe("backend connector action broker", () => {
     const payload = Buffer.from(
       JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 10 }),
     ).toString("base64url");
-    const fetchImpl = vi.fn(async (_url, init) => {
+    const fetchImpl = vi.fn(async (input, init) => {
       expect((init?.headers as Record<string, string>).authorization).toBe(
         "Bearer fresh-token",
       );
+      if (String(input).includes("/actions")) {
+        return canonicalActionResponse("OUTLOOK_QUERY_EMAILS");
+      }
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
     const refreshSiteAuth = vi.fn(async () => ({
@@ -131,7 +149,7 @@ describe("backend connector action broker", () => {
     });
     expect(result.ok).toBe(true);
     expect(refreshSiteAuth).toHaveBeenCalledOnce();
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("fails before dispatch when refresh cannot restore an expired session", async () => {
@@ -160,28 +178,15 @@ describe("backend connector action broker", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects unfinished local entries and redacts tokens from backend errors", async () => {
-    const localEntry: NativeConnectorCatalogEntry = {
-      ...composioEntry,
-      provider: "oauth-catalog",
-      localExecution: "incomplete",
-      backendConnector: undefined,
-    };
-    await expect(
-      makeBroker({ entry: localEntry })({
-        connectorId: "outlook",
-        action: "OUTLOOK_QUERY_EMAILS",
-        input: {},
-      }),
-    ).resolves.toMatchObject({ ok: false, reason: "connector_unavailable" });
-
+  it("redacts tokens from backend errors", async () => {
     const secret = "eyJheader.eyJpayload.signature";
     const result = await makeBroker({
-      fetchImpl: vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: `Bearer ${secret}` }), {
-            status: 502,
-          }),
+      fetchImpl: vi.fn(async (input) =>
+        String(input).includes("/actions")
+          ? canonicalActionResponse("OUTLOOK_QUERY_EMAILS")
+          : new Response(JSON.stringify({ error: `Bearer ${secret}` }), {
+              status: 502,
+            }),
       ) as typeof fetch,
     })({ connectorId: "outlook", action: "OUTLOOK_QUERY_EMAILS", input: {} });
     expect(JSON.stringify(result)).not.toContain(secret);
@@ -194,16 +199,17 @@ describe("backend connector action broker", () => {
 
   it("redacts auth-shaped fields from successful action results", async () => {
     const result = await makeBroker({
-      fetchImpl: vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              messages: [],
-              access_token: "backend-secret",
-              nested: { authorization: "Bearer backend-secret" },
-            }),
-            { status: 200 },
-          ),
+      fetchImpl: vi.fn(async (input) =>
+        String(input).includes("/actions")
+          ? canonicalActionResponse("OUTLOOK_QUERY_EMAILS")
+          : new Response(
+              JSON.stringify({
+                messages: [],
+                access_token: "backend-secret",
+                nested: { authorization: "Bearer backend-secret" },
+              }),
+              { status: 200 },
+            ),
       ) as typeof fetch,
     })({ connectorId: "outlook", action: "OUTLOOK_QUERY_EMAILS", input: {} });
     expect(result).toMatchObject({

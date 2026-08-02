@@ -63,41 +63,6 @@ export type CredentialResponsePayload = {
 };
 
 /**
- * Connector credential dialog (Stella Connect / MCP). Distinct from
- * `CredentialRequestPayload` because the value is written directly to
- * `~/.stella/connectors/.credentials.json` via `saveConnectorAccessToken` on
- * the host — it never travels back over IPC, never reaches the model
- * context, and never enters Convex's `secrets` table. The CLI bridge
- * spawns these when `stella-connect call` returns 401/403.
- *
- * `mode: "oauth"` switches the renderer to the same connect dialog shell
- * with an explicit "Open browser" approval. The host opens the user's
- * external browser only after submit. For bridge-owned OAuth requests it
- * then runs a local 127.0.0.1 callback listener and persists the token.
- *
- * `mode: "api_key"` (default) keeps the paste-key modal.
- */
-export type ConnectorCredentialRequestMode = "api_key" | "oauth";
-
-export type ConnectorCredentialRequestPayload = {
-  requestId: string;
-  tokenKey: string;
-  displayName: string;
-  mode: ConnectorCredentialRequestMode;
-  completionMode?: "approve" | "wait";
-  description?: string;
-  placeholder?: string;
-  oauthUserCode?: string;
-  oauthVerificationUri?: string;
-};
-
-export type ConnectorCredentialSubmitPayload = {
-  requestId: string;
-  value: string;
-  label?: string;
-};
-
-/**
  * Inline in-chat connect card (agent-initiated via
  * `stella-connect request-connection`). The renderer shows the card in
  * the active chat surface; accept runs the same enable + OAuth flow as

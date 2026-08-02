@@ -21,10 +21,8 @@ type CredentialModalProps = {
   description?: string;
   placeholder?: string;
   /**
-   * Show the "Label" field. Connector credentials don't need it (the
-   * tokenKey is the identifier and there's only one credential per
-   * connector); the legacy `RequestCredential` flow does because users
-   * may have multiple keys for the same provider.
+   * Show the "Label" field when a provider can have multiple saved keys.
+   * Single-key provider settings can use the provider identifier directly.
    */
   showLabel?: boolean;
   onSubmit: (payload: { label: string; secret: string }) => Promise<void>;

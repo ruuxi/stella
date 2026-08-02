@@ -1253,18 +1253,6 @@ export class RuntimeHostAdapter {
     return this.host.listBrowserProfiles(browserType);
   }
 
-  googleWorkspaceGetAuthStatus() {
-    return this.host.googleWorkspaceGetAuthStatus();
-  }
-
-  googleWorkspaceConnect() {
-    return this.host.googleWorkspaceConnect();
-  }
-
-  googleWorkspaceDisconnect() {
-    return this.host.googleWorkspaceDisconnect();
-  }
-
   triggerDreamNow(trigger?: "manual" | "startup_catchup") {
     return this.host.triggerDreamNow(trigger);
   }

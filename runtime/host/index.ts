@@ -11,7 +11,6 @@ import path from "node:path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
-import type { ConnectorTokenPayload } from "../kernel/connectors/oauth.js";
 import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import {
@@ -169,73 +168,6 @@ export type RuntimeHostHandlers = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-  /**
-   * Performs connector token persistence in the desktop host, which delegates
-   * to the configured stable protected-storage owner (the signed launcher on
-   * macOS). Raw token payloads cross only the owner-only local runtime socket
-   * and are never persisted outside the protected connector store.
-   */
-  requestConnectorTokenStore?: (
-    request:
-      | { operation: "load"; tokenKey: string }
-      | {
-          operation: "save";
-          tokenKey: string;
-          payload: ConnectorTokenPayload;
-        }
-      | { operation: "delete"; tokenKeys: string[] },
-  ) => Promise<
-    | { ok: true; payload?: ConnectorTokenPayload | null }
-    | { ok: false; reason: string }
-  >;
-  /**
-   * Pop a credential dialog for a connector token (Stella Connect MCP /
-   * REST integrations). Unlike `requestCredential` the value is written
-   * directly to `~/.stella/connectors/.credentials.json` via
-   * `saveConnectorAccessToken` on the host — the secret never travels
-   * back over IPC and is never inserted into Convex's `secrets` table.
-   * Called from the worker's CLI bridge when `stella-connect call` /
-   * `import-mcp` hits a 401/403. Returns `{ ok: true }` once persisted,
-   * `{ ok: false, reason }` when the user dismisses the dialog or it
-   * times out — the CLI propagates that as exit-2 `auth_required`.
-   */
-  requestConnectorCredential?: (payload: {
-    tokenKey: string;
-    displayName: string;
-    /** `"oauth"` switches the host to the browser OAuth flow and requires `resourceUrl`. */
-    authType?: "api_key" | "oauth";
-    /** MCP server URL used for OAuth protected-resource metadata discovery. */
-    resourceUrl?: string;
-    oauthClientId?: string;
-    oauthResource?: string;
-    scopes?: string[];
-    preregisteredOAuth?: {
-      clientId: string;
-      authorizationEndpoint: string;
-      tokenEndpoint?: string;
-      responseType?: "code" | "token";
-      resourceUrl?: string;
-      oauthResource?: string | null;
-      callbackUrl?: string;
-      callbackId?: string;
-      callbackMode?: "local" | "external";
-      scopeSeparator?: string;
-      usesPkce?: boolean;
-      authorizationRedirectParam?: string;
-      authorizationParams?: Record<string, string>;
-      tokenRedirectParam?: string;
-      tokenAuth?: "body" | "basic";
-      tokenExchange?: {
-        type: "backend";
-        provider: string;
-      };
-    };
-    description?: string;
-    placeholder?: string;
-  }) => Promise<
-    | { ok: true }
-    | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
-  >;
   /**
    * Offer connecting a native Store integration via an inline connect
    * card in the active chat. The desktop owns the card UI plus the
@@ -3250,39 +3182,6 @@ export class StellaRuntimeHost {
     this.schedulerService = null;
   }
 
-  async googleWorkspaceGetAuthStatus() {
-    return await this.requestWorker<{
-      connected: boolean;
-      unavailable?: boolean;
-      email?: string;
-      name?: string;
-    }>(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS, undefined, {
-      ensureWorker: true,
-      recordActivity: false,
-    });
-  }
-
-  async googleWorkspaceConnect() {
-    return await this.requestWorker<{
-      connected: boolean;
-      unavailable?: boolean;
-      email?: string;
-      name?: string;
-    }>(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT, undefined, {
-      ensureWorker: true,
-      recordActivity: true,
-      retryOnceOnDisconnect: true,
-    });
-  }
-
-  async googleWorkspaceDisconnect() {
-    return await this.requestWorker<{ ok: boolean }>(
-      METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT,
-      undefined,
-      { ensureWorker: true, recordActivity: true },
-    );
-  }
-
   async triggerDreamNow(
     trigger: "manual" | "startup_catchup" = "manual",
   ): Promise<{
@@ -3464,61 +3363,6 @@ export class StellaRuntimeHost {
           params as {
             provider: string;
             label?: string;
-            description?: string;
-            placeholder?: string;
-          },
-        );
-      },
-    );
-    peer.registerRequestHandler(
-      METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
-      async (params) => {
-        if (!this.options.hostHandlers.requestConnectorTokenStore) {
-          return { ok: false, reason: "unsupported" };
-        }
-        return await this.options.hostHandlers.requestConnectorTokenStore(
-          params as Parameters<
-            NonNullable<RuntimeHostHandlers["requestConnectorTokenStore"]>
-          >[0],
-        );
-      },
-    );
-    peer.registerRequestHandler(
-      METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST,
-      async (params) => {
-        if (!this.options.hostHandlers.requestConnectorCredential) {
-          return { ok: false, reason: "unsupported" };
-        }
-        return await this.options.hostHandlers.requestConnectorCredential(
-          params as {
-            tokenKey: string;
-            displayName: string;
-            authType?: "api_key" | "oauth";
-            resourceUrl?: string;
-            oauthClientId?: string;
-            oauthResource?: string;
-            scopes?: string[];
-            preregisteredOAuth?: {
-              clientId: string;
-              authorizationEndpoint: string;
-              tokenEndpoint?: string;
-              responseType?: "code" | "token";
-              resourceUrl?: string;
-              oauthResource?: string | null;
-              callbackUrl?: string;
-              callbackId?: string;
-              callbackMode?: "local" | "external";
-              scopeSeparator?: string;
-              usesPkce?: boolean;
-              authorizationRedirectParam?: string;
-              authorizationParams?: Record<string, string>;
-              tokenRedirectParam?: string;
-              tokenAuth?: "body" | "basic";
-              tokenExchange?: {
-                type: "backend";
-                provider: string;
-              };
-            };
             description?: string;
             placeholder?: string;
           },

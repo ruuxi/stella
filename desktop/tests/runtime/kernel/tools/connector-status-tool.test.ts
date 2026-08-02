@@ -58,9 +58,19 @@ const notionEntry: NativeConnectorCatalogEntry = {
   backendConnector: { type: "composio", toolkit: "NOTION" },
 };
 
-const makeTool = (root: string, requester?: ConnectorConnectionRequester) =>
+const makeTool = (
+  root: string,
+  requester?: ConnectorConnectionRequester,
+  connected = false,
+) =>
   createConnectorStatusTool({
     stellaDataDir: root,
+    getStellaSiteAuth: () => ({
+      baseUrl: "https://stella.test",
+      authToken: "token",
+    }),
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ connected }), { status: 200 }),
     ...(requester ? { requestConnectorConnection: requester } : {}),
   });
 
@@ -70,18 +80,17 @@ describe("connector_status tool", () => {
   it("short-circuits when the connector is already connected", async () => {
     const root = makeRoot();
     await writeCachedServerCatalog(root, [notionEntry]);
-    await enableNativeConnector(root, "notion", "store", {}, [notionEntry]);
+    await enableNativeConnector(root, "notion", "store", [notionEntry]);
     const requester = vi.fn();
-    const tool = makeTool(root, requester as never);
+    const tool = makeTool(root, requester as never, true);
     const result = await tool.execute({ connector: "notion" }, context);
-    expect(resultText(result)).toContain("is enabled");
-    expect(resultText(result)).toContain("not independently verified");
+    expect(resultText(result)).toContain("is connected");
     expect(requester).not.toHaveBeenCalled();
     expect(result.details).toMatchObject({
       id: "notion",
       status: "executable",
-      providerStatus: "backend_managed_unverified",
-      accountVerified: false,
+      providerStatus: "connected",
+      accountVerified: true,
     });
   });
 

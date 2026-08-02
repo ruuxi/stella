@@ -9,7 +9,7 @@ import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
 import type { BackupService } from "../services/backup-service.js";
 import type { CredentialService } from "../services/credential-service.js";
-import type { ConnectorCredentialService } from "../services/connector-credential-service.js";
+import type { ConnectorOAuthService } from "../services/connector-oauth-service.js";
 import type { ConnectorConnectService } from "../services/connector-connect-service.js";
 import type { MouseHookManager } from "../input/mouse-hook.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
@@ -93,7 +93,7 @@ export type BootstrapServices = {
   captureService: CaptureService;
   globalInputHook: MouseHookManager;
   credentialService: CredentialService;
-  connectorCredentialService: ConnectorCredentialService;
+  connectorOAuthService: ConnectorOAuthService;
   connectorConnectService: ConnectorConnectService;
   externalLinkService: ExternalLinkService;
   localChatHistoryService: LocalChatHistoryService;

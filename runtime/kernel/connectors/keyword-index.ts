@@ -2,9 +2,9 @@
  * Keyword → connector index for the orchestrator's connector reminder.
  *
  * Checked mechanically against every incoming user message — no LLM
- * call, no network. The index is derived from the connector catalog
- * (bundled fallback + the disk-cached server catalog, so it stays in
- * sync with whatever the Store exposes) with a curated synonym layer on
+ * call. The index normally reads the disk-cached server catalog; on a clean
+ * signed-in install it performs one live hydration so the very first relevant
+ * message can still reach the connect card. A curated synonym layer sits on
  * top ("mail"/"email" → gmail AND outlook, "calendar" → google
  * calendar, …). Synonyms only activate for connectors that actually
  * exist in the catalog.
@@ -18,8 +18,8 @@
 
 import type { NativeConnectorCatalogEntry } from "./native-integrations.js";
 import {
-  buildMergedConnectorCatalog,
   readCachedServerCatalog,
+  resolveNativeConnectorCatalog,
 } from "./catalog-cache.js";
 
 export type ConnectorKeywordIndex = {
@@ -230,8 +230,8 @@ export const matchConnectorsInMessage = (
 };
 
 // ---------------------------------------------------------------------------
-// Cached index over the live catalog (bundled fallback + disk-cached server
-// catalog). Rebuilt when the disk cache's fetch timestamp changes.
+// Cached index over the disk-cached server catalog. Rebuilt when the cache's
+// fetch timestamp changes.
 // ---------------------------------------------------------------------------
 
 type CachedIndexState = {
@@ -249,8 +249,18 @@ export const resetConnectorKeywordIndexCache = () => {
 
 export const getConnectorKeywordIndex = async (
   stellaDataDir: string,
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null,
 ): Promise<ConnectorKeywordIndex> => {
-  const cached = await readCachedServerCatalog(stellaDataDir);
+  let cached = await readCachedServerCatalog(stellaDataDir);
+  let entries = cached?.entries ?? [];
+  if (!cached && getStellaSiteAuth?.()) {
+    const resolved = await resolveNativeConnectorCatalog({
+      stellaDataDir,
+      getStellaSiteAuth,
+    });
+    entries = resolved.entries;
+    cached = await readCachedServerCatalog(stellaDataDir);
+  }
   const fetchedAt = cached?.fetchedAt ?? 0;
   if (
     cachedIndex &&
@@ -259,8 +269,7 @@ export const getConnectorKeywordIndex = async (
   ) {
     return cachedIndex.index;
   }
-  const catalog = buildMergedConnectorCatalog(cached?.entries ?? undefined);
-  const index = buildConnectorKeywordIndex(catalog);
+  const index = buildConnectorKeywordIndex(entries);
   cachedIndex = { stellaDataDir, fetchedAt, index };
   return index;
 };

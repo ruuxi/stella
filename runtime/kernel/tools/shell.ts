@@ -1024,9 +1024,8 @@ const buildShellEnv = (
       : {}),
   };
   // Connector actions authenticate through the worker broker. Never inherit
-  // legacy raw Stella bearer variables into shell or agent processes.
+  // raw Stella bearer variables into shell or agent processes.
   delete mergedEnv.STELLA_SITE_AUTH_TOKEN;
-  delete mergedEnv.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN;
   delete mergedEnv.STELLA_LLM_PROXY_TOKEN;
   delete mergedEnv.STELLA_AUTH_TOKEN;
 

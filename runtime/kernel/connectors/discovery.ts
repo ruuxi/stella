@@ -5,11 +5,9 @@
  * only enabled connectors surface (as skills). When a user request
  * implies an external service ("check my Gmail…"), the agent runs
  * `stella-connect discover <keywords>` and gets back a handful of
- * compact matches spanning the WHOLE catalog (native Store integrations
- * — Google Workspace, backend Composio toolkits, recovered OAuth
- * providers — plus imported MCP/API connectors), each annotated with
- * enabled/declined state so the agent knows whether to just use it,
- * offer an in-chat connect card, or stay quiet.
+ * compact matches from the backend Composio Store catalog, each annotated
+ * with enabled/declined state so the agent knows whether to use it, offer an
+ * in-chat connect card, or stay quiet.
  *
  * Scoring is intentionally dumb (token prefix/substring over id, name,
  * category, description): the caller is a language model that already
@@ -21,13 +19,9 @@ import {
   type NativeConnectorCatalogEntry,
   type NativeConnectorCatalogOverride,
 } from "./native-integrations.js";
-import {
-  listConfiguredApiConnectors,
-  listConfiguredConnectorCommands,
-} from "./state.js";
 import { listConnectorDeclines } from "./connect-preferences.js";
 
-export type ConnectorDiscoveryKind = "native" | "mcp" | "api";
+export type ConnectorDiscoveryKind = "native";
 
 export type ConnectorDiscoveryMatch = {
   id: string;
@@ -36,7 +30,7 @@ export type ConnectorDiscoveryMatch = {
   description: string;
   category?: string;
   provider?: NativeConnectorCatalogEntry["provider"];
-  /** Native integrations: enabled in the Store. Imported MCP/API: always true. */
+  /** Whether this integration is enabled locally in the Store. */
   enabled: boolean;
   /** Whether Stella can currently run a connect flow for this entry. */
   connectable: boolean;
@@ -124,13 +118,9 @@ export const discoverConnectors = async (
   const tokens = normalizeQueryTokens(query);
   if (tokens.length === 0) return [];
 
-  const [commands, apis, declines] = await Promise.all([
-    listConfiguredConnectorCommands(stellaAppDir).catch(() => []),
-    listConfiguredApiConnectors(stellaAppDir).catch(() => []),
-    listConnectorDeclines(stellaAppDir).catch(
-      (): Awaited<ReturnType<typeof listConnectorDeclines>> => ({}),
-    ),
-  ]);
+  const declines = await listConnectorDeclines(stellaAppDir).catch(
+    (): Awaited<ReturnType<typeof listConnectorDeclines>> => ({}),
+  );
 
   const matches: ConnectorDiscoveryMatch[] = [];
 
@@ -145,50 +135,8 @@ export const discoverConnectors = async (
       category: entry.category,
       provider: entry.provider,
       enabled: options.enabledNativeIds.has(entry.id),
-      // `connectable` on catalog entries is conservative for
-      // oauth-catalog fallbacks (backend provider config is only
-      // known to the desktop); google-workspace and backend-composio
-      // entries carry an accurate flag.
       connectable: entry.connectable,
       declined: Boolean(declines[entry.id]),
-      score,
-    });
-  }
-
-  for (const command of commands) {
-    const score = scoreConnectorMatch(tokens, {
-      id: command.id,
-      name: command.displayName,
-      description: command.description,
-    });
-    if (score <= 0) continue;
-    matches.push({
-      id: command.id,
-      name: command.displayName,
-      kind: "mcp",
-      description: truncateDescription(command.description),
-      enabled: true,
-      connectable: false,
-      declined: Boolean(declines[command.id]),
-      score,
-    });
-  }
-
-  for (const api of apis) {
-    const score = scoreConnectorMatch(tokens, {
-      id: api.id,
-      name: api.displayName,
-      description: api.description,
-    });
-    if (score <= 0) continue;
-    matches.push({
-      id: api.id,
-      name: api.displayName,
-      kind: "api",
-      description: truncateDescription(api.description),
-      enabled: true,
-      connectable: false,
-      declined: Boolean(declines[api.id]),
       score,
     });
   }

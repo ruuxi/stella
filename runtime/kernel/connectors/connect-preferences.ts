@@ -6,8 +6,8 @@
  * decline via `clearConnectorDecline`).
  *
  * Single-writer discipline: the `stella-connect` CLI records declines
- * when its bridge round-trip resolves `declined`, and the enable paths
- * (Store IPC, `enable-native`, chat connect card) clear them. The
+ * when its bridge round-trip resolves `declined`, and the verified enable paths
+ * (Store IPC and the chat connect card) clear them. The
  * desktop reads it only indirectly through CLI output.
  */
 

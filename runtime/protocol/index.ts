@@ -167,8 +167,6 @@ export const METHOD_NAMES = {
   HOST_DEVICE_IDENTITY_GET: "host.deviceIdentity.get",
   HOST_DEVICE_HEARTBEAT_SIGN: "host.deviceHeartbeat.sign",
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
-  HOST_CONNECTOR_CREDENTIAL_REQUEST: "host.connectorCredential.request",
-  HOST_CONNECTOR_TOKEN_STORE_REQUEST: "host.connectorTokenStore.request",
   HOST_CONNECTOR_CONNECT_REQUEST: "host.connectorConnect.request",
   HOST_CONNECTOR_CONNECT_CANCEL: "host.connectorConnect.cancel",
   HOST_BROWSER_EXTENSION_CONNECT_REQUEST:
@@ -334,12 +332,6 @@ export const METHOD_NAMES = {
   INTERNAL_CAPABILITY_STATE_SET: "internal.capabilityState.set",
   INTERNAL_CAPABILITY_STATE_APPEND_EVENT:
     "internal.capabilityState.appendEvent",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS:
-    "internal.worker.googleWorkspace.authStatus",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT:
-    "internal.worker.googleWorkspace.connect",
-  INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT:
-    "internal.worker.googleWorkspace.disconnect",
 } as const;
 
 export type RuntimeModelCatalogModel = {

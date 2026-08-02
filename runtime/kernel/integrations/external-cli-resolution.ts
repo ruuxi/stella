@@ -218,7 +218,6 @@ export const buildExternalCliChildEnv = (
   const childEnv: NodeJS.ProcessEnv = { ...env };
   delete childEnv.STELLA_CLI_BRIDGE_SOCK;
   delete childEnv.STELLA_SITE_AUTH_TOKEN;
-  delete childEnv.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN;
   delete childEnv.STELLA_LLM_PROXY_TOKEN;
   delete childEnv.STELLA_AUTH_TOKEN;
   if (options?.cliBridgeSocketPath) {

@@ -117,6 +117,7 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
     createConnectorAvailabilityReminderHook({
       stellaDataDir: services.stellaDataDir,
       store: services.store,
+      getStellaSiteAuth: services.getStellaSiteAuth,
     }),
   );
   // Revert-notice: one hidden `<system_reminder>` per pending self-mod

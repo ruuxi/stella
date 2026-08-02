@@ -503,6 +503,14 @@ export const createRunnerContext = ({
   const resolvedFashionApi =
     fashionApi ?? createFashionApi({ convexAction, convexApi: anyApi });
 
+  const getStellaSiteAuth = () => {
+    const baseUrl = sanitizeStellaBase(
+      context.state?.convexSiteUrl ?? envProxyBaseUrl,
+    );
+    const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
+    return baseUrl && authToken ? { baseUrl, authToken } : null;
+  };
+
   const toolHost = createToolHost({
     stellaAppDir,
     stellaDataDir,
@@ -607,13 +615,7 @@ export const createRunnerContext = ({
       }
       return await handler(query, searchOptions);
     },
-    getStellaSiteAuth: () => {
-      const baseUrl = sanitizeStellaBase(
-        context.state?.convexSiteUrl ?? envProxyBaseUrl,
-      );
-      const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
-      return baseUrl && authToken ? { baseUrl, authToken } : null;
-    },
+    getStellaSiteAuth,
     actionConvex: async (ref, args) =>
       (await convexAction(ref, args)) as unknown,
     queryConvex: async (ref, args) => {
@@ -830,6 +832,7 @@ export const createRunnerContext = ({
     appendLocalChatEvent,
     notifyThreadActivityUpdated,
     getDefaultConversationId,
+    getStellaSiteAuth,
     paths: {
       extensionsPath: path.join(stellaAppDir, "runtime", "extensions"),
     },

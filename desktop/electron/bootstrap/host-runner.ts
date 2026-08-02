@@ -6,11 +6,6 @@ import {
 import { app } from "electron";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
 import {
-  deleteConnectorAccessTokens,
-  loadConnectorTokenPayload,
-  saveConnectorTokenPayload,
-} from "../../../runtime/kernel/connectors/oauth.js";
-import {
   ensureStellaDataDirSeeded,
   syncStellaPromptSnapshot,
 } from "../../../runtime/kernel/home/stella-home.js";
@@ -181,40 +176,6 @@ export const createHostRunnerHandlers = (
   },
   requestCredential: (payload) =>
     context.services.credentialService.requestCredential(payload),
-  requestConnectorTokenStore: async (request) => {
-    const stellaDataDir = context.state.stellaDataDirPath;
-    if (!stellaDataDir) {
-      return { ok: false, reason: "stella_data_dir_unavailable" };
-    }
-    if (request.operation === "load") {
-      return {
-        ok: true,
-        payload: await loadConnectorTokenPayload(
-          stellaDataDir,
-          request.tokenKey,
-        ),
-      };
-    }
-    if (request.operation === "save") {
-      await saveConnectorTokenPayload(
-        stellaDataDir,
-        request.tokenKey,
-        request.payload,
-      );
-      return { ok: true };
-    }
-    await deleteConnectorAccessTokens(stellaDataDir, request.tokenKeys);
-    return { ok: true };
-  },
-  requestConnectorCredential: (payload) =>
-    payload.preregisteredOAuth
-      ? context.services.connectorCredentialService.requestPreregisteredOAuth({
-          tokenKey: payload.tokenKey,
-          displayName: payload.displayName,
-          description: payload.description,
-          ...payload.preregisteredOAuth,
-        })
-      : context.services.connectorCredentialService.requestCredential(payload),
   requestConnectorConnection: (payload) =>
     context.services.connectorConnectService.requestConnection(payload),
   cancelConnectorConnection: async (payload) =>

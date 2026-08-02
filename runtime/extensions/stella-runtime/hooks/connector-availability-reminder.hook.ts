@@ -1,5 +1,6 @@
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import { getConnectorDecline } from "../../../kernel/connectors/connect-preferences.js";
+import { probeBackendIntegrationConnection } from "../../../kernel/connectors/backend-integration-status.js";
 import { getNativeConnectorConnectionState } from "../../../kernel/connectors/connection-status.js";
 import {
   getConnectorKeywordIndex,
@@ -63,6 +64,9 @@ export const createConnectorAvailabilityReminderHook = (options: {
   /** `~/.stella` — where connector state and the catalog cache live. */
   stellaDataDir: string;
   store: ReminderWindowStore;
+  /** Allows a clean install to hydrate the Composio catalog before its first match. */
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+  fetchImpl?: typeof fetch;
 }): HookDefinition<"before_user_message"> => ({
   event: "before_user_message",
   async handler(payload) {
@@ -75,7 +79,10 @@ export const createConnectorAvailabilityReminderHook = (options: {
 
     let matches: NativeConnectorCatalogEntry[];
     try {
-      const index = await getConnectorKeywordIndex(options.stellaDataDir);
+      const index = await getConnectorKeywordIndex(
+        options.stellaDataDir,
+        options.getStellaSiteAuth,
+      );
       matches = matchConnectorsInMessage(index, prompt);
     } catch {
       return;
@@ -86,9 +93,25 @@ export const createConnectorAvailabilityReminderHook = (options: {
     for (const entry of matches) {
       if (reminders.length >= MAX_REMINDERS_PER_TURN) break;
       try {
+        const siteAuth = options.getStellaSiteAuth?.() ?? null;
+        const backendStatus = siteAuth
+          ? await probeBackendIntegrationConnection({
+              siteUrl: siteAuth.baseUrl,
+              authToken: siteAuth.authToken,
+              id: entry.id,
+              ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+            })
+          : "error";
         const state = await getNativeConnectorConnectionState(
           options.stellaDataDir,
           entry,
+          {
+            ...(backendStatus === "connected"
+              ? { accountConnected: true }
+              : backendStatus === "not_connected"
+                ? { accountConnected: false }
+                : {}),
+          },
         );
         if (state.connected) {
           const key = connectedReminderKey(entry.id);

@@ -59,8 +59,9 @@ export type RuntimePaths = {
   socketPath: string;
   /**
    * Companion local-IPC endpoint the worker listens on for sidecar CLI tools (e.g.
-   * `stella-connect`) that need to call back into the host — currently
-   * just to pop a credential dialog when an MCP call returns 401/403.
+   * `stella-connect`) that need to request canonical Composio actions, run an
+   * action, or surface the inline Store connection card without receiving site
+   * credentials.
    * CLIs discover the path via the `STELLA_CLI_BRIDGE_SOCK` env var
    * injected by `runtime/kernel/tools/shell.ts`. Kept under the same
    * per-root namespace so multi-install machines don't collide; POSIX

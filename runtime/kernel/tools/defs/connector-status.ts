@@ -22,6 +22,7 @@ import {
   resolveNativeConnectorCatalog,
   type NativeCatalogSource,
 } from "../../connectors/catalog-cache.js";
+import { probeBackendIntegrationConnection } from "../../connectors/backend-integration-status.js";
 import {
   getConnectorDecline,
   recordConnectorDecline,
@@ -219,10 +220,22 @@ export const createConnectorStatusTool = (
       };
     }
 
-    const state = await getNativeConnectorReadiness(
-      options.stellaDataDir,
-      entry,
-    );
+    const siteAuth = options.getStellaSiteAuth?.() ?? null;
+    const backendStatus = siteAuth
+      ? await probeBackendIntegrationConnection({
+          siteUrl: siteAuth.baseUrl,
+          authToken: siteAuth.authToken,
+          id: entry.id,
+          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        })
+      : "error";
+    const state = await getNativeConnectorReadiness(options.stellaDataDir, entry, {
+      ...(backendStatus === "connected"
+        ? { accountConnected: true }
+        : backendStatus === "not_connected"
+          ? { accountConnected: false }
+          : {}),
+    });
     const toolCount = state.toolCount;
     const executable = state.executable;
     const diagnostics = {
@@ -237,19 +250,14 @@ export const createConnectorStatusTool = (
     };
     if (executable) {
       return {
-        result: `${entry.name} is enabled and exposes ${toolCount} executable tool${toolCount === 1 ? "" : "s"} (integration id \`${entry.id}\`, catalog: ${diagnostics.catalogSource}, provider: ${entry.provider}).${state.accountVerified ? " The provider account is connected." : " Backend account linkage is managed server-side and was not independently verified by this status check."} Agents can inspect it with \`stella-connect tools ${entry.id}\`.`,
+        result: `${entry.name} is connected and exposes ${toolCount} executable tool${toolCount === 1 ? "" : "s"} (integration id \`${entry.id}\`, catalog: ${diagnostics.catalogSource}, provider: ${entry.provider}). Agents can inspect it with \`stella-connect tools ${entry.id}\`.`,
         details: { ...diagnostics, status: "executable" },
       };
     }
 
     if (toolCount === 0) {
-      const incompleteLocal =
-        entry.provider === "oauth-catalog" &&
-        entry.localExecution !== "production-ready";
       return {
-        result: incompleteLocal
-          ? `${entry.name} ${state.enabled ? "is locally enabled, but its authoritative Store catalog is unavailable" : "is present only as bundled metadata"}. The bundled OAuth implementation is incomplete/deprecated and is not an execution fallback. It is not ready to use.`
-          : `${entry.name} ${state.enabled ? "is locally enabled, but" : "exists, but"} the resolved ${entry.provider} catalog entry exposes no executable tools. It is not ready to use.`,
+        result: `${entry.name} ${state.enabled ? "is locally enabled, but" : "exists, but"} its backend catalog entry exposes no executable tools. It is not ready to use.`,
         details: { ...diagnostics, status: "not_executable" },
       };
     }

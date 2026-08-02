@@ -11,21 +11,18 @@ import type { NativeConnectorCatalogEntry } from "../../../../runtime/kernel/con
 import { resolveDesktopNativeConnectorEntry } from "../../../electron/ipc/native-integration-handlers.js";
 
 const roots: string[] = [];
-const backendEntry = (
-  id: string,
-  name: string,
-): NativeConnectorCatalogEntry => ({
-  id,
-  name,
-  category: "productivity",
+const entry: NativeConnectorCatalogEntry = {
+  id: "outlook",
+  name: "Outlook",
+  category: "email",
   auth: ["OAUTH2"],
   catalogToolCount: 4,
   availability: "ready",
   provider: "backend-composio",
-  description: `${name} integration.`,
+  description: "Outlook integration.",
   connectable: true,
-  backendConnector: { type: "composio", toolkit: id.toUpperCase() },
-});
+  backendConnector: { type: "composio", toolkit: "OUTLOOK" },
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -34,54 +31,24 @@ afterEach(async () => {
 });
 
 describe("desktop native integration catalog resolution", () => {
-  it("returns incomplete bundled Outlook metadata when no authoritative catalog exists", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-desktop-catalog-"));
+  it("returns no entry when neither live nor cached backend catalog exists", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-catalog-"));
     roots.push(root);
-    const resolved = await resolveDesktopNativeConnectorEntry(
-      {},
-      root,
-      "outlook",
-    );
-    expect(resolved.catalog.sources.outlook).toBe("bundled");
-    expect(resolved.entry).toMatchObject({
-      provider: "oauth-catalog",
-      localExecution: "incomplete",
+    const resolved = await resolveDesktopNativeConnectorEntry({}, root, "outlook");
+    expect(resolved.catalog).toMatchObject({
+      entries: [],
+      source: "unavailable",
+      sources: {},
     });
+    expect(resolved.entry).toBeUndefined();
   });
 
-  it("keeps cached Outlook backend semantics when live auth is unavailable", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-desktop-catalog-"));
+  it("uses the cached backend Composio catalog when live auth is unavailable", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-catalog-"));
     roots.push(root);
-    await writeCachedServerCatalog(root, [backendEntry("outlook", "Outlook")]);
-
-    const resolved = await resolveDesktopNativeConnectorEntry(
-      { getConvexSiteUrl: () => null, getConvexAuthToken: async () => null },
-      root,
-      "outlook",
-    );
-    expect(resolved.catalog.sources.outlook).toBe("cache");
-    expect(resolved.entry).toMatchObject({
-      id: "outlook",
-      provider: "backend-composio",
-      backendConnector: { toolkit: "OUTLOOK" },
-    });
-  });
-
-  it("keeps cached backend-only ids available to enable and connect flows", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "stella-desktop-catalog-"));
-    roots.push(root);
-    const entry = backendEntry("desktop_backend_only", "Desktop Backend Only");
     await writeCachedServerCatalog(root, [entry]);
-
-    const resolved = await resolveDesktopNativeConnectorEntry(
-      {},
-      root,
-      entry.id,
-    );
-    expect(resolved.catalog.sources[entry.id]).toBe("cache");
-    expect(resolved.entry).toMatchObject({
-      id: entry.id,
-      provider: "backend-composio",
-    });
+    const resolved = await resolveDesktopNativeConnectorEntry({}, root, "outlook");
+    expect(resolved.catalog.sources.outlook).toBe("cache");
+    expect(resolved.entry).toEqual(entry);
   });
 });

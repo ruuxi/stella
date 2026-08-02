@@ -81,8 +81,8 @@ type ChatTimelineProps = {
   isLoadingHistory?: boolean;
   emptyState?: React.ReactNode;
   /**
-   * Surface-specific node appended after the virtualized rows (e.g. the
-   * Google Workspace connect card). Stays inside the same scroll
+   * Surface-specific node appended after the virtualized rows (e.g. an
+   * inline connector connect card). Stays inside the same scroll
    * container as the conversation but is not part of the active tail.
    */
   extraTail?: React.ReactNode;

@@ -5,7 +5,7 @@ import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { MouseHookManager } from "../input/mouse-hook.js";
 import { CredentialService } from "../services/credential-service.js";
-import { ConnectorCredentialService } from "../services/connector-credential-service.js";
+import { ConnectorOAuthService } from "../services/connector-oauth-service.js";
 import { ConnectorConnectService } from "../services/connector-connect-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import {
@@ -92,8 +92,6 @@ export const createBootstrapServices = (options: {
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
   });
-  let connectorCredentialService: ConnectorCredentialService | null = null;
-
   // NOTE: setPreventComputerSleep is applied post-appReady in
   // registerBootstrapIpcHandlers (ipc.ts) so the first preferences.json read
   // and the power toggle don't run on the synchronous pre-paint path.
@@ -105,9 +103,6 @@ export const createBootstrapServices = (options: {
     sessionPartition: config.sessionPartition,
     runnerTarget: lifecycle,
     onAuthCallback: (url) => {
-      if (connectorCredentialService?.handleExternalOAuthCallback(url)) {
-        return;
-      }
       state.windowManager?.showWindow();
       options.onAuthCallback(url);
     },
@@ -127,17 +122,12 @@ export const createBootstrapServices = (options: {
     getBroadcastToMobile: () => options.getMobileBroadcast(),
   });
 
-  connectorCredentialService = new ConnectorCredentialService({
-    windowManagerTarget: lifecycle,
-    getStellaAppDir: () => lifecycle.getStellaDataDir(),
-    getConvexAuthToken: () => authService.getConvexAuthToken(),
-    getConvexSiteUrl: () => authService.getConvexSiteUrl(),
-  });
+  const connectorOAuthService = new ConnectorOAuthService();
 
   const connectorConnectService = new ConnectorConnectService({
     windowManagerTarget: lifecycle,
     getStellaAppDir: () => lifecycle.getStellaDataDir(),
-    connectorCredentialService,
+    connectorOAuthService,
     getConvexAuthToken: () => authService.getConvexAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
   });
@@ -177,7 +167,7 @@ export const createBootstrapServices = (options: {
     captureService,
     globalInputHook,
     credentialService,
-    connectorCredentialService,
+    connectorOAuthService,
     connectorConnectService,
     externalLinkService,
     localChatHistoryService,

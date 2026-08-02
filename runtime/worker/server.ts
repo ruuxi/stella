@@ -105,8 +105,6 @@ import {
 import { fileChange } from "../contracts/file-changes.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import { collectAllSignals } from "../discovery/collect-all.js";
-import { sweepStaleConnectorBridgeProcesses } from "../kernel/connectors/process-registry.js";
-import { setConnectorTokenStoreBroker } from "../kernel/connectors/oauth.js";
 import {
   collectBrowserData,
   formatBrowserDataForSynthesis,
@@ -128,7 +126,10 @@ import {
   createSecureCliBridgeEndpoint,
   resolveRuntimePaths,
 } from "./runtime-paths.js";
-import { createBackendConnectorActionBroker } from "./backend-connector-action-broker.js";
+import {
+  createBackendConnectorActionBroker,
+  createBackendConnectorActionsBroker,
+} from "./backend-connector-action-broker.js";
 import {
   afterRequiredCliBridgeReady,
   connectorActionBrokerAvailability,
@@ -638,7 +639,6 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
   state.cliBridgeServer = null;
-  setConnectorTokenStoreBroker(null);
   state.db?.close();
   state.db = null;
 };
@@ -1272,37 +1272,19 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }
         },
       });
-      // Protected connector credentials stay on the trusted worker↔desktop
-      // channel. The agent-visible CLI socket never exposes these operations.
-      setConnectorTokenStoreBroker({
-        load: async (tokenKey) => {
-          const result = await peer.request<{
-            ok: boolean;
-            payload?:
-              | import("../kernel/connectors/oauth.js").ConnectorTokenPayload
-              | null;
-            reason?: string;
-          }>(METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST, {
-            operation: "load",
-            tokenKey,
-          });
-          if (!result.ok) throw new Error(result.reason ?? "token_load_failed");
-          return result.payload ?? null;
+      const listBackendConnectorActions = createBackendConnectorActionsBroker({
+        stellaDataDir: init.stellaDataDirPath,
+        getSiteAuth: () => {
+          const baseUrl = state.init?.convexSiteUrl?.trim();
+          const authToken = state.init?.authToken?.trim();
+          return baseUrl && authToken ? { baseUrl, authToken } : null;
         },
-        save: async (tokenKey, payload) => {
-          const result = await peer.request<{ ok: boolean; reason?: string }>(
-            METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
-            { operation: "save", tokenKey, payload },
-          );
-          if (!result.ok) throw new Error(result.reason ?? "token_save_failed");
-        },
-        delete: async (tokenKeys) => {
-          const result = await peer.request<{ ok: boolean; reason?: string }>(
-            METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
-            { operation: "delete", tokenKeys },
-          );
-          if (!result.ok)
-            throw new Error(result.reason ?? "token_delete_failed");
+        refreshSiteAuth: async () => {
+          try {
+            return await refreshSiteAuth();
+          } catch {
+            return null;
+          }
         },
       });
       const cliBridgeServer = await startCliBridgeServer({
@@ -1316,24 +1298,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         },
         handlers: {
           runBackendConnectorAction,
-          requestConnectorCredential: async (params) => {
-            try {
-              return await peer.request<
-                | { ok: true }
-                | {
-                    ok: false;
-                    reason: "cancelled" | "timeout" | "unsupported" | string;
-                  }
-              >(METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST, params, {
-                retryOnDisconnect: true,
-              });
-            } catch (error) {
-              return {
-                ok: false,
-                reason: (error as Error).message || "host_unreachable",
-              };
-            }
-          },
+          listBackendConnectorActions,
           requestConnectorConnection: async (params) => {
             try {
               return await peer.request<
@@ -1672,21 +1637,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       },
     });
 
-    const connectorSweep = await sweepStaleConnectorBridgeProcesses(
-      init.stellaDataDirPath,
-      { currentWorkerPid: process.pid },
-    ).catch((error) => {
-      console.warn(
-        "[connector-bridge] Failed to sweep stale connector helpers:",
-        (error as Error).message,
-      );
-      return null;
-    });
-    if (connectorSweep?.stopped) {
-      console.warn(
-        `[connector-bridge] Stopped ${connectorSweep.stopped} stale connector helper(s).`,
-      );
-    }
     // Connector-capable children may launch immediately after initialize
     // returns. The private bridge must therefore be listening and secured
     // before the worker reports ready; startup failures are fatal.
@@ -4114,26 +4064,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     },
   );
 
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS,
-    async () => {
-      return await ensureRunner().googleWorkspaceGetAuthStatus();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT,
-    async () => {
-      return await ensureRunner().googleWorkspaceConnect();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT,
-    async () => {
-      return await ensureRunner().googleWorkspaceDisconnect();
-    },
-  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_ONE_SHOT_COMPLETION,

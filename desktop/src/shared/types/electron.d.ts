@@ -1028,40 +1028,6 @@ export type ElectronSystemApi = {
   cancelCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
-  onConnectorCredentialRequest: (
-    callback: (
-      event: unknown,
-      data: {
-        requestId: string;
-        tokenKey: string;
-        displayName: string;
-        mode: "api_key" | "oauth";
-        completionMode?: "approve" | "wait";
-        description?: string;
-        placeholder?: string;
-        oauthUserCode?: string;
-        oauthVerificationUri?: string;
-      },
-    ) => void,
-  ) => () => void;
-  onConnectorCredentialComplete: (
-    callback: (
-      event: unknown,
-      data: {
-        requestId: string;
-        ok: boolean;
-        reason?: string;
-      },
-    ) => void,
-  ) => () => void;
-  submitConnectorCredential: (payload: {
-    requestId: string;
-    value: string;
-    label?: string;
-  }) => Promise<{ ok: boolean; error?: string }>;
-  cancelConnectorCredential: (payload: {
-    requestId: string;
-  }) => Promise<{ ok: boolean; error?: string }>;
   onConnectorConnectRequest: (
     callback: (
       event: unknown,
@@ -1620,23 +1586,13 @@ export type ElectronNativeIntegration = {
   auth: string[];
   catalogToolCount: number;
   availability: "ready";
-  provider: "google-workspace" | "oauth-catalog";
-  toolPrefix?: string;
+  provider: "backend-composio";
   sourceUrl?: string;
   iconUrl?: string;
   description: string;
   connectable: boolean;
-  oauthSetupStatus:
-    | "ready"
-    | "missing_oauth_app"
-    | "missing_backend_exchange"
-    | "missing_callback_bridge";
+  oauthSetupStatus: "ready";
   oauthSetupMessage: string;
-  oauthSetupGroup?: {
-    id: string;
-    name: string;
-  };
-  oauthProviderTemplate?: boolean;
   enabled: boolean;
   enabledAt?: number;
   skillPath?: string;

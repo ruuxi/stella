@@ -1,7 +1,6 @@
 /**
  * Disk cache for the server-side native-integration catalog (the backend
- * Composio entries that `buildNativeConnectorCatalog` merges over the
- * bundled fallback catalog).
+ * Composio entries that form Stella's complete connector catalog.
  *
  * The catalog lives behind an authenticated stella.sh endpoint, but two
  * consumers need it without wanting a network round-trip per use:
@@ -18,10 +17,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import {
-  buildNativeConnectorCatalog,
-  type NativeConnectorCatalogEntry,
-} from "./native-integrations.js";
+import type { NativeConnectorCatalogEntry } from "./native-integrations.js";
 import { getConnectorStateRoot } from "./state.js";
 
 const CACHE_FILE = "catalog-cache.json";
@@ -32,7 +28,7 @@ type CatalogCacheFile = {
   entries: NativeConnectorCatalogEntry[];
 };
 
-export type NativeCatalogSource = "live" | "cache" | "bundled";
+export type NativeCatalogSource = "live" | "cache" | "unavailable";
 
 export type ResolvedNativeCatalog = {
   entries: NativeConnectorCatalogEntry[];
@@ -42,17 +38,12 @@ export type ResolvedNativeCatalog = {
 
 const entrySources = (
   entries: readonly NativeConnectorCatalogEntry[],
-  serverEntries: readonly NativeConnectorCatalogEntry[],
-  serverSource: "live" | "cache",
-) => {
-  const serverIds = new Set(serverEntries.map((entry) => entry.id));
-  return Object.fromEntries(
-    entries.map((entry) => [
-      entry.id,
-      serverIds.has(entry.id) ? serverSource : "bundled",
-    ]),
-  ) as Record<string, NativeCatalogSource>;
-};
+  source: "live" | "cache",
+) =>
+  Object.fromEntries(entries.map((entry) => [entry.id, source])) as Record<
+    string,
+    NativeCatalogSource
+  >;
 
 const cachePath = (stellaDataDir: string) =>
   path.join(getConnectorStateRoot(stellaDataDir), CACHE_FILE);
@@ -64,35 +55,6 @@ const readStringArray = (value: unknown): string[] | undefined => {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return entries.length > 0 ? entries : undefined;
-};
-
-const readActions = (value: unknown) => {
-  if (!Array.isArray(value)) return undefined;
-  const actions = value.flatMap((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-    const record = item as Record<string, unknown>;
-    const name = typeof record.name === "string" ? record.name.trim() : "";
-    if (!/^[A-Z][A-Z0-9_]{1,127}$/u.test(name)) return [];
-    const inputSchema =
-      record.inputSchema &&
-      typeof record.inputSchema === "object" &&
-      !Array.isArray(record.inputSchema)
-        ? (record.inputSchema as Record<string, unknown>)
-        : undefined;
-    return [
-      {
-        name,
-        ...(typeof record.title === "string" && record.title.trim()
-          ? { title: record.title.trim() }
-          : {}),
-        ...(typeof record.description === "string" && record.description.trim()
-          ? { description: record.description.trim() }
-          : {}),
-        ...(inputSchema ? { inputSchema } : {}),
-      },
-    ];
-  });
-  return actions.length > 0 ? actions : undefined;
 };
 
 /**
@@ -145,9 +107,6 @@ export const toBackendComposioEntry = (
       type: "composio",
       toolkit,
     },
-    ...(readActions(record.actions ?? record.tools)
-      ? { actions: readActions(record.actions ?? record.tools) }
-      : {}),
   };
 };
 
@@ -214,20 +173,8 @@ export const writeCachedServerCatalog = async (
 };
 
 /**
- * Bundled catalog merged with server entries. Alias for
- * `buildNativeConnectorCatalog`, which overlays (rather than replaces)
- * the bundled catalog — kept as a named export so cache consumers read
- * naturally.
- */
-export const buildMergedConnectorCatalog = (
-  serverEntries?: readonly NativeConnectorCatalogEntry[],
-): NativeConnectorCatalogEntry[] =>
-  buildNativeConnectorCatalog(serverEntries ? [...serverEntries] : undefined);
-
-/**
- * One catalog policy for every native-connector consumer. Server entries must
- * win by id even when they came from disk: their provider selects the actual
- * dispatcher, so replacing one with a bundled fallback changes semantics.
+ * One catalog policy for every connector consumer: live backend first, then
+ * its last valid disk snapshot. No bundled/provider fallback is permitted.
  */
 export const resolveNativeConnectorCatalog = async (options: {
   stellaDataDir: string;
@@ -248,11 +195,10 @@ export const resolveNativeConnectorCatalog = async (options: {
       await writeCachedServerCatalog(options.stellaDataDir, liveEntries).catch(
         () => undefined,
       );
-      const entries = buildMergedConnectorCatalog(liveEntries);
       return {
-        entries,
+        entries: liveEntries,
         source: "live",
-        sources: entrySources(entries, liveEntries, "live"),
+        sources: entrySources(liveEntries, "live"),
       };
     }
   }
@@ -262,25 +208,23 @@ export const resolveNativeConnectorCatalog = async (options: {
     // Deliberately no TTL: offline execution and backend-only connector ids
     // are more useful than silently changing provider semantics. A successful
     // live fetch replaces this snapshot; malformed cache still fails closed.
-    const entries = buildMergedConnectorCatalog(cached.entries);
     return {
-      entries,
+      entries: cached.entries,
       source: "cache",
-      sources: entrySources(entries, cached.entries, "cache"),
+      sources: entrySources(cached.entries, "cache"),
     };
   }
-  const entries = buildMergedConnectorCatalog();
   return {
-    entries,
-    source: "bundled",
-    sources: Object.fromEntries(entries.map((entry) => [entry.id, "bundled"])),
+    entries: [],
+    source: "unavailable",
+    sources: {},
   };
 };
 
 /**
  * Fetch the live backend catalog. Returns null on any failure (signed
- * out, offline, malformed response) — callers fall back to the disk
- * cache / bundled catalog.
+ * out, offline, malformed response) — callers fall back only to the last
+ * valid disk cache.
  */
 export const fetchServerNativeCatalog = async (options: {
   baseUrl: string;
