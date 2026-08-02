@@ -10,7 +10,7 @@ import {
   handleExecCommand,
   handleWriteStdin,
 } from "../../../../../runtime/kernel/tools/shell.js";
-import { handleViewImage } from "../../../../../runtime/kernel/tools/view-image.js";
+import { handleRead } from "../../../../../runtime/kernel/tools/file.js";
 import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createAsyncTempDirTracker();
@@ -472,13 +472,13 @@ EOF`,
     );
   });
 
-  it("view_image returns an attach marker for local images", async () => {
+  it("Read returns an attach marker for local images", async () => {
     const root = await createTempDir();
     const imagePath = path.join(root, "snap.png");
     await writeFile(imagePath, ONE_BY_ONE_PNG);
 
-    const result = await handleViewImage(
-      { path: imagePath },
+    const result = await handleRead(
+      { file_path: imagePath },
       {
         conversationId: "c1",
         deviceId: "d1",
@@ -493,13 +493,13 @@ EOF`,
     );
   });
 
-  it("view_image labels images from bytes when extension is wrong", async () => {
+  it("Read labels images from bytes when extension is wrong", async () => {
     const root = await createTempDir();
     const imagePath = path.join(root, "snap.png");
     await writeFile(imagePath, JPEG_BYTES);
 
-    const result = await handleViewImage(
-      { path: imagePath },
+    const result = await handleRead(
+      { file_path: imagePath },
       {
         conversationId: "c1",
         deviceId: "d1",

@@ -4,6 +4,7 @@ import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { startPreparedOrchestratorRun } from "../../../../../runtime/kernel/runner/orchestrator-launch.js";
 
 vi.mock("../../../../../runtime/kernel/runner/model-selection.js", () => ({
+  createRunnerImageDescriptionService: vi.fn(() => vi.fn()),
   resolveRunnerLlmRouteWithMetadata: vi.fn(async () => ({
     model: { id: "test-model", provider: "test-provider" },
     route: "direct-provider",

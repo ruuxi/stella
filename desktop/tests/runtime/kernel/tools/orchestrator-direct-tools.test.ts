@@ -435,7 +435,8 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("apply_patch")).toBe(true);
     expect(generalTools.has("web")).toBe(true);
     expect(generalTools.has("RequestCredential")).toBe(true);
-    expect(generalTools.has("view_image")).toBe(true);
+    expect(generalTools.has("Read")).toBe(true);
+    expect(generalTools.has("view_image")).toBe(false);
     expect(generalTools.has("image_gen")).toBe(false);
 
     const claudeCodeGeneralTools = new Set(

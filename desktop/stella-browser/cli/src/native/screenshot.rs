@@ -562,7 +562,7 @@ fn save_screenshot(
 
     // Write to a sibling temp file, flush it to disk, then atomically rename
     // into place. A plain `fs::write` truncates-then-writes the final path, so
-    // a concurrent reader (the runtime's view_image / auto-attach reading the
+    // a concurrent reader (the runtime's Read / auto-attach reading the
     // path we return) can observe a partially written, truncated PNG. The
     // rename makes the complete file appear at the final path in one step, so
     // readers only ever see whole bytes.

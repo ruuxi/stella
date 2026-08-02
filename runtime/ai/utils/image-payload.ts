@@ -3,7 +3,7 @@
  * payloads before they are attached to a model request.
  *
  * Motivation: tool-produced images (screenshots, browser captures,
- * `view_image` file reads) can reach the request in shapes the provider
+ * image-file reads) can reach the request in shapes the provider
  * rejects — most importantly a *truncated / corrupt* image whose bytes were
  * captured mid-write. The base64 is clean and the header (e.g. PNG IHDR)
  * parses, so nothing upstream notices, but the pixel stream is incomplete.

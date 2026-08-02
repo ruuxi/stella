@@ -20,32 +20,51 @@ import {
 
 const MAX_RESULT_PREVIEW = 200;
 const TOOL_OUTPUT_CHARS_PER_TOKEN = 4;
+const IMAGE_DESCRIPTION_CUSTOM_TYPE = "vision.image_description";
 const TOOL_OUTPUT_SERIALIZATION_ALLOWANCE = 1.2;
 
 export const DEFAULT_MODEL_TOOL_OUTPUT_TOKENS = 10_000;
 
 export const DEFAULT_MAX_TURNS = 40;
 
-export const PI_AGENT_MESSAGE_FILTER = (messages: AgentMessage[]): Message[] =>
-  messages.flatMap((msg): Message[] => {
+export const PI_AGENT_MESSAGE_FILTER = (messages: AgentMessage[]): Message[] => {
+  const result: Message[] = [];
+  for (const msg of messages) {
     if (
       msg.role === "user" ||
       msg.role === "assistant" ||
       msg.role === "toolResult"
     ) {
-      return [msg];
+      result.push(msg);
+      continue;
     }
     if (msg.role === "runtimeInternal") {
-      return [
-        {
-          role: "user",
-          content: msg.content,
-          timestamp: msg.timestamp,
-        },
-      ];
+      const previous = result.at(-1);
+      if (
+        msg.customType === IMAGE_DESCRIPTION_CUSTOM_TYPE &&
+        previous?.role === "user" &&
+        Array.isArray(previous.content) &&
+        previous.content.some((block) => block.type === "image")
+      ) {
+        const descriptionContent =
+          typeof msg.content === "string"
+            ? [{ type: "text" as const, text: msg.content }]
+            : msg.content;
+        result[result.length - 1] = {
+          ...previous,
+          content: [...previous.content, ...descriptionContent],
+        };
+        continue;
+      }
+      result.push({
+        role: "user",
+        content: msg.content,
+        timestamp: msg.timestamp,
+      });
     }
-    return [];
-  });
+  }
+  return result;
+};
 
 export const AnyToolArgsSchema = Type.Object(
   {},

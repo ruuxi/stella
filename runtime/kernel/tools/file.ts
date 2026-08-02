@@ -5,6 +5,7 @@
 
 import { promises as fs } from "fs";
 import path from "path";
+import { Buffer } from "node:buffer";
 import type { ToolContext, ToolResult } from "./types.js";
 import { fileChange } from "../../contracts/file-changes.js";
 import {
@@ -20,6 +21,7 @@ import {
 import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
 import { withFileWriteLock, writeFileWithNulGuard } from "./file-write-lock.js";
+import { resolveImageMimeType } from "../shared/image-mime.js";
 
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
   const relative = path.relative(root, candidate);
@@ -195,7 +197,33 @@ export const handleRead = async (
   context?: ToolContext,
 ): Promise<ToolResult> => {
   try {
-    const { path: filePath, content } = await readTextFile(
+    const filePath = resolveFilePath(args.file_path, context);
+    const pathBlock = isBlockedPath(filePath, context);
+    if (pathBlock) {
+      throw new Error(pathBlock);
+    }
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      throw new Error(`Path is not a file: ${filePath}`);
+    }
+    const file = await fs.open(filePath, "r");
+    let header: Buffer;
+    try {
+      header = Buffer.alloc(12);
+      const { bytesRead } = await file.read(header, 0, header.length, 0);
+      header = header.subarray(0, bytesRead);
+    } finally {
+      await file.close();
+    }
+    const imageMimeType = resolveImageMimeType(filePath, header);
+    if (imageMimeType) {
+      return {
+        result: `[stella-attach-image] inline=${imageMimeType} ${filePath}`,
+        details: { path: filePath, mimeType: imageMimeType },
+      };
+    }
+
+    const { path: textFilePath, content } = await readTextFile(
       args.file_path,
       context,
     );
@@ -207,7 +235,7 @@ export const handleRead = async (
       limit,
     );
     return {
-      result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
+      result: `File: ${textFilePath}\n${formatted.header}\n\n${formatted.body}`,
     };
   } catch (error) {
     return { error: `Error reading file: ${(error as Error).message}` };

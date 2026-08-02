@@ -25,6 +25,11 @@ import {
   persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
+import {
+  enrichImageContentForTextOnlyModel,
+  type ImageDescriptionService,
+} from "./image-description.js";
+import type { Api, Model } from "../../ai/types.js";
 import type {
   RuntimeRunCallbacks,
   SubagentRunOptions,
@@ -42,6 +47,10 @@ export class SubagentSession extends PiSessionCore {
   private currentRetryStatusContext: {
     recorder: RuntimeRunEventRecorder;
     callbacks?: Partial<RuntimeRunCallbacks>;
+  } | null = null;
+  private currentImageDescriptionContext: {
+    model: Pick<Model<Api>, "input">;
+    describeImages?: ImageDescriptionService;
   } | null = null;
 
   private handleProviderRetry = (info: {
@@ -96,6 +105,10 @@ export class SubagentSession extends PiSessionCore {
 
     // Keep the reused Agent pointed at the current model route.
     this.setResolvedLlm(opts.resolvedLlm);
+    this.currentImageDescriptionContext = {
+      model: opts.resolvedLlm.model,
+      ...(opts.describeImages ? { describeImages: opts.describeImages } : {}),
+    };
 
     this.refreshHistoryIfNeeded(opts.agentContext, {
       threadId: this.threadId,
@@ -150,6 +163,17 @@ export class SubagentSession extends PiSessionCore {
       agentContext: opts.agentContext,
       ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
       tools,
+      afterToolCall: async (context, signal) => {
+        const imageContext = this.currentImageDescriptionContext;
+        if (!imageContext) return undefined;
+        const content = await enrichImageContentForTextOnlyModel({
+          content: context.result.content,
+          model: imageContext.model,
+          describeImages: imageContext.describeImages,
+          signal,
+        });
+        return content === context.result.content ? undefined : { content };
+      },
       onProviderRetry: this.handleProviderRetry,
       logContext: {
         threadId: this.threadId,
@@ -191,13 +215,15 @@ export class SubagentSession extends PiSessionCore {
       const reason =
         resolveInterruptionReason({ abortSignal: opts.abortSignal }) ??
         "Canceled";
-      return finalizeSubagentInterrupted({
+      const result = finalizeSubagentInterrupted({
         opts,
         runEvents,
         runId,
         reason,
         threadKey: this.threadKey,
       });
+      this.currentImageDescriptionContext = null;
+      return result;
     }
 
     this.currentRetryStatusContext = {
@@ -240,6 +266,7 @@ export class SubagentSession extends PiSessionCore {
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
         stellaDataDir: opts.stellaDataDir,
+        ...(opts.describeImages ? { describeImages: opts.describeImages } : {}),
         ...(typeof opts.agentContext.attemptGeneration === "number"
           ? { attemptGeneration: opts.agentContext.attemptGeneration }
           : {}),
@@ -398,12 +425,14 @@ export class SubagentSession extends PiSessionCore {
       });
     } finally {
       this.currentRetryStatusContext = null;
+      this.currentImageDescriptionContext = null;
     }
   }
 
   dispose(): void {
     super.dispose();
     this.currentRetryStatusContext = null;
+    this.currentImageDescriptionContext = null;
   }
 }
 

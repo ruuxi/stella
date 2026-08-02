@@ -9,19 +9,35 @@ import type {
 	ToolResultMessage,
 } from "../types.js";
 
-const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
-const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
+const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted)";
+const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted)";
 
-function replaceImagesWithPlaceholder(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+const hasImageDescription = (content: (TextContent | ImageContent)[]): boolean =>
+	content.some(
+		(block) => block.type === "text" && block.text.includes("<image_description>"),
+	);
+
+const imageReference = (image: ImageContent): string | null => {
+	const sourcePath = image.sourcePath?.trim();
+	if (!sourcePath) return null;
+	return `<image_reference>\n${sourcePath}\nUse the Read tool with file_path set to this absolute path to inspect the image.\n</image_reference>`;
+};
+
+function downgradeImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+	const described = hasImageDescription(content);
 	const result: TextContent[] = [];
 	let previousWasPlaceholder = false;
 
 	for (const block of content) {
 		if (block.type === "image") {
-			if (!previousWasPlaceholder) {
+			const reference = imageReference(block);
+			if (reference) {
+				result.push({ type: "text", text: reference });
+				previousWasPlaceholder = false;
+			} else if (!described && !previousWasPlaceholder) {
 				result.push({ type: "text", text: placeholder });
+				previousWasPlaceholder = true;
 			}
-			previousWasPlaceholder = true;
 			continue;
 		}
 
@@ -41,14 +57,14 @@ function downgradeUnsupportedImages<TApi extends Api>(messages: Message[], model
 		if (msg.role === "user" && Array.isArray(msg.content)) {
 			return {
 				...msg,
-				content: replaceImagesWithPlaceholder(msg.content, NON_VISION_USER_IMAGE_PLACEHOLDER),
+				content: downgradeImages(msg.content, NON_VISION_USER_IMAGE_PLACEHOLDER),
 			};
 		}
 
 		if (msg.role === "toolResult") {
 			return {
 				...msg,
-				content: replaceImagesWithPlaceholder(msg.content, NON_VISION_TOOL_IMAGE_PLACEHOLDER),
+				content: downgradeImages(msg.content, NON_VISION_TOOL_IMAGE_PLACEHOLDER),
 			};
 		}
 

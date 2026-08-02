@@ -203,6 +203,7 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Tracking files down",
     "Browsing files",
   ],
+  // Legacy persisted calls from before image reads moved into Read.
   view_image: [
     "Taking a look",
     "Viewing the image",

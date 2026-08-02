@@ -63,6 +63,11 @@ import {
   persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
+import {
+  enrichImageContentForTextOnlyModel,
+  type ImageDescriptionService,
+} from "./image-description.js";
+import type { Api, Model } from "../../ai/types.js";
 import type { OrchestratorRunOptions, RuntimeRunCallbacks } from "./types.js";
 import {
   AGENT_RUN_MAX_ATTEMPTS,
@@ -101,6 +106,10 @@ export class OrchestratorSession extends PiSessionCore {
   private currentRetryStatusContext: {
     recorder: RuntimeRunEventRecorder;
     callbacks?: RuntimeRunCallbacks;
+  } | null = null;
+  private currentImageDescriptionContext: {
+    model: Pick<Model<Api>, "input">;
+    describeImages?: ImageDescriptionService;
   } | null = null;
 
   constructor(public readonly conversationId: string) {
@@ -153,6 +162,10 @@ export class OrchestratorSession extends PiSessionCore {
       opts.responseTarget,
     );
     this.currentResponseTargetTracker = responseTargetTracker;
+    this.currentImageDescriptionContext = {
+      model: opts.resolvedLlm.model,
+      ...(opts.describeImages ? { describeImages: opts.describeImages } : {}),
+    };
 
     const tools = createPiTools({
       runId,
@@ -200,12 +213,20 @@ export class OrchestratorSession extends PiSessionCore {
       agentContext: opts.agentContext,
       ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
       tools,
-      afterToolCall: async (context) => {
+      afterToolCall: async (context, signal) => {
         this.currentResponseTargetTracker?.noteToolEnd(
           context.toolCall.name,
           context.result.details,
         );
-        return undefined;
+        const imageContext = this.currentImageDescriptionContext;
+        if (!imageContext) return undefined;
+        const content = await enrichImageContentForTextOnlyModel({
+          content: context.result.content,
+          model: imageContext.model,
+          describeImages: imageContext.describeImages,
+          signal,
+        });
+        return content === context.result.content ? undefined : { content };
       },
       onProviderRetry: this.handleProviderRetry,
       logContext: {
@@ -265,6 +286,7 @@ export class OrchestratorSession extends PiSessionCore {
       });
       this.currentResponseTargetTracker = null;
       this.currentRetryStatusContext = null;
+      this.currentImageDescriptionContext = null;
       return runId;
     }
 
@@ -304,6 +326,7 @@ export class OrchestratorSession extends PiSessionCore {
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
         stellaDataDir: opts.stellaDataDir,
+        ...(opts.describeImages ? { describeImages: opts.describeImages } : {}),
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
       };
       const retryState = { attemptsUsed: 0, retriesUsed: 0 };
@@ -465,6 +488,7 @@ export class OrchestratorSession extends PiSessionCore {
     } finally {
       this.currentResponseTargetTracker = null;
       this.currentRetryStatusContext = null;
+      this.currentImageDescriptionContext = null;
     }
   }
 
@@ -472,6 +496,7 @@ export class OrchestratorSession extends PiSessionCore {
     super.dispose();
     this.currentResponseTargetTracker = null;
     this.currentRetryStatusContext = null;
+    this.currentImageDescriptionContext = null;
   }
 }
 

@@ -59,6 +59,7 @@ App=com.apple.finder (pid 504)
     expect(result.images[0]).toMatchObject({
       type: "image",
       mimeType: "image/png",
+      sourcePath: imgPath,
     });
     expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
     // Marker should be stripped from forwarded text.
@@ -292,7 +293,7 @@ App=com.apple.finder (pid 504)
     // Mirrors the exec_command tool result shape: stdout is wrapped inside
     // a JSON envelope where real newlines become escaped `\n` characters.
     // Before the regex fix, the start-of-line anchor meant the marker was
-    // never matched in this shape and the model had to call view_image
+    // never matched in this shape and the model had to call Read
     // separately (which then failed for >2MB screenshots).
     const tempDir = createTempDir();
     const imgPath = writePng(tempDir);

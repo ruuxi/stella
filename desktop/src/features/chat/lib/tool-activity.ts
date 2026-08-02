@@ -103,6 +103,7 @@ type ToolDescriptor = { category: ToolActivityCategory; phrase: PhraseFn };
 const TOOL_DESCRIPTORS: Record<string, ToolDescriptor> = {
   // — read —
   read: { category: "read", phrase: plural("read a file", (n) => `read ${n} files`) },
+  // Legacy persisted calls from before image reads moved into Read.
   view_image: {
     category: "read",
     phrase: plural("viewed an image", (n) => `viewed ${n} images`),

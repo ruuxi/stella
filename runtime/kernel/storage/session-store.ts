@@ -1,5 +1,6 @@
 import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
 import crypto from "node:crypto";
+import type { ImageContent, TextContent } from "../../ai/types.js";
 import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
 import {
   AGENT_IDS,
@@ -620,6 +621,21 @@ const truncateTextBlockForStorage = (text: string, label = "Text"): string =>
 const truncateToolOutputForStorage = (text: string): string =>
   `This tool output was too large to persist in storage (${text.length} chars). If the user asks about this data, suggest re-running the tool. Preview: ${truncatePreview(text)}`;
 
+const strippedImageStorageNote = (image: ImageContent): TextContent => {
+  const sourcePath = image.sourcePath?.trim();
+  if (sourcePath) {
+    return {
+      type: "text",
+      text: `<image_reference>\n${sourcePath}\nUse the Read tool with file_path set to this absolute path to inspect the image.\n</image_reference>`,
+    };
+  }
+  const sizeKb = Math.round(((image.data?.length ?? 0) * 0.75) / 1024);
+  return {
+    type: "text",
+    text: `[image content block stripped for storage: mime=${image.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
+  };
+};
+
 const truncateObjectForStorage = (
   value: unknown,
   label: string,
@@ -653,6 +669,17 @@ const enforceThreadPayloadRowSizeLimit = (
     const candidate = { ...payload, content };
     if (payloadByteLength(candidate) <= THREAD_ROW_MAX_BYTES) {
       return candidate;
+    }
+    if (typeof content !== "string") {
+      const withoutImageData: PersistedRuntimeThreadPayload = {
+        ...payload,
+        content: content.map((block) =>
+          block.type === "image" ? strippedImageStorageNote(block) : block,
+        ),
+      };
+      if (payloadByteLength(withoutImageData) <= THREAD_ROW_MAX_BYTES) {
+        return withoutImageData;
+      }
     }
     return {
       ...payload,
@@ -744,11 +771,7 @@ const enforceThreadPayloadRowSizeLimit = (
       if (block.type !== "image") {
         return block;
       }
-      const sizeKb = Math.round(((block.data?.length ?? 0) * 0.75) / 1024);
-      return {
-        type: "text" as const,
-        text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
-      };
+      return strippedImageStorageNote(block);
     }),
   };
   if (payloadByteLength(withoutImageData) <= THREAD_ROW_MAX_BYTES) {

@@ -12,7 +12,7 @@ import {
  * The upstream capture paths (stella-browser's Rust CLI, stella-computer's
  * native helper, and any `[stella-attach-image]` marker) hand back a file
  * path once a screenshot is captured. When the runtime reads that path back
- * (auto-attach in `tool-adapters`, or the explicit `view_image` tool) it can
+ * (auto-attach in `tool-adapters`, or an image path passed to `Read`) it can
  * open the file in the narrow window before the writer's bytes are fully
  * flushed to disk. The reader then gets a structurally *incomplete* image:
  * the PNG signature + IHDR are present so nothing looks wrong, but the stream

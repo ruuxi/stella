@@ -279,7 +279,12 @@ const parseAttachImageMatches = (text: string): AttachImageMatch[] => {
   return matches;
 };
 
-type ImageBlock = { type: "image"; mimeType: string; data: string };
+type ImageBlock = {
+  type: "image";
+  mimeType: string;
+  data: string;
+  sourcePath: string;
+};
 
 const base64Length = (binaryBytes: number) => Math.ceil(binaryBytes / 3) * 4;
 
@@ -391,6 +396,7 @@ export const extractAttachImageBlocks = async (
           type: "image",
           mimeType: resized.mimeType,
           data: resized.data,
+          sourcePath: imgPath,
         });
         continue;
       }
@@ -429,6 +435,7 @@ export const extractAttachImageBlocks = async (
         type: "image",
         mimeType,
         data: buf.toString("base64"),
+        sourcePath: imgPath,
       });
     } catch {
       // If the file vanished between CLI exit and our read, leave the marker
@@ -806,7 +813,7 @@ export const createPiTools = (opts: {
         const content: Array<TextContent | ImageBlock> = [];
         const screenshotNote =
           legacyImages.length > 0
-            ? "\n\n[Screenshot attached below. If the accessibility tree is sparse or missing the visible control, inspect this image directly and use screenshot x/y coordinates.]"
+            ? "\n\n[Image attached below. Inspect it directly. If it is a UI screenshot and the accessibility tree is sparse or missing a visible control, use screenshot x/y coordinates.]"
             : "";
         if (forwardedText || legacyImages.length === 0) {
           content.push({

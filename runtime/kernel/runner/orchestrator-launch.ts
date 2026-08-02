@@ -14,6 +14,7 @@ import {
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import type { RunnerContext } from "./types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
+import { createRunnerImageDescriptionService } from "./model-selection.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -671,6 +672,10 @@ export const launchPreparedOrchestratorRun = (args: {
         ? { cliBridgeSocketPath: context.cliBridgeSocketPath }
         : {}),
       resolvedLlm: prepared.resolvedLlm,
+      describeImages: createRunnerImageDescriptionService(
+        context,
+        prepared.resolvedLlm,
+      ),
       store: context.runtimeStore,
       abortSignal: prepared.abortController.signal,
       stellaAppDir: context.stellaAppDir,

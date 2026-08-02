@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { ANTHROPIC_DIRECT_MAX_IMAGE_BASE64_BYTES } from "../ai/utils/image-caps.js";
@@ -12,7 +13,7 @@ import type { RuntimeAttachmentRef } from "../protocol/index.js";
  * them, and the oversized user message then poisons every later turn in
  * the thread. Over-budget turns write the images to disk and reference
  * them by absolute path so the model pulls in specific ones on demand via
- * `view_image`.
+ * `Read`.
  */
 export const INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES = 10 * 1024 * 1024;
 
@@ -20,6 +21,7 @@ export type SpilledImageAttachment = {
   filePath: string;
   mimeType: string;
   bytes: number;
+  attachmentIndex?: number;
 };
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
@@ -71,7 +73,7 @@ export const spillImageAttachmentsToDisk = async (args: {
     args.conversationId.replace(/[^a-zA-Z0-9_-]/g, "-"),
   );
   await fs.mkdir(dir, { recursive: true });
-  const stamp = Date.now();
+  const stamp = `${Date.now()}-${randomUUID()}`;
   const spilled: SpilledImageAttachment[] = [];
   for (const [index, attachment] of args.attachments.entries()) {
     const match = DATA_URL_RE.exec(attachment.url);
@@ -84,9 +86,30 @@ export const spillImageAttachmentsToDisk = async (args: {
       `${stamp}-${index + 1}${imageExtensionFromMimeType(mimeType)}`,
     );
     await fs.writeFile(filePath, data);
-    spilled.push({ filePath, mimeType, bytes: data.length });
+    spilled.push({
+      filePath,
+      mimeType,
+      bytes: data.length,
+      attachmentIndex: index,
+    });
   }
   return spilled;
+};
+
+export const attachPersistedImagePaths = (
+  attachments: RuntimeAttachmentRef[],
+  persisted: SpilledImageAttachment[],
+): RuntimeAttachmentRef[] => {
+  const pathByAttachmentIndex = new Map(
+    persisted.map((file, index) => [
+      file.attachmentIndex ?? index,
+      file.filePath,
+    ]),
+  );
+  return attachments.map((attachment, index) => {
+    const sourcePath = pathByAttachmentIndex.get(index);
+    return sourcePath ? { ...attachment, sourcePath } : attachment;
+  });
 };
 
 export const buildSpilledAttachmentNotice = (
@@ -100,6 +123,6 @@ export const buildSpilledAttachmentNotice = (
       (file, index) =>
         `${index + 1}. ${file.filePath} (${file.mimeType}, ${formatMegabytes(file.bytes)})`,
     ),
-    `Use the view_image tool with these absolute paths to look at whichever images the request needs — view a few at a time rather than all at once. When delegating work that depends on them, pass the file paths along in the agent prompt.`,
+    `Use the Read tool with file_path set to these absolute paths to inspect whichever images the request needs — read a few at a time rather than all at once. When delegating work that depends on them, pass the file paths along in the agent prompt.`,
   ].join("\n");
 };

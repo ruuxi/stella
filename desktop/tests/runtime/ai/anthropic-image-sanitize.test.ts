@@ -101,7 +101,7 @@ const usage = {
 // otherwise it is treated as dangling and dropped before conversion.
 function withToolCall(content: Message["content"]): Message[] {
 	return [
-		{ role: "user", content: "run view_image", timestamp: 0 },
+		{ role: "user", content: "run Read", timestamp: 0 },
 		{
 			role: "assistant",
 			api: "anthropic-messages",
@@ -111,7 +111,7 @@ function withToolCall(content: Message["content"]): Message[] {
 			stopReason: "toolUse",
 			timestamp: 0,
 			content: [
-				{ type: "toolCall", id: "toolu_test", name: "view_image", arguments: {} },
+				{ type: "toolCall", id: "toolu_test", name: "Read", arguments: {} },
 			],
 		},
 		toolResult(content),
@@ -122,7 +122,7 @@ function toolResult(content: Message["content"]): Message {
 	return {
 		role: "toolResult",
 		toolCallId: "toolu_test",
-		toolName: "view_image",
+		toolName: "Read",
 		content: content as Exclude<Message["content"], string>,
 		isError: false,
 		timestamp: 0,

@@ -53,7 +53,7 @@ export interface ImageCapTarget {
   modelId?: string;
   /** Number of images in the same request (drives the many-image clamp). */
   imageCount?: number;
-  /** `view_image detail: "original"` — keep native resolution up to the hard ceiling. */
+  /** Legacy attach marker requesting native resolution up to the hard ceiling. */
   detailOriginal?: boolean;
 }
 
@@ -183,7 +183,7 @@ const isGoogleFamily = (provider: string, api: string): boolean =>
 /**
  * Resolve the resize/encode caps for the given target. Falls back to a safe
  * conservative profile when the provider is unknown. `detailOriginal` raises
- * the caps to the provider's hard ceiling so a `view_image detail: "original"`
+ * the caps to the provider's hard ceiling so a legacy `detail=original` read
  * read keeps native resolution (still bounded so the request can't fail).
  */
 export const resolveImageCaps = (target: ImageCapTarget = {}): ImageCaps => {

@@ -237,6 +237,8 @@ export interface ImageContent {
   type: "image";
   data: string; // base64 encoded image data
   mimeType: string; // e.g., "image/jpeg", "image/png"
+  /** Durable local copy that text-only history can expose to `Read`. */
+  sourcePath?: string;
 }
 
 export interface ToolCall {

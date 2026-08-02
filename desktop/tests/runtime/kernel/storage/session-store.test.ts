@@ -2386,6 +2386,75 @@ describe("session-store", () => {
     });
   });
 
+  it("preserves Read paths when oversized inline images are stripped", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-big-image-path";
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+    });
+    const largeImageData = "A".repeat(6_100_000);
+    const sourcePath = "/tmp/stella-image-cache/older-image.png";
+
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 6_100,
+      role: "user",
+      content: "Attached image",
+      payload: {
+        role: "user",
+        content: [
+          { type: "text", text: "Attached image" },
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: largeImageData,
+            sourcePath,
+          },
+        ],
+        timestamp: 6_100,
+      },
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 6_101,
+      role: "toolResult",
+      content: "Screenshot",
+      toolCallId: "tool-image-1",
+      payload: {
+        role: "toolResult",
+        toolCallId: "tool-image-1",
+        toolName: "Read",
+        content: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: largeImageData,
+            sourcePath,
+          },
+        ],
+        isError: false,
+        timestamp: 6_101,
+      },
+    });
+
+    const loaded = store.loadThreadMessages(threadId);
+    expect(loaded).toHaveLength(2);
+    for (const entry of loaded) {
+      const content = entry.payload?.content;
+      expect(Array.isArray(content) ? content : []).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining(sourcePath),
+          }),
+        ]),
+      );
+      expect(JSON.stringify(content)).toContain("Read tool");
+      expect(JSON.stringify(content)).not.toContain(largeImageData.slice(0, 100));
+    }
+  });
+
   it("lazily registers implicit orchestrator thread keys", () => {
     const { db, store } = createTestContext();
     const conversationId = "01kp5755c8mz3dpc22zas71d97";

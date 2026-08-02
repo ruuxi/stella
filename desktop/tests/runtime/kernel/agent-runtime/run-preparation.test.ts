@@ -14,6 +14,7 @@ describe("run preparation attachments", () => {
       {
         url: "data:image/PNG;base64,AAAA",
         mimeType: "image/PNG",
+        sourcePath: "/tmp/source.png",
       },
       {
         url: "data:text/plain;base64,SGVsbG8=",
@@ -27,7 +28,12 @@ describe("run preparation attachments", () => {
 
     expect(message.content).toEqual([
       { type: "text", text: "Look at this" },
-      { type: "image", mimeType: "image/png", data: "AAAA" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "AAAA",
+        sourcePath: "/tmp/source.png",
+      },
     ]);
   });
 
@@ -64,6 +70,7 @@ describe("run preparation attachments", () => {
       {
         url: `data:image/png;base64,${validPng}`,
         mimeType: "image/png",
+        sourcePath: "/tmp/retained.png",
       },
       {
         url: "data:image/png;base64,AAAA",
@@ -74,5 +81,6 @@ describe("run preparation attachments", () => {
     expect(prepared).toHaveLength(1);
     expect(prepared?.[0]?.url).toMatch(/^data:image\/(?:png|jpeg);base64,/);
     expect(prepared?.[0]?.size).toBeGreaterThan(0);
+    expect(prepared?.[0]?.sourcePath).toBe("/tmp/retained.png");
   });
 });

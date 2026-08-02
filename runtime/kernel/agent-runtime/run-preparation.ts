@@ -37,6 +37,7 @@ const toImageContent = (
     type: "image",
     mimeType,
     data: match[2],
+    ...(attachment.sourcePath ? { sourcePath: attachment.sourcePath } : {}),
   };
 };
 

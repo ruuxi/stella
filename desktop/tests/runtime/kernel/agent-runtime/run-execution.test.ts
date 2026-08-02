@@ -27,6 +27,9 @@ const createAssistantMessage = (text: string) => ({
 });
 
 describe("executeRuntimeAgentPrompt", () => {
+  const validPng =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
   it("does not persist or emit internal message prompts", async () => {
     const appendThreadMessage = vi.fn();
     const appendThreadCustomMessage = vi.fn();
@@ -117,6 +120,128 @@ describe("executeRuntimeAgentPrompt", () => {
         uiVisibility: "visible",
       }),
     );
+  });
+
+  it("persists a hidden description beside each new image for text-only models", async () => {
+    const appendThreadMessage = vi.fn();
+    const appendThreadCustomMessage = vi.fn();
+    const onUserMessage = vi.fn();
+    const describeImages = vi.fn(async () =>
+      "A settings window with a red connection error.",
+    );
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+        model: { input: ["text" as const] },
+      },
+      subscribe: () => () => {},
+      prompt: vi.fn(async () => {
+        agent.state.messages = [createAssistantMessage("done")];
+      }),
+      followUp: vi.fn(),
+      continue: vi.fn(),
+      abort: vi.fn(),
+    };
+
+    await executeRuntimeAgentPrompt({
+      agent,
+      promptMessages: [
+        {
+          text: "What is wrong here?",
+          uiVisibility: "visible",
+          attachments: [
+            {
+              url: `data:image/png;base64,${validPng}`,
+              mimeType: "image/png",
+            },
+          ],
+        },
+      ],
+      describeImages,
+      runId: "run-image",
+      agentType: "orchestrator",
+      userMessageId: "msg-image",
+      recorder: {} as never,
+      callbacks: { onUserMessage },
+      threadStore: {
+        appendThreadMessage,
+        appendThreadCustomMessage,
+      } as never,
+      threadKey: "thread-image",
+    });
+
+    expect(describeImages).toHaveBeenCalledOnce();
+    expect(agent.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "user",
+        content: expect.arrayContaining([
+          { type: "text", text: "What is wrong here?" },
+          expect.objectContaining({ type: "image" }),
+        ]),
+      }),
+      expect.objectContaining({
+        role: "runtimeInternal",
+        customType: "vision.image_description",
+        display: false,
+        content: [
+          {
+            type: "text",
+            text: "<image_description>\nA settings window with a red connection error.\n</image_description>",
+          },
+        ],
+      }),
+    ]);
+    expect(appendThreadMessage).toHaveBeenCalledOnce();
+    expect(appendThreadCustomMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "vision.image_description",
+        display: false,
+      }),
+    );
+    expect(onUserMessage).toHaveBeenCalledOnce();
+  });
+
+  it("sends a new image directly when the selected model supports vision", async () => {
+    const describeImages = vi.fn();
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+        model: { input: ["text" as const, "image" as const] },
+      },
+      subscribe: () => () => {},
+      prompt: vi.fn(async () => {
+        agent.state.messages = [createAssistantMessage("done")];
+      }),
+      followUp: vi.fn(),
+      continue: vi.fn(),
+      abort: vi.fn(),
+    };
+
+    await executeRuntimeAgentPrompt({
+      agent,
+      promptText: "Look at this",
+      attachments: [
+        {
+          url: `data:image/png;base64,${validPng}`,
+          mimeType: "image/png",
+        },
+      ],
+      describeImages,
+      runId: "run-native-image",
+      agentType: "orchestrator",
+      userMessageId: "msg-native-image",
+      recorder: {} as never,
+    });
+
+    expect(describeImages).not.toHaveBeenCalled();
+    expect(agent.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "user",
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: "image" }),
+        ]),
+      }),
+    ]);
   });
 
   it("fails a silent native agent prompt instead of hanging", async () => {

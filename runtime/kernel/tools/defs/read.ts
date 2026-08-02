@@ -1,5 +1,5 @@
 /**
- * `Read` — local file read tool used by the Explore + Dream subagents.
+ * `Read` — local text and image file reader.
  *
  * In the Dream subagent context, `dispatchLocalTool` intercepts and applies
  * path restrictions (only files under `~/.stella/memories` and
@@ -12,14 +12,15 @@ import type { ToolDefinition } from "../types.js";
 
 export const readTool: ToolDefinition = {
   name: "Read",
-  description: "Read a file from the filesystem (internal).",
+  description:
+    "Read a text file or inspect a local PNG, JPG, JPEG, GIF, or WEBP image. Image files are attached to the conversation as vision input.",
   parameters: {
     type: "object",
     properties: {
       file_path: {
         type: "string",
         description:
-          "Absolute file path. Must be absolute (~ / $HOME expansion allowed); relative paths are rejected.",
+          "Absolute text or image file path. Must be absolute (~ / $HOME expansion allowed); relative paths are rejected.",
       },
       offset: { type: "number" },
       limit: { type: "number" },

@@ -921,11 +921,11 @@ describe("resolveLlmRoute", () => {
 
   it("declares image input on synthesized gateway models, never the template's modalities", async () => {
     // The template (like the real ai21/jamba-large-1.7) is text-only. If the
-    // synthesized clone inherited that, transformMessages would silently swap
-    // every user image for an "(image omitted: model does not support images)"
-    // placeholder — which is exactly how mobile photo attachments to a
-    // vision-capable OpenRouter model got dropped before the dynamic catalog
-    // finished loading. The gateway is the authority on modality: a
+    // synthesized clone inherited that, transformMessages would replace every
+    // user image with a non-vision placeholder before the gateway saw it —
+    // which is exactly how mobile photo attachments to a vision-capable
+    // OpenRouter model got dropped before the dynamic catalog finished
+    // loading. The gateway is the authority on modality: a
     // truly text-only model rejects image blocks loudly upstream.
     expect(OPENROUTER_TEMPLATE.input).toEqual(["text"]);
     credentials.set("openrouter", "openrouter-key");

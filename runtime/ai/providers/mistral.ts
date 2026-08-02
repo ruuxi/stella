@@ -507,7 +507,7 @@ function toChatMessages(messages: Message[], supportsImages: boolean): ChatCompl
 				continue;
 			}
 			if (hadImages && !supportsImages) {
-				result.push({ role: "user", content: "(image omitted: model does not support images)" });
+				result.push({ role: "user", content: "(image omitted)" });
 			}
 			continue;
 		}
@@ -578,7 +578,7 @@ function buildToolResultText(text: string, hasImages: boolean, supportsImages: b
 	const errorPrefix = isError ? "[tool error] " : "";
 
 	if (trimmed.length > 0) {
-		const imageSuffix = hasImages && !supportsImages ? "\n[tool image omitted: model does not support images]" : "";
+		const imageSuffix = hasImages && !supportsImages ? "\n[tool image omitted]" : "";
 		return `${errorPrefix}${trimmed}${imageSuffix}`;
 	}
 
@@ -587,8 +587,8 @@ function buildToolResultText(text: string, hasImages: boolean, supportsImages: b
 			return isError ? "[tool error] (see attached image)" : "(see attached image)";
 		}
 		return isError
-			? "[tool error] (image omitted: model does not support images)"
-			: "(image omitted: model does not support images)";
+			? "[tool error] (image omitted)"
+			: "(image omitted)";
 	}
 
 	return isError ? "[tool error] (no tool output)" : "(no tool output)";

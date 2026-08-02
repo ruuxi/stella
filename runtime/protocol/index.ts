@@ -443,6 +443,8 @@ export type RuntimeHealthSnapshot = {
 export type RuntimeAttachmentRef = {
   url: string;
   mimeType?: string;
+  /** Durable local copy used when an older image is pruned from model input. */
+  sourcePath?: string;
   /**
    * Optional metadata preserved across the host/worker boundary so future
    * non-image attachment paths (voice notes, documents, video) can branch

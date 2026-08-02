@@ -663,7 +663,7 @@ describe("buildDefaultTransformContext", () => {
     const messages: AgentMessage[] = Array.from({ length: 10 }, (_, index) => ({
       role: "toolResult",
       toolCallId: `call-${index}`,
-      toolName: "view_image",
+      toolName: "Read",
       content: [
         {
           type: "image",

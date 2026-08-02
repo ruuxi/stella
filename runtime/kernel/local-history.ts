@@ -83,6 +83,7 @@ const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
   "apply_patch",
   "web",
   "RequestCredential",
+  // Legacy persisted tool name from before image reads moved into Read.
   "view_image",
   "image_gen",
   "Read",

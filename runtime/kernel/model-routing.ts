@@ -250,10 +250,10 @@ const getDirectProviderCandidates = (
  *
  * Input modalities are also NOT inherited: the template is an arbitrary
  * registry entry that may be text-only (the real first OpenRouter entry,
- * ai21/jamba-large-1.7, is), and `transformMessages` silently replaces every
- * image in the conversation with an "(image omitted: model does not support
- * images)" placeholder when `model.input` lacks "image" — which dropped
- * user-attached photos on vision-capable models resolved through this path.
+ * ai21/jamba-large-1.7, is), and `transformMessages` replaces unsupported
+ * historical images with a placeholder when `model.input` lacks "image".
+ * That would drop user-attached photos on vision-capable models resolved
+ * through this path.
  * Declare image support and let the gateway be the authority: a genuinely
  * text-only model rejects the request loudly upstream instead of Stella
  * silently discarding the user's attachments.

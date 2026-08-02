@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { transformMessages } from "../../../../runtime/ai/providers/transform-messages.js";
 import type { Message, Model } from "../../../../runtime/ai/types.js";
+import { PI_AGENT_MESSAGE_FILTER } from "../../../../runtime/kernel/agent-runtime/shared.js";
 
 const usage = {
   input: 0,
@@ -37,6 +38,160 @@ const anthropicModel: Model<"anthropic-messages"> = {
 };
 
 describe("runtime transformMessages", () => {
+  it("silently removes images for text-only models while keeping their descriptions", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is wrong here?" },
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: "AAAA",
+            sourcePath: "/tmp/current-image.png",
+          },
+          {
+            type: "text",
+            text: "<image_description>\nA red error dialog.\n</image_description>",
+          },
+        ],
+        timestamp: 1,
+      },
+    ];
+
+    const result = transformMessages(messages, anthropicModel);
+
+    expect(result).toEqual([
+      {
+        ...messages[0],
+        content: [
+          { type: "text", text: "What is wrong here?" },
+          {
+            type: "text",
+            text:
+              "<image_reference>\n/tmp/current-image.png\nUse the Read tool with file_path set to this absolute path to inspect the image.\n</image_reference>",
+          },
+          {
+            type: "text",
+            text: "<image_description>\nA red error dialog.\n</image_description>",
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("image omitted");
+  });
+
+  it("keeps a minimal legacy placeholder when an old image has no durable path", () => {
+    const result = transformMessages(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "image", mimeType: "image/png", data: "AAAA" },
+          ],
+          timestamp: 1,
+        },
+      ],
+      anthropicModel,
+    );
+
+    expect(result).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "(image omitted)",
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+  });
+
+  it("replaces a historical image with a Read reference when a path was persisted", () => {
+    const result = transformMessages(
+      [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "AAAA",
+              sourcePath: "/tmp/older-image.png",
+            },
+          ],
+          timestamp: 1,
+        },
+      ],
+      anthropicModel,
+    );
+
+    expect(result).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "<image_reference>\n/tmp/older-image.png\nUse the Read tool with file_path set to this absolute path to inspect the image.\n</image_reference>",
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+  });
+
+  it("pairs a persisted description with its image before removing the current image", () => {
+    const llmMessages = PI_AGENT_MESSAGE_FILTER([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is wrong here?" },
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: "AAAA",
+            sourcePath: "/tmp/paired-image.png",
+          },
+        ],
+        timestamp: 1,
+      },
+      {
+        role: "runtimeInternal",
+        customType: "vision.image_description",
+        display: false,
+        content: [
+          {
+            type: "text",
+            text: "<image_description>\nA red error dialog.\n</image_description>",
+          },
+        ],
+        timestamp: 2,
+      },
+    ]);
+
+    expect(transformMessages(llmMessages, anthropicModel)).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is wrong here?" },
+          {
+            type: "text",
+            text:
+              "<image_reference>\n/tmp/paired-image.png\nUse the Read tool with file_path set to this absolute path to inspect the image.\n</image_reference>",
+          },
+          {
+            type: "text",
+            text: "<image_description>\nA red error dialog.\n</image_description>",
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+  });
+
   it("drops cross-model thinking instead of replaying it as text", () => {
     const messages: Message[] = [
       {

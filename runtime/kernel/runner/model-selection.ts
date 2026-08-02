@@ -14,6 +14,11 @@ import {
   resolveLlmRouteForCatalogEnrichment,
   type ResolvedLlmRoute,
 } from "../model-routing.js";
+import {
+  createImageDescriptionService,
+  IMAGE_DESCRIPTION_MODEL_ID,
+  type ImageDescriptionService,
+} from "../agent-runtime/image-description.js";
 import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import type { RunnerContext } from "./types.js";
 
@@ -67,6 +72,40 @@ export const resolveRunnerLlmRouteWithMetadata = async (
     reasoningEffort,
   });
 };
+
+export const imageDescriptionModelReferenceForRoute = (
+  route: ResolvedLlmRoute,
+): string => {
+  if (route.route === "stella") {
+    return `stella/${IMAGE_DESCRIPTION_MODEL_ID}`;
+  }
+  if (route.model.provider === "openrouter") {
+    return `openrouter/${IMAGE_DESCRIPTION_MODEL_ID}`;
+  }
+  if (route.model.provider === "vercel-ai-gateway") {
+    return `vercel-ai-gateway/${IMAGE_DESCRIPTION_MODEL_ID}`;
+  }
+  return IMAGE_DESCRIPTION_MODEL_ID;
+};
+
+/**
+ * Build the lazy visual-description call used only when a selected chat model
+ * cannot accept images. Managed conversations stay on Stella's relay; BYOK
+ * gateway conversations keep using that gateway; other BYOK routes use the
+ * explicitly selected Google model and the user's Google credential.
+ */
+export const createRunnerImageDescriptionService = (
+  context: RunnerContext,
+  primaryRoute: ResolvedLlmRoute,
+): ImageDescriptionService =>
+  createImageDescriptionService({
+    resolveRoute: () =>
+      resolveRunnerLlmRouteWithMetadata(
+        context,
+        AGENT_IDS.GENERAL,
+        imageDescriptionModelReferenceForRoute(primaryRoute),
+      ),
+  });
 
 /**
  * Resolve the authoritative light tier from the active orchestrator engine.

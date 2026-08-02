@@ -47,7 +47,6 @@ import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
 import { createConnectorStatusTool } from "./connector-status.js";
 import { toolSearchTool } from "./tool-search.js";
-import { viewImageTool } from "./view-image.js";
 import { createWebTool } from "./web.js";
 import { writeTool } from "./write.js";
 import { createWriteStdinTool } from "./write-stdin.js";
@@ -116,7 +115,6 @@ export const buildBuiltinTools = (
   tools.push(applyPatchTool);
   tools.push(writeTool);
   tools.push(editTool);
-  tools.push(viewImageTool);
   tools.push(
     createNodeReplTool({
       registry: options.nodeReplRegistry,
@@ -192,7 +190,7 @@ export const buildBuiltinTools = (
     }),
   );
 
-  // Subagent file/search/dream surface
+  // Shared file/search/dream surface
   // Read & Grep have unrestricted handlers in the host; StrReplace and Dream
   // are intercepted by `dispatchLocalTool` inside the Dream subagent and
   // simply error out from the host path.

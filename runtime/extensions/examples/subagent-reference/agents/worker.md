@@ -1,7 +1,7 @@
 ---
 name: Worker
 description: General implementation subagent for scoped execution work.
-tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image
+tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, Read
 maxAgentDepth: 1
 ---
 

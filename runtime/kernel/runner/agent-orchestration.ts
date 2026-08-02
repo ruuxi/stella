@@ -44,7 +44,10 @@ import {
   createCommitSubjectProvider,
 } from "../self-mod/feature-namer.js";
 import { runLightTextCompletion } from "../agent-runtime/light-completion.js";
-import { resolveRunnerRecallLlmRoute } from "./model-selection.js";
+import {
+  createRunnerImageDescriptionService,
+  resolveRunnerRecallLlmRoute,
+} from "./model-selection.js";
 import type { BackgroundExitWake } from "./background-exit-wake.js";
 import { acquireRepoMutationEpoch } from "../self-mod/mutation-epoch.js";
 
@@ -1180,6 +1183,10 @@ export const createAgentOrchestration = (
           deviceId: context.deviceId,
           stellaDataDir: context.stellaDataDir,
           resolvedLlm,
+          describeImages: createRunnerImageDescriptionService(
+            context,
+            resolvedLlm,
+          ),
           store: context.runtimeStore,
           abortSignal,
           stellaAppDir: context.stellaAppDir,

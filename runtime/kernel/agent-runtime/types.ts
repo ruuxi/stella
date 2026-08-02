@@ -1,6 +1,7 @@
 import type { AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
+import type { ImageDescriptionService } from "./image-description.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 // Type-only imports — both session classes import from this file, so a
 // runtime import would form a cycle. The types are consumed only as
@@ -223,6 +224,8 @@ export type BaseRunOptions = {
   /** Private action-broker endpoint injected only into connector-capable children. */
   cliBridgeSocketPath?: string;
   resolvedLlm: ResolvedLlmRoute;
+  /** Lazily describes newly-arriving images when the selected model is text-only. */
+  describeImages?: ImageDescriptionService;
   store: RuntimeStore;
   abortSignal?: AbortSignal;
   stellaAppDir?: string;
