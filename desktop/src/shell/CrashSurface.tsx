@@ -123,12 +123,13 @@ export function CrashSurface({ error, componentStack }: Props) {
           conversationId,
         );
       } else {
-        await window.electronAPI?.agent.selfModRevert(
-          recoveryStatus?.kind === "clean"
-            ? recoveryStatus.latestSelfModCommit?.commitHash
-            : undefined,
-          1,
-        );
+        await window.electronAPI?.agent.selfModRevert({
+          commitHash:
+            recoveryStatus?.kind === "clean"
+              ? recoveryStatus.latestSelfModCommit?.commitHash
+              : undefined,
+          steps: 1,
+        });
       }
     } catch (err) {
       console.error("CrashSurface revert failed:", err);

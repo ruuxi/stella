@@ -18,13 +18,13 @@ export type LocalChatUpdatedPayload = {
   event?: EventRecord;
 };
 
-/**
- * One background-agent thread's authoritative activity state — a direct
- * projection of the runtime's `runtime_agents` row. This is the single source of truth the Activity
- * UI renders; lifecycle *events* remain the per-occurrence history for chat
- * cards, but never drive thread state.
- */
+/** One Activity row. Stella-managed rows project `runtime_agents` and remain
+ * execution-authoritative; Claude-native rows are durable observational
+ * projections only. `source` is the mandatory control/aggregation fence. */
 export type ThreadActivityRecord = {
+  /** Execution authority for this row. Claude-native rows are passive,
+   * read-only projections and must never enter Stella's agent manager. */
+  source: "stella" | "claude-native";
   threadId: string;
   conversationId: string;
   agentType: string;
@@ -37,6 +37,9 @@ export type ThreadActivityRecord = {
   /** Exact engine/model configuration captured for this thread's run. */
   modelConfigSnapshot?: AgentModelConfigSnapshot;
   parentAgentId?: string;
+  /** Claude-native projections are inspectable but cannot be resumed,
+   * messaged, paused, or independently canceled through Stella. */
+  readOnly?: boolean;
   startedAt: number;
   completedAt?: number;
   result?: string;
@@ -78,6 +81,7 @@ export type ThreadActivityAssistantUpdate = {
  * Manager coordination, and compaction can refresh an open read-only thread
  * without being presented as agent-authored prose. */
 export type ThreadTranscriptUpdate = {
+  source?: "stella" | "claude-native";
   threadId: string;
   entryId: string;
   atMs: number;
@@ -95,10 +99,21 @@ export type ThreadActivityUpdatedPayload = {
 /** Bounded, read-only projection of one agent thread's persisted transcript. */
 export type AgentThreadMessageRecord = {
   entryId?: string;
+  /** Durable append cursor. Present for Claude-native transcript rows. */
+  sequence?: number;
+  source?: "stella" | "claude-native";
   timestamp: number;
   role: "user" | "assistant" | "lifecycle";
   content: string;
   lifecycleEvent?: EventRecord;
+};
+
+/** Cursor-paginated read-only transcript page. `nextBeforeSequence` points
+ * to the next older page and is absent once history is exhausted. */
+export type AgentThreadMessagePage = {
+  messages: AgentThreadMessageRecord[];
+  nextBeforeSequence?: number;
+  hasMore: boolean;
 };
 
 /**
@@ -202,15 +217,22 @@ export type SelfModAppliedPayload = {
    * decoupled from commit timing; those identify by `commitHash` alone.
    */
   applyId?: string;
+  /** Stable identity of the grouped publication. Equal to `applyId` on new cards. */
+  changeSetId?: string;
   /**
    * Set once the run's commit lands. Only Undo needs it, so that affordance
    * stays hidden until it arrives — a run whose commit failed keeps a working
    * Update button and simply never offers Undo.
    */
   commitHash?: string;
+  /**
+   * Every commit represented by a grouped card, in finalize order. Multi-commit
+   * cards omit singular `commitHash` so legacy clients cannot partially undo.
+   */
+  commitHashes?: string[];
   files: string[];
   batchIndex: number;
-  status?: "pending" | "applied";
+  status?: "pending" | "applied" | "reverted";
 };
 
 /**
@@ -219,8 +241,13 @@ export type SelfModAppliedPayload = {
  * persisted card above, which is staged from tracked writes and so can exist
  * before any commit does.
  */
-export type SelfModCommitAppliedPayload = SelfModAppliedPayload & {
+export type SelfModCommitAppliedPayload = Omit<
+  SelfModAppliedPayload,
+  "status"
+> & {
   commitHash: string;
+  /** Commit-detection events never carry the later chat-card revert state. */
+  status?: "pending" | "applied";
 };
 
 export type MessagePayload = {

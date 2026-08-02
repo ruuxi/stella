@@ -114,6 +114,11 @@ export type TaskItem = {
   id: string
   description: string
   agentType: string
+  /** Execution authority for this Activity row. Claude-native entries are
+   * passive projections: visible and inspectable, but never runnable through
+   * Stella's lifecycle controls. */
+  source: ThreadActivityRecord['source']
+  readOnly: boolean
   status: TaskLifecycleStatus
   /** Durable execution epoch for retry/resume deduplication. */
   attemptGeneration?: number
@@ -175,9 +180,10 @@ export function selectFreshActivityTasks(
 ): TaskItem[] {
   return tasks.filter(
     (task) =>
-      task.status === 'running' ||
-      (typeof task.completedAtMs === 'number' &&
-        nowMs - task.completedAtMs <= TASK_COMPLETION_INDICATOR_MS),
+      isManagedActivityTask(task) &&
+      (task.status === 'running' ||
+        (typeof task.completedAtMs === 'number' &&
+          nowMs - task.completedAtMs <= TASK_COMPLETION_INDICATOR_MS)),
   )
 }
 
@@ -193,7 +199,7 @@ export function buildActivityTasks(
   decorations?: Record<string, TaskLiveDecoration>,
 ): TaskItem[] {
   return records
-    .filter((record) => isActivityFeedTask({ agentType: record.agentType }))
+    .filter((record) => isActivityFeedTask(record))
     .map((record) => {
       const candidateDecoration = decorations?.[record.threadId]
       const authoritative = {
@@ -230,6 +236,8 @@ export function buildActivityTasks(
         id: record.threadId,
         description: observedDescription ?? record.description,
         agentType: record.agentType,
+        source: record.source,
+        readOnly: record.source === 'claude-native' || record.readOnly === true,
         status,
         attemptGeneration:
           (latestAttemptOwns
@@ -327,8 +335,16 @@ export function fallbackTaskDescription(agentId: string | undefined): string {
  * specialists, recall lookups, and any future machinery agent types) remain
  * execution detail and must not surface as activity rows.
  */
-export function isActivityFeedTask(task: Pick<TaskItem, 'agentType'>): boolean {
-  return task.agentType === AGENT_IDS.GENERAL
+export function isActivityFeedTask(
+  task: Pick<TaskItem, 'agentType' | 'source'>,
+): boolean {
+  return task.source === 'claude-native' || task.agentType === AGENT_IDS.GENERAL
+}
+
+/** Rows that Stella owns and may use for work counts, notifications, and
+ * lifecycle aggregation. Claude-native rows are observability only. */
+export function isManagedActivityTask(task: Pick<TaskItem, 'source'>): boolean {
+  return task.source === 'stella'
 }
 
 export function isStandaloneTaskStatusText(
@@ -715,7 +731,7 @@ export const deriveTopLevelActivityWorkUnits = (
 ): TopLevelActivityWorkUnit[] => {
   const latestById = new Map<string, TaskItem>()
   for (const task of tasks) {
-    if (!isActivityFeedTask(task)) continue
+    if (!isActivityFeedTask(task) || !isManagedActivityTask(task)) continue
     const current = latestById.get(task.id)
     if (
       !current ||
@@ -807,10 +823,16 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
         const nextAncestors = new Set(ancestors)
         nextAncestors.add(task.id)
         const childRows = buildRows(children, nextAncestors)
-        const status = deriveOwnedAgentPresentationStatus(
-          task.status,
-          childRows.map(getActivityRowStatus),
-        )
+        const managedChildStatuses = childRows.flatMap((row) => {
+          const child = row.kind === 'task' ? row.task : row.hierarchy.owner
+          return isManagedActivityTask(child) ? [getActivityRowStatus(row)] : []
+        })
+        const status = isManagedActivityTask(task)
+          ? deriveOwnedAgentPresentationStatus(
+              task.status,
+              managedChildStatuses,
+            )
+          : task.status
         rows.push({
           kind: 'hierarchy',
           hierarchy: {

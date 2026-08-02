@@ -51,6 +51,11 @@ describe("mobile bridge argument adaptation", () => {
     expect(adaptLegacyMobileArgs("selfmod:apply", ["abc123"])).toEqual([
       { commitHash: "abc123" },
     ]);
+    expect(
+      adaptLegacyMobileArgs("selfmod:revert", ["abc123", 1]),
+    ).toEqual([
+      { commitHash: "abc123", steps: 1 },
+    ]);
     expect(adaptLegacyMobileArgs("selfmod:recentCommits", [10])).toEqual([
       { limit: 10 },
     ]);

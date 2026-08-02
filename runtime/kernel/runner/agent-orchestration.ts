@@ -46,6 +46,7 @@ import {
 import { runLightTextCompletion } from "../agent-runtime/light-completion.js";
 import { resolveRunnerRecallLlmRoute } from "./model-selection.js";
 import type { BackgroundExitWake } from "./background-exit-wake.js";
+import { acquireRepoMutationEpoch } from "../self-mod/mutation-epoch.js";
 
 /**
  * Hand a finished run's still-running `exec_command` sessions to the
@@ -484,12 +485,19 @@ export const createAgentOrchestration = (
     attemptTeardownTimeoutMs?: number;
   },
 ) => {
+  // A send_input continuation is a new engine attempt but the same logical
+  // self-mod run. Keep its checkout lease in this map until that logical run
+  // is finalized/canceled so no other author can write into the gap.
+  const mutationEpochReleases = new Map<string, () => Promise<void>>();
+
   const handleAgentLifecycleEvent = (event: AgentLifecycleEvent) => {
-    const parentOwner =
-      context.state.localAgentManager?.resolveOwningParentThread(
-        event.agentId,
-        event.parentAgentId,
-      );
+    const installedManager = context.state.localAgentManager;
+    const parentOwner = installedManager
+      ? installedManager.resolveOwningParentThread(
+          event.agentId,
+          event.parentAgentId,
+        )
+      : event.parentAgentId;
     const parentThreadId =
       typeof parentOwner === "string" ? parentOwner : undefined;
     const isParentOwned = parentThreadId !== undefined;
@@ -557,24 +565,39 @@ export const createAgentOrchestration = (
       // history, callbacks, or hidden follow-up stream — so a nested
       // completion produces no root card and no OS notification.
       if (
-        hasPersistedThreadCustomEvent(context, parentThreadId, event.eventId)
+        !hasPersistedThreadCustomEvent(context, parentThreadId, event.eventId)
       ) {
-        return;
+        persistThreadCustomMessage(context.runtimeStore, {
+          threadKey: parentThreadId,
+          customType: "runtime.task_lifecycle",
+          content: [{ type: "text", text: userPrompt }],
+          display: false,
+          timestamp: Date.now(),
+          ...(event.eventId ? { eventId: event.eventId } : {}),
+        });
       }
-      persistThreadCustomMessage(context.runtimeStore, {
-        threadKey: parentThreadId,
-        customType: "runtime.task_lifecycle",
-        content: [{ type: "text", text: userPrompt }],
-        display: false,
-        timestamp: Date.now(),
-        ...(event.eventId ? { eventId: event.eventId } : {}),
-      });
-      void context.state.localAgentManager?.sendAgentMessage(
+      const deliveryEventId = event.eventId?.trim();
+      const delivery = context.state.localAgentManager?.sendAgentMessage(
         parentThreadId,
         userPrompt,
         "orchestrator",
-        { deliveryKind: "child-report" },
+        {
+          deliveryKind: "child-report",
+          ...(deliveryEventId ? { deliveryEventId } : {}),
+        },
       );
+      if (deliveryEventId && delivery) {
+        void delivery
+          .then((result) => {
+            if (result.delivered) {
+              context.state.localAgentManager?.markParentWakeDelivered(
+                event.agentId,
+                deliveryEventId,
+              );
+            }
+          })
+          .catch(() => undefined);
+      }
       return;
     }
     // The follow-up below is in-memory delivery for the active orchestrator
@@ -626,20 +649,43 @@ export const createAgentOrchestration = (
         // consolidatable through the model-driven list either way.
       }
     }
-    void deps.sendMessage({
-      conversationId: event.conversationId,
-      text: userPrompt,
-      uiVisibility: "hidden",
-      agentType: AGENT_IDS.ORCHESTRATOR,
-      deliverAs: "followUp",
-      callbackRunId: event.rootRunId,
-      customType: "runtime.task_lifecycle",
-      display: false,
-      responseTarget: createAgentLifecycleResponseTarget({
-        agentId: event.agentId,
-        eventType: event.type,
-      }),
-    });
+    void (async () => {
+      const shouldPublishSelfModCompletion =
+        event.type === "agent-completed" &&
+        Boolean(event.eventId) &&
+        !isParentOwned &&
+        event.audience !== "display-only";
+      if (
+        shouldPublishSelfModCompletion &&
+        event.eventId &&
+        context.selfModLifecycle?.publishCompletion
+      ) {
+        await context.selfModLifecycle
+          .publishCompletion({
+            conversationId: event.conversationId,
+            ownerThreadId: event.agentId,
+            completionEventId: event.eventId,
+          })
+          .catch(() => undefined);
+      }
+      await deps.sendMessage({
+        conversationId: event.conversationId,
+        text: userPrompt,
+        uiVisibility: "hidden",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        deliverAs: "followUp",
+        callbackRunId: event.rootRunId,
+        customType: "runtime.task_lifecycle",
+        display: false,
+        responseTarget: createAgentLifecycleResponseTarget({
+          agentId: event.agentId,
+          eventType: event.type,
+          ...(event.type === "agent-completed" && event.eventId
+            ? { completionEventId: event.eventId }
+            : {}),
+        }),
+      });
+    })();
   };
 
   context.state.localAgentManager = new LocalAgentManager({
@@ -746,65 +792,107 @@ export const createAgentOrchestration = (
         context.state.conversationCallbacks.get(conversationId) ??
         null;
 
-      // This thread is awake again, so it can watch its own leftovers. Drop
-      // any arm from its previous run: a background exit landing now belongs
-      // to a live turn, not to a wake that would re-enter a thread already
-      // running. Teardown re-arms whatever is still going.
-      if (agentId) {
-        context.state.backgroundExitWake?.disarm(agentId);
-      }
-
-      if (shouldAttachSelfModLifecycle) {
-        // Register the run with the contention tracker before any writes can
-        // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
-        // already-finalized runs, so beginRun must precede writes.
-        if (!isContinuingSelfModRun) {
-          await context.selfModHmrController?.beginRun(lifecycleRunId);
-          const expectedWritePaths = resolveExpectedSelfModWritePaths(
-            effectiveSelfModMetadata,
-            context.stellaAppDir,
-          );
-          if (expectedWritePaths.length > 0) {
-            await Promise.resolve(
-              context.selfModHmrController?.recordWrite(
-                lifecycleRunId,
-                expectedWritePaths,
-                {
-                  captureSnapshot: false,
-                },
-              ),
-            ).catch((error) => {
-              console.warn(
-                "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
-                (error as Error).message,
-              );
-            });
-          }
-          await Promise.resolve(
-            context.selfModLifecycle!.beginRun({
-              runId: lifecycleRunId,
-              ...(rootRunId ? { rootRunId } : {}),
-              taskDescription,
-              taskPrompt,
-              conversationId,
-              ...(effectiveSelfModMetadata ?? {}),
-            }),
-          );
-          onSelfModRunStarted?.(lifecycleRunId);
-        }
-      }
-      let exploreFindingsBlock = "";
+      // Every self-mod author participates in the same checkout-wide epoch.
+      // Claude's vanilla Bash/MCP/Task writes cannot be fenced per tool, so a
+      // narrower Claude-only lease would still let Pi/Codex writes leak into
+      // Claude's final worktree snapshot and Apply commit.
+      let releaseMutationEpoch = mutationEpochReleases.get(lifecycleRunId);
       if (
-        agentType === AGENT_IDS.GENERAL &&
-        (await shouldUseAutomaticSkillExplore(context.stellaDataDir))
+        !releaseMutationEpoch &&
+        shouldAttachSelfModLifecycle &&
+        context.stellaAppDir
       ) {
-        exploreFindingsBlock = await runExplore({
-          context,
-          conversationId,
-          taskDescription,
-          taskPrompt,
-          signal: abortSignal,
-        });
+        releaseMutationEpoch = await acquireRepoMutationEpoch(
+          context.stellaAppDir,
+          abortSignal,
+        );
+        mutationEpochReleases.set(lifecycleRunId, releaseMutationEpoch);
+      }
+      const closeMutationEpoch = async (): Promise<void> => {
+        const release = mutationEpochReleases.get(lifecycleRunId);
+        if (!release) return;
+        mutationEpochReleases.delete(lifecycleRunId);
+        await release();
+      };
+
+      let exploreFindingsBlock = "";
+      let selfModRunBegan = false;
+      try {
+        // This thread is awake again, so it can watch its own leftovers. Drop
+        // any arm from its previous run: a background exit landing now belongs
+        // to a live turn, not to a wake that would re-enter a thread already
+        // running. Teardown re-arms whatever is still going.
+        if (agentId) {
+          context.state.backgroundExitWake?.disarm(agentId);
+        }
+
+        if (shouldAttachSelfModLifecycle) {
+          // Register the run with the contention tracker before any writes can
+          // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
+          // already-finalized runs, so beginRun must precede writes.
+          if (!isContinuingSelfModRun) {
+            await context.selfModHmrController?.beginRun(lifecycleRunId);
+            selfModRunBegan = true;
+            const expectedWritePaths = resolveExpectedSelfModWritePaths(
+              effectiveSelfModMetadata,
+              context.stellaAppDir,
+            );
+            if (expectedWritePaths.length > 0) {
+              await Promise.resolve(
+                context.selfModHmrController?.recordWrite(
+                  lifecycleRunId,
+                  expectedWritePaths,
+                  {
+                    captureSnapshot: false,
+                  },
+                ),
+              ).catch((error) => {
+                console.warn(
+                  "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
+                  (error as Error).message,
+                );
+              });
+            }
+            await Promise.resolve(
+              context.selfModLifecycle!.beginRun({
+                runId: lifecycleRunId,
+                ...(rootRunId ? { rootRunId } : {}),
+                taskDescription,
+                taskPrompt,
+                conversationId,
+                ...(effectiveSelfModMetadata ?? {}),
+              }),
+            );
+            onSelfModRunStarted?.(lifecycleRunId);
+          }
+        }
+        if (
+          agentType === AGENT_IDS.GENERAL &&
+          (await shouldUseAutomaticSkillExplore(context.stellaDataDir))
+        ) {
+          exploreFindingsBlock = await runExplore({
+            context,
+            conversationId,
+            taskDescription,
+            taskPrompt,
+            signal: abortSignal,
+          });
+        }
+      } catch (error) {
+        if (selfModRunBegan) {
+          if (typeof context.selfModLifecycle?.cancelRun === "function") {
+            await Promise.resolve(
+              context.selfModLifecycle.cancelRun(lifecycleRunId),
+            ).catch(() => undefined);
+          } else {
+            await context.selfModHmrController
+              ?.cancel(lifecycleRunId)
+              .catch(() => undefined);
+          }
+          onSelfModRunClosed?.(lifecycleRunId);
+        }
+        await closeMutationEpoch();
+        throw error;
       }
 
       const composedUserPrompt = exploreFindingsBlock
@@ -872,7 +960,9 @@ export const createAgentOrchestration = (
           "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions before self-mod apply.",
         );
         await Promise.allSettled(
-          sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
+          sessionIds.map(async (sessionId) => {
+            await context.toolHost.killShell(sessionId);
+          }),
         );
       };
 
@@ -901,7 +991,7 @@ export const createAgentOrchestration = (
 
       const recordWritePaths = async (
         paths: string[],
-        options?: { captureSnapshot?: boolean },
+        options?: { captureSnapshot?: boolean; createdPaths?: string[] },
       ) => {
         if (!shouldAttachSelfModLifecycle || !context.selfModHmrController) {
           return;
@@ -922,8 +1012,17 @@ export const createAgentOrchestration = (
           ...collectWrittenPaths(event.fileChanges),
           ...collectWrittenPaths(event.producedFiles),
         ];
+        const createdPaths = [
+          ...(event.fileChanges ?? []),
+          ...(event.producedFiles ?? []),
+        ]
+          .filter((record) => record.kind.type === "add")
+          .map((record) => record.path);
         try {
-          await recordWritePaths(paths);
+          await recordWritePaths(
+            paths,
+            createdPaths.length > 0 ? { createdPaths } : undefined,
+          );
         } catch (error) {
           console.warn(
             "[self-mod-hmr] recordWrite failed (continuing):",
@@ -987,7 +1086,9 @@ export const createAgentOrchestration = (
           const preWritePaths = inferPreWritePaths(toolName, args, ctx);
           if (preWritePaths.length > 0) {
             try {
-              await recordWritePaths(preWritePaths, { captureSnapshot: false });
+              await recordWritePaths(preWritePaths, {
+                captureSnapshot: false,
+              });
             } catch (error) {
               console.warn(
                 "[self-mod-hmr] pre-write recordWrite failed:",
@@ -1217,25 +1318,38 @@ export const createAgentOrchestration = (
             );
           }
         }
+        // External engines report native/ambient writes on the final result,
+        // while Stella tools report incrementally through tool-end events.
+        // Union both sources: the old all-or-nothing branch discarded the
+        // external half whenever even one Stella tool had also written.
+        const resultFileChanges = [...(result.fileChanges ?? [])];
+        const resultProducedFiles = [...(result.producedFiles ?? [])];
+        for (const change of resultFileChanges) {
+          const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? (change.kind.move_path ?? "") : ""}`;
+          if (subagentFileChangeKeys.has(key)) continue;
+          subagentFileChangeKeys.add(key);
+          subagentFileChanges.push(change);
+        }
+        for (const file of resultProducedFiles) {
+          const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? (file.kind.move_path ?? "") : ""}`;
+          if (subagentProducedFileKeys.has(key)) continue;
+          subagentProducedFileKeys.add(key);
+          subagentProducedFiles.push(file);
+        }
         if (subagentFileChanges.length > 0) {
           result.fileChanges = subagentFileChanges;
         }
         if (subagentProducedFiles.length > 0) {
           result.producedFiles = subagentProducedFiles;
         }
-        const hasCollectedToolWrites =
-          subagentFileChanges.length > 0 || subagentProducedFiles.length > 0;
-        if (
-          !hasCollectedToolWrites &&
-          (result.fileChanges?.length || result.producedFiles?.length)
-        ) {
-          // External engines report writes on the final run result instead of
-          // emitting Stella tool-end events, so bridge those deltas into the
-          // self-mod lifecycle here.
+        if (resultFileChanges.length > 0 || resultProducedFiles.length > 0) {
+          // Always refresh HMR from the external engine's terminal state,
+          // even when an identical path/kind was already seen through a
+          // Stella tool. Native work may have edited that same file again.
           pendingToolWriteRecords.push(
             recordToolWrites({
-              fileChanges: result.fileChanges,
-              producedFiles: result.producedFiles,
+              fileChanges: resultFileChanges,
+              producedFiles: resultProducedFiles,
             }),
           );
         }
@@ -1263,83 +1377,96 @@ export const createAgentOrchestration = (
             ? { backgroundExitWake: context.state.backgroundExitWake }
             : {}),
         });
+        const shouldKeepMutationEpoch = Boolean(
+          shouldAttachSelfModLifecycle &&
+          subagentInterrupted &&
+          shouldContinueSelfModLifecycleAfterInterrupt?.(),
+        );
         if (shouldAttachSelfModLifecycle) {
-          // The finalize/cancel hooks below own the entire apply pipeline
-          // (contention tracker drain, Vite overlay swap, runtime restart,
-          // morph cover). The renderer no longer participates in the
-          // resume-flush dance — it just observes self-mod-hmr state events
-          // emitted by the worker server.
-          if (subagentSucceeded) {
-            // The commit subject is one line of derived text, so it runs as
-            // a single stateless completion on the engine-aware light tier —
-            // no session, no thread history, no tools, no run events. The
-            // prompt already carries everything that decides the subject
-            // (task, changed files, truncated diff), so re-sending this
-            // thread's transcript would buy nothing. A failure here is not
-            // fatal: the finalizer falls back to the task description.
-            const commitMessageProvider = createCommitSubjectProvider(
-              async (prompt) => {
-                const route = await resolveRunnerRecallLlmRoute(
-                  context,
-                  agentType,
-                  agentContext.modelConfigSnapshot,
-                );
-                return await runLightTextCompletion({
-                  route,
-                  userPrompt: prompt,
-                  agentType,
-                  stellaAppDir: context.stellaAppDir,
-                  stellaDataDir: context.stellaDataDir,
-                  maxOutputTokens: COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
-                  ...(abortSignal ? { signal: abortSignal } : {}),
-                });
-              },
-            );
+          try {
+            // The finalize/cancel hooks below own the entire apply pipeline
+            // (contention tracker drain, Vite overlay swap, runtime restart,
+            // morph cover). The renderer no longer participates in the
+            // resume-flush dance — it just observes self-mod-hmr state events
+            // emitted by the worker server.
+            if (subagentSucceeded) {
+              // The commit subject is one line of derived text, so it runs as
+              // a single stateless completion on the engine-aware light tier —
+              // no session, no thread history, no tools, no run events. The
+              // prompt already carries everything that decides the subject
+              // (task, changed files, truncated diff), so re-sending this
+              // thread's transcript would buy nothing. A failure here is not
+              // fatal: the finalizer falls back to the task description.
+              const commitMessageProvider = createCommitSubjectProvider(
+                async (prompt) => {
+                  const route = await resolveRunnerRecallLlmRoute(
+                    context,
+                    agentType,
+                    agentContext.modelConfigSnapshot,
+                  );
+                  return await runLightTextCompletion({
+                    route,
+                    userPrompt: prompt,
+                    agentType,
+                    stellaAppDir: context.stellaAppDir,
+                    stellaDataDir: context.stellaDataDir,
+                    maxOutputTokens: COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
+                    ...(abortSignal ? { signal: abortSignal } : {}),
+                  });
+                },
+              );
 
-            // Durable feature identity, decided at write time: an explicit
-            // identity from the caller, else the authoring thread key, so a
-            // thread resumed later keeps extending the same feature.
-            const threadName =
-              !selfModFeature && agentId
-                ? context.runtimeStore.getThreadName?.(agentId)
-                : undefined;
-            const featureId = selfModFeature?.featureId ?? agentId;
-            const featureTitle =
-              selfModFeature?.featureTitle ??
-              (threadName && threadName !== agentId
-                ? threadName
-                : taskDescription);
+              // Durable feature identity, decided at write time: an explicit
+              // identity from the caller, else the authoring thread key, so a
+              // thread resumed later keeps extending the same feature.
+              const threadName =
+                !selfModFeature && agentId
+                  ? context.runtimeStore.getThreadName?.(agentId)
+                  : undefined;
+              const featureId = selfModFeature?.featureId ?? agentId;
+              const featureTitle =
+                selfModFeature?.featureTitle ??
+                (threadName && threadName !== agentId
+                  ? threadName
+                  : taskDescription);
 
-            await Promise.resolve(
-              context.selfModLifecycle!.finalizeRun({
-                runId: lifecycleRunId,
-                ...(rootRunId ? { rootRunId } : {}),
-                taskDescription,
-                taskPrompt,
-                conversationId,
-                ...(agentId ? { threadKey: agentId } : {}),
-                ...(featureId ? { featureId } : {}),
-                ...(featureTitle ? { featureTitle } : {}),
-                succeeded: true,
-                commitMessageProvider,
-              }),
-            );
-            onSelfModRunClosed?.(lifecycleRunId);
-          } else if (
-            subagentInterrupted &&
-            shouldContinueSelfModLifecycleAfterInterrupt?.()
-          ) {
-            // This interrupt is a continuation boundary, not terminal
-            // cancellation. Keep the self-mod run open so writes before and
-            // after the boundary apply as one batch when the task finishes.
-          } else if (
-            typeof context.selfModLifecycle!.cancelRun === "function"
-          ) {
-            await Promise.resolve(
-              context.selfModLifecycle!.cancelRun(lifecycleRunId),
-            );
-            onSelfModRunClosed?.(lifecycleRunId);
+              await Promise.resolve(
+                context.selfModLifecycle!.finalizeRun({
+                  runId: lifecycleRunId,
+                  ...(rootRunId ? { rootRunId } : {}),
+                  taskDescription,
+                  taskPrompt,
+                  conversationId,
+                  ...(agentId ? { threadKey: agentId } : {}),
+                  ...((agentContext.parentAgentId ?? agentId)
+                    ? { ownerThreadId: agentContext.parentAgentId ?? agentId }
+                    : {}),
+                  ...(featureId ? { featureId } : {}),
+                  ...(featureTitle ? { featureTitle } : {}),
+                  succeeded: true,
+                  commitMessageProvider,
+                }),
+              );
+              onSelfModRunClosed?.(lifecycleRunId);
+            } else if (shouldKeepMutationEpoch) {
+              // This interrupt is a continuation boundary, not terminal
+              // cancellation. Keep the self-mod run open so writes before and
+              // after the boundary apply as one batch when the task finishes.
+            } else if (
+              typeof context.selfModLifecycle!.cancelRun === "function"
+            ) {
+              await Promise.resolve(
+                context.selfModLifecycle!.cancelRun(lifecycleRunId),
+              );
+              onSelfModRunClosed?.(lifecycleRunId);
+            }
+          } finally {
+            if (!shouldKeepMutationEpoch) {
+              await closeMutationEpoch();
+            }
           }
+        } else {
+          await closeMutationEpoch();
         }
       }
     },
@@ -1367,14 +1494,56 @@ export const createAgentOrchestration = (
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
     listAgentRecordsByStatus: (status) =>
       context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
-    hasAgentLifecycleEvent: (conversationId, eventId, type) =>
-      context.runtimeStore.hasEvent(conversationId, eventId, type) &&
-      hasPersistedThreadCustomEvent(
+    hasAgentLifecycleEvent: (conversationId, eventId, type) => {
+      const hasHiddenDelivery = hasPersistedThreadCustomEvent(
         context,
         resolveOrchestratorThreadKey(conversationId),
         eventId,
-      ),
+      );
+      return (
+        context.runtimeStore.hasEvent(conversationId, eventId, type) &&
+        hasHiddenDelivery
+      );
+    },
   });
+  context.state.localAgentManager.repairInterruptedDescendantBoundaries();
+
+  // A child terminal row may survive a crash after its report was persisted
+  // but before the owning parent durably consumed the wake. Replay only
+  // unacknowledged child boundaries. The parent's persisted event-id fence
+  // covers the narrow crash window after parent delivery but before this
+  // child row receives its acknowledgement.
+  for (const status of ["completed", "error", "canceled"] as const) {
+    for (const record of context.runtimeStore.listAgentRecordsByStatus?.(
+      status,
+    ) ?? []) {
+      if (!record.parentAgentId) continue;
+      const type =
+        status === "completed"
+          ? "agent-completed"
+          : status === "error"
+            ? "agent-failed"
+            : "agent-canceled";
+      const eventId = `${record.threadId}:${record.attemptGeneration}:${type}`;
+      // Absence is deliberately settled for migration safety: legacy child
+      // rows predate this handshake and must never all replay on upgrade.
+      if (record.descendantBoundaryState?.parentWakePendingEventId !== eventId)
+        continue;
+      handleAgentLifecycleEvent({
+        type,
+        conversationId: record.conversationId,
+        eventId,
+        rootRunId: record.rootRunId,
+        agentId: record.threadId,
+        agentType: record.agentType,
+        description: record.description,
+        parentAgentId: record.parentAgentId,
+        attemptGeneration: record.attemptGeneration,
+        ...(status === "completed" ? { result: record.result } : {}),
+        ...(status !== "completed" ? { error: record.error } : {}),
+      });
+    }
+  }
 
   const runBlockingLocalAgent = async (
     request: Omit<AgentToolRequest, "storageMode">,
@@ -1452,6 +1621,10 @@ export const createAgentOrchestration = (
   const shutdown = () => {
     context.state.localAgentManager?.shutdown();
     shutdownSubagentRuntimes();
+    // Do not release active epochs ahead of asynchronous engine teardown.
+    // Each aborted run releases from its finally block; a hard worker exit
+    // leaves a pid-owned ticket that the successor safely reclaims only after
+    // this worker is dead.
   };
 
   return {

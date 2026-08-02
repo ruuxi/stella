@@ -1,10 +1,14 @@
 import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
+import crypto from "node:crypto";
+import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
 import {
   AGENT_IDS,
   normalizeRetiredAgentType,
   type TaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
 import type {
+  AgentThreadMessagePage,
+  AgentThreadMessageRecord,
   ThreadActivityAssistantUpdate,
   ThreadActivityRecord,
   ThreadActivityUpdatedPayload,
@@ -85,9 +89,68 @@ export const AGENT_ASSISTANT_UPDATE_LIMITS = {
 } as const;
 
 type SessionStoreOptions = {
+  onThreadActivityUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
   onThreadAssistantUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
   onThreadTranscriptUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
 };
+
+export type ClaudeNativeChildObservation = {
+  conversationId: string;
+  ownerThreadId: string;
+  rootRunId?: string;
+  claudeSessionId: string;
+  atMs?: number;
+  event:
+    | {
+        type: "launch";
+        toolUseId: string;
+        parentToolUseId?: string;
+        taskId?: string;
+        description?: string;
+        prompt?: string;
+        subagentType?: string;
+      }
+    | {
+        type: "message";
+        parentToolUseId: string;
+        entryId: string;
+        role: "user" | "assistant";
+        content: string;
+      }
+    | {
+        type: "tool-result";
+        toolUseId: string;
+        entryId: string;
+        content?: string;
+        isError?: boolean;
+      }
+    | {
+        type: "task-status";
+        taskId?: string;
+        toolUseId?: string;
+        entryId: string;
+        status: "running" | "completed" | "error" | "canceled";
+        description?: string;
+        content?: string;
+      }
+    | {
+        type: "run-ended";
+        error: string;
+      };
+};
+
+const sanitizeClaudeNativeText = (
+  value: string | undefined,
+  maxChars: number,
+): string => {
+  const sanitized = sanitizeSensitiveData(value ?? "");
+  return (typeof sanitized === "string" ? sanitized : "")
+    .trim()
+    .slice(0, maxChars);
+};
+
+const persistedClaudeNativeEntryId = (value: string): string =>
+  value.trim().slice(0, 512);
 
 export class FtsSearchUnavailableError extends Error {
   override readonly name = "FtsSearchUnavailableError";
@@ -160,6 +223,17 @@ export type PersistedAgentRecord = {
   agentDepth: number;
   maxAgentDepth?: number;
   parentAgentId?: string;
+  descendantBoundaryState?: {
+    consumedEventIds: string[];
+    wakePending: boolean;
+    /** A natural final is held until an active descendant reports terminal. */
+    finalParked?: boolean;
+    pendingCompletionEventId?: string;
+    /** Positive durable intent to deliver this child terminal event upward. */
+    parentWakePendingEventId?: string;
+    /** This child attempt's terminal report was durably accepted by its parent. */
+    parentWakeDeliveredEventId?: string;
+  };
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
@@ -1483,6 +1557,78 @@ export class SessionStore {
     return Boolean(
       type ? statement.get(eventId, type) : statement.get(eventId),
     );
+  }
+
+  getEvent(
+    conversationIdInput: string,
+    eventIdInput: string,
+  ): LocalChatEventRecord | null {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const eventId = asTrimmedString(eventIdInput);
+    if (!eventId) return null;
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          message.id AS _id,
+          message.created_at AS timestamp,
+          message.type AS type,
+          message.device_id AS deviceId,
+          message.request_id AS requestId,
+          message.target_device_id AS targetDeviceId,
+          part.data_json AS payloadJson,
+          message.data_json AS channelEnvelopeJson
+        FROM message
+        LEFT JOIN part
+          ON part.message_id = message.id
+         AND part.ord = 0
+        WHERE message.id = ? AND message.session_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(eventId, conversationId) as LocalChatEventRow | undefined;
+    return row ? this.deserializeEventRow(row) : null;
+  }
+
+  findTerminalAssistantEvent(
+    conversationIdInput: string,
+    completionEventIdInput: string,
+  ): LocalChatEventRecord | null {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const completionEventId = asTrimmedString(completionEventIdInput);
+    if (!completionEventId) return null;
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          message.id AS _id,
+          message.created_at AS timestamp,
+          message.type AS type,
+          message.device_id AS deviceId,
+          message.request_id AS requestId,
+          message.target_device_id AS targetDeviceId,
+          part.data_json AS payloadJson,
+          message.data_json AS channelEnvelopeJson
+        FROM message
+        LEFT JOIN part
+          ON part.message_id = message.id
+         AND part.ord = 0
+        WHERE message.session_id = ?
+          AND message.type = 'assistant_message'
+          AND json_extract(
+            part.data_json,
+            '$.metadata.runtime.responseTarget.type'
+          ) = 'agent_terminal_notice'
+          AND json_extract(
+            part.data_json,
+            '$.metadata.runtime.responseTarget.completionEventId'
+          ) = ?
+        ORDER BY message.created_at DESC, message.id DESC
+        LIMIT 1
+      `,
+      )
+      .get(conversationId, completionEventId) as LocalChatEventRow | undefined;
+    return row ? this.deserializeEventRow(row) : null;
   }
 
   /**
@@ -4521,6 +4667,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        descendant_boundary_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -4532,7 +4679,7 @@ export class SessionStore {
         root_run_id,
         attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4540,6 +4687,7 @@ export class SessionStore {
         agent_depth = excluded.agent_depth,
         max_agent_depth = excluded.max_agent_depth,
         parent_agent_id = excluded.parent_agent_id,
+        descendant_boundary_state_json = excluded.descendant_boundary_state_json,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
         model_config_json = excluded.model_config_json,
         status = excluded.status,
@@ -4560,6 +4708,7 @@ export class SessionStore {
         record.agentDepth,
         record.maxAgentDepth ?? null,
         record.parentAgentId ?? null,
+        toJsonValueString(record.descendantBoundaryState) ?? null,
         toJsonValueString(record.selfModMetadata) ?? null,
         toJsonValueString(record.modelConfigSnapshot) ?? null,
         record.status,
@@ -4838,11 +4987,13 @@ export class SessionStore {
     threadId: string;
     entryId: string;
     atMs: number;
+    source?: "stella" | "claude-native";
   }): void {
     if (!this.options.onThreadTranscriptUpdate || !args.entryId) return;
     this.options.onThreadTranscriptUpdate({
       conversationId: args.conversationId,
       transcriptUpdate: {
+        source: args.source ?? "stella",
         threadId: args.threadId,
         entryId: args.entryId,
         atMs: args.atMs,
@@ -4900,6 +5051,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        descendant_boundary_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -4924,6 +5076,7 @@ export class SessionStore {
           agent_depth: number;
           max_agent_depth: number | null;
           parent_agent_id: string | null;
+          descendant_boundary_state_json: string | null;
           self_mod_metadata_json: string | null;
           model_config_json: string | null;
           status: PersistedAgentRecord["status"];
@@ -4942,6 +5095,9 @@ export class SessionStore {
     const selfModMetadata = parseJsonValue<
       PersistedAgentRecord["selfModMetadata"]
     >(row.self_mod_metadata_json);
+    const descendantBoundaryState = parseJsonValue<
+      PersistedAgentRecord["descendantBoundaryState"]
+    >(row.descendant_boundary_state_json);
     const modelConfigSnapshot = parseJsonValue<
       PersistedAgentRecord["modelConfigSnapshot"]
     >(row.model_config_json);
@@ -4955,6 +5111,7 @@ export class SessionStore {
         ? {}
         : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+      ...(descendantBoundaryState ? { descendantBoundaryState } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
       status: row.status,
@@ -4965,6 +5122,433 @@ export class SessionStore {
       ...(row.result ? { result: row.result } : {}),
       ...(row.error ? { error: row.error } : {}),
       updatedAt: row.updated_at,
+    };
+  }
+
+  private claudeNativeThreadId(args: {
+    ownerThreadId: string;
+    claudeSessionId: string;
+    toolUseId: string;
+  }): string {
+    const digest = crypto
+      .createHash("sha256")
+      .update(args.ownerThreadId)
+      .update("\0")
+      .update(args.claudeSessionId)
+      .update("\0")
+      .update(args.toolUseId)
+      .digest("base64url")
+      .slice(0, 24);
+    return `claude-native:${digest}`;
+  }
+
+  private findClaudeNativeChild(args: {
+    ownerThreadId: string;
+    claudeSessionId?: string;
+    toolUseId?: string;
+    taskId?: string;
+  }): { threadId: string; conversationId: string } | null {
+    const toolUseId = args.toolUseId?.trim();
+    const taskId = args.taskId?.trim();
+    if (!toolUseId && !taskId) return null;
+    const row = this.db
+      .prepare(
+        `
+      SELECT thread_id AS threadId, conversation_id AS conversationId
+      FROM claude_native_children
+      WHERE owner_thread_id = ?
+        AND claude_session_id = ?
+        AND (
+          (? IS NOT NULL AND native_tool_use_id = ?)
+          OR (? IS NOT NULL AND native_task_id = ?)
+        )
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+      )
+      .get(
+        args.ownerThreadId,
+        args.claudeSessionId ?? "",
+        toolUseId ?? null,
+        toolUseId ?? null,
+        taskId ?? null,
+        taskId ?? null,
+      ) as { threadId: string; conversationId: string } | undefined;
+    return row ?? null;
+  }
+
+  private ensureClaudeNativeChild(args: {
+    conversationId: string;
+    ownerThreadId: string;
+    rootRunId?: string;
+    claudeSessionId: string;
+    toolUseId: string;
+    parentToolUseId?: string;
+    taskId?: string;
+    description?: string;
+    prompt?: string;
+    subagentType?: string;
+    atMs: number;
+  }): { threadId: string; conversationId: string } {
+    const existing = this.findClaudeNativeChild(args);
+    const threadId =
+      existing?.threadId ??
+      this.claudeNativeThreadId({
+        ownerThreadId: args.ownerThreadId,
+        claudeSessionId: args.claudeSessionId,
+        toolUseId: args.toolUseId,
+      });
+    const nativeParent = args.parentToolUseId
+      ? this.findClaudeNativeChild({
+          ownerThreadId: args.ownerThreadId,
+          claudeSessionId: args.claudeSessionId,
+          toolUseId: args.parentToolUseId,
+        })
+      : null;
+    const parentThreadId = nativeParent?.threadId ?? args.ownerThreadId;
+    const description =
+      sanitizeClaudeNativeText(args.description, 500) || "Claude native agent";
+    const prompt = sanitizeClaudeNativeText(args.prompt, 64_000) || null;
+    const subagentType =
+      sanitizeClaudeNativeText(args.subagentType, 200) || null;
+    this.db
+      .prepare(
+        `
+      INSERT INTO claude_native_children (
+        thread_id, conversation_id, owner_thread_id, parent_thread_id,
+        claude_session_id, native_tool_use_id, native_task_id,
+        description, prompt, subagent_type, status,
+        started_at, completed_at, result, error, updated_at, root_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, NULL, NULL, NULL, ?, ?)
+      ON CONFLICT(thread_id) DO UPDATE SET
+        parent_thread_id = excluded.parent_thread_id,
+        native_task_id = COALESCE(excluded.native_task_id, native_task_id),
+        description = CASE
+          WHEN excluded.description = 'Claude native agent' THEN description
+          ELSE excluded.description
+        END,
+        prompt = COALESCE(excluded.prompt, prompt),
+        subagent_type = COALESCE(excluded.subagent_type, subagent_type),
+        updated_at = MAX(updated_at, excluded.updated_at),
+        root_run_id = COALESCE(excluded.root_run_id, root_run_id)
+    `,
+      )
+      .run(
+        threadId,
+        args.conversationId,
+        args.ownerThreadId,
+        parentThreadId,
+        args.claudeSessionId,
+        args.toolUseId,
+        args.taskId?.trim() || null,
+        description,
+        prompt,
+        subagentType,
+        args.atMs,
+        args.atMs,
+        args.rootRunId ?? null,
+      );
+    return { threadId, conversationId: args.conversationId };
+  }
+
+  /** Persist one normalized observation from vanilla Claude Code. This is a
+   * passive projection only: it never creates runtime_agents rows or manager
+   * completion/wake semantics. */
+  observeClaudeNativeChild(observation: ClaudeNativeChildObservation): void {
+    const ownerThreadId = observation.ownerThreadId.trim();
+    const conversationId = observation.conversationId.trim();
+    const claudeSessionId = observation.claudeSessionId.trim();
+    if (!ownerThreadId || !conversationId || !claudeSessionId) return;
+    const atMs = Math.max(0, Math.floor(observation.atMs ?? Date.now()));
+    const event = observation.event;
+    let changedThreadId: string | undefined;
+    let insertedEntry:
+      | { threadId: string; entryId: string; atMs: number }
+      | undefined;
+
+    this.withTransaction(() => {
+      if (event.type === "run-ended") {
+        const error =
+          sanitizeClaudeNativeText(event.error, 2_000) ||
+          "Claude Code ended before this native agent reported completion.";
+        const runningRows = this.db
+          .prepare(
+            `SELECT thread_id AS threadId
+             FROM claude_native_children
+             WHERE owner_thread_id = ? AND claude_session_id = ?
+               AND status = 'running'`,
+          )
+          .all(ownerThreadId, claudeSessionId) as Array<{ threadId: string }>;
+        this.db
+          .prepare(
+            `UPDATE claude_native_children
+             SET status = 'error', completed_at = ?, error = ?, updated_at = ?
+             WHERE owner_thread_id = ? AND claude_session_id = ?
+               AND status = 'running'`,
+          )
+          .run(atMs, error, atMs, ownerThreadId, claudeSessionId);
+        changedThreadId = runningRows[0]?.threadId;
+        return;
+      }
+      if (event.type === "launch") {
+        const toolUseId = event.toolUseId.trim();
+        if (!toolUseId) return;
+        const child = this.ensureClaudeNativeChild({
+          conversationId,
+          ownerThreadId,
+          rootRunId: observation.rootRunId,
+          claudeSessionId,
+          toolUseId,
+          parentToolUseId: event.parentToolUseId,
+          taskId: event.taskId,
+          description: event.description,
+          prompt: event.prompt,
+          subagentType: event.subagentType,
+          atMs,
+        });
+        changedThreadId = child.threadId;
+        const prompt = sanitizeClaudeNativeText(event.prompt, 64_000);
+        if (prompt) {
+          const entryId = `${child.threadId}:launch-prompt`;
+          const inserted = this.db
+            .prepare(
+              `INSERT OR IGNORE INTO claude_native_child_messages
+               (entry_id, child_thread_id, role, content, event_kind, created_at)
+               VALUES (?, ?, 'user', ?, 'launch-prompt', ?)`,
+            )
+            .run(entryId, child.threadId, prompt, atMs) as { changes: number };
+          if (inserted.changes > 0) {
+            insertedEntry = { threadId: child.threadId, entryId, atMs };
+          }
+        }
+        return;
+      }
+
+      const toolUseId =
+        event.type === "message"
+          ? event.parentToolUseId
+          : event.toolUseId?.trim();
+      let child = this.findClaudeNativeChild({
+        ownerThreadId,
+        claudeSessionId,
+        toolUseId,
+        ...(event.type === "task-status" && event.taskId
+          ? { taskId: event.taskId }
+          : {}),
+      });
+      // Only an observed Agent/Task launch may create an Activity row.
+      // Forwarded child tool_result/task events also cover Bash and other
+      // native tools; synthesizing from those would create fake subagents.
+      if (!child) return;
+      changedThreadId = child.threadId;
+
+      if (event.type === "message") {
+        const content = sanitizeClaudeNativeText(event.content, 64_000);
+        if (!content) return;
+        const entryId = persistedClaudeNativeEntryId(event.entryId);
+        const inserted = this.db
+          .prepare(
+            `INSERT OR IGNORE INTO claude_native_child_messages
+             (entry_id, child_thread_id, role, content, event_kind, created_at)
+             VALUES (?, ?, ?, ?, 'message', ?)`,
+          )
+          .run(entryId, child.threadId, event.role, content, atMs) as {
+          changes: number;
+        };
+        if (inserted.changes > 0) {
+          insertedEntry = {
+            threadId: child.threadId,
+            entryId,
+            atMs,
+          };
+          this.db
+            .prepare(
+              `UPDATE claude_native_children
+               SET updated_at = MAX(updated_at, ?)
+               WHERE thread_id = ?`,
+            )
+            .run(atMs, child.threadId);
+        }
+        return;
+      }
+
+      if (event.type === "tool-result") {
+        const status = event.isError ? "error" : "completed";
+        const content = sanitizeClaudeNativeText(event.content, 64_000);
+        this.db
+          .prepare(
+            `UPDATE claude_native_children
+             SET status = ?, completed_at = ?,
+                 result = CASE WHEN ? = 'completed' THEN NULLIF(?, '') ELSE result END,
+                 error = CASE WHEN ? = 'error' THEN NULLIF(?, '') ELSE error END,
+                 updated_at = ?
+             WHERE thread_id = ? AND updated_at <= ?`,
+          )
+          .run(
+            status,
+            atMs,
+            status,
+            content,
+            status,
+            content,
+            atMs,
+            child.threadId,
+            atMs,
+          );
+        if (content) {
+          const entryId = persistedClaudeNativeEntryId(event.entryId);
+          const inserted = this.db
+            .prepare(
+              `INSERT OR IGNORE INTO claude_native_child_messages
+               (entry_id, child_thread_id, role, content, event_kind, created_at)
+               VALUES (?, ?, 'lifecycle', ?, 'tool-result', ?)`,
+            )
+            .run(entryId, child.threadId, content, atMs) as {
+            changes: number;
+          };
+          if (inserted.changes > 0) {
+            insertedEntry = {
+              threadId: child.threadId,
+              entryId,
+              atMs,
+            };
+          }
+        }
+        return;
+      }
+
+      const content = sanitizeClaudeNativeText(event.content, 64_000);
+      this.db
+        .prepare(
+          `UPDATE claude_native_children
+           SET native_task_id = COALESCE(?, native_task_id),
+               description = COALESCE(NULLIF(?, ''), description),
+               status = ?,
+               completed_at = CASE WHEN ? = 'running' THEN completed_at ELSE ? END,
+               result = CASE WHEN ? = 'completed' THEN NULLIF(?, '') ELSE result END,
+               error = CASE WHEN ? = 'error' THEN NULLIF(?, '') ELSE error END,
+               updated_at = ?
+           WHERE thread_id = ?
+             AND updated_at <= ?
+             AND (status = 'running' OR ? != 'running')`,
+        )
+        .run(
+          event.taskId?.trim() || null,
+          sanitizeClaudeNativeText(event.description, 500),
+          event.status,
+          event.status,
+          atMs,
+          event.status,
+          content,
+          event.status,
+          content,
+          atMs,
+          child.threadId,
+          atMs,
+          event.status,
+        );
+      if (content) {
+        const entryId = persistedClaudeNativeEntryId(event.entryId);
+        const inserted = this.db
+          .prepare(
+            `INSERT OR IGNORE INTO claude_native_child_messages
+             (entry_id, child_thread_id, role, content, event_kind, created_at)
+             VALUES (?, ?, 'lifecycle', ?, 'task-status', ?)`,
+          )
+          .run(entryId, child.threadId, content, atMs) as {
+          changes: number;
+        };
+        if (inserted.changes > 0) {
+          insertedEntry = {
+            threadId: child.threadId,
+            entryId,
+            atMs,
+          };
+        }
+      }
+    }, "immediate");
+
+    if (!changedThreadId) return;
+    this.options.onThreadActivityUpdate?.({ conversationId });
+    if (insertedEntry) {
+      this.emitThreadTranscriptUpdate({
+        conversationId,
+        threadId: insertedEntry.threadId,
+        entryId: insertedEntry.entryId,
+        atMs: insertedEntry.atMs,
+        source: "claude-native",
+      });
+    }
+  }
+
+  isClaudeNativeChildThread(threadId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          "SELECT 1 AS found FROM claude_native_children WHERE thread_id = ? LIMIT 1",
+        )
+        .get(threadId.trim()),
+    );
+  }
+
+  /** A worker restart severs Claude's observation stream. Preserve the rows,
+   * but never leave them falsely running forever. */
+  recoverInterruptedClaudeNativeChildren(atMs = Date.now()): number {
+    const result = this.db
+      .prepare(
+        `UPDATE claude_native_children
+         SET status = 'error', completed_at = ?, updated_at = ?,
+             error = 'Stella restarted before this Claude native agent reported completion.'
+         WHERE status = 'running'`,
+      )
+      .run(atMs, atMs) as { changes: number };
+    return result.changes;
+  }
+
+  listClaudeNativeChildMessagePage(args: {
+    threadId: string;
+    limit?: number;
+    beforeSequence?: number;
+  }): AgentThreadMessagePage {
+    const threadId = args.threadId.trim();
+    const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
+    const beforeSequence =
+      typeof args.beforeSequence === "number" &&
+      Number.isFinite(args.beforeSequence)
+        ? Math.max(1, Math.floor(args.beforeSequence))
+        : null;
+    const rows = this.db
+      .prepare(
+        `SELECT sequence, entry_id, role, content, created_at
+         FROM claude_native_child_messages
+         WHERE child_thread_id = ?
+           AND (? IS NULL OR sequence < ?)
+         ORDER BY sequence DESC
+         LIMIT ?`,
+      )
+      .all(threadId, beforeSequence, beforeSequence, limit + 1) as Array<{
+      sequence: number;
+      entry_id: string;
+      role: AgentThreadMessageRecord["role"];
+      content: string;
+      created_at: number;
+    }>;
+    const hasMore = rows.length > limit;
+    const selected = rows.slice(0, limit);
+    const nextBeforeSequence = hasMore
+      ? selected[selected.length - 1]?.sequence
+      : undefined;
+    return {
+      messages: selected.reverse().map((row) => ({
+        entryId: row.entry_id,
+        sequence: row.sequence,
+        source: "claude-native" as const,
+        timestamp: row.created_at,
+        role: row.role,
+        content: row.content,
+      })),
+      ...(nextBeforeSequence == null ? {} : { nextBeforeSequence }),
+      hasMore,
     };
   }
 
@@ -4982,6 +5566,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        descendant_boundary_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -5005,6 +5590,7 @@ export class SessionStore {
       agent_depth: number;
       max_agent_depth: number | null;
       parent_agent_id: string | null;
+      descendant_boundary_state_json: string | null;
       self_mod_metadata_json: string | null;
       model_config_json: string | null;
       status: PersistedAgentRecord["status"];
@@ -5021,6 +5607,9 @@ export class SessionStore {
       const selfModMetadata = parseJsonValue<
         PersistedAgentRecord["selfModMetadata"]
       >(row.self_mod_metadata_json);
+      const descendantBoundaryState = parseJsonValue<
+        PersistedAgentRecord["descendantBoundaryState"]
+      >(row.descendant_boundary_state_json);
       const modelConfigSnapshot = parseJsonValue<
         PersistedAgentRecord["modelConfigSnapshot"]
       >(row.model_config_json);
@@ -5034,6 +5623,7 @@ export class SessionStore {
           ? {}
           : { maxAgentDepth: row.max_agent_depth }),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+        ...(descendantBoundaryState ? { descendantBoundaryState } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
         status: row.status,
@@ -5048,13 +5638,8 @@ export class SessionStore {
     });
   }
 
-  /**
-   * Authoritative Activity read: one row per background-agent thread in the
-   * conversation, straight from `runtime_agents` (the single writer is the
-   * LocalAgentManager's `persistTask`). Ordered oldest-started first — the renderer sorts for
-   * display. Truncated result/error previews keep the wire payload small;
-   * the full result still rides the completion chat card.
-   */
+  /** Unified Activity read. Stella-managed rows remain authoritative; Claude
+   * native rows are explicitly discriminated passive projections. */
   listThreadActivity(conversationId: string): ThreadActivityRecord[] {
     const rows = this.db
       .prepare(
@@ -5113,7 +5698,7 @@ export class SessionStore {
       assistantTargets,
       AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
     );
-    return rows.map((row) => {
+    const managed: ThreadActivityRecord[] = rows.map((row) => {
       const modelConfigSnapshot = parseJsonValue<
         ThreadActivityRecord["modelConfigSnapshot"]
       >(row.model_config_json);
@@ -5121,6 +5706,7 @@ export class SessionStore {
       const latestAssistantEntry =
         assistantEntries?.[assistantEntries.length - 1];
       return {
+        source: "stella",
         threadId: row.thread_id,
         conversationId: row.conversation_id,
         agentType: normalizeRetiredAgentType(row.agent_type),
@@ -5149,6 +5735,73 @@ export class SessionStore {
         updatedAt: row.updated_at,
       };
     });
+    const nativeRows = this.db
+      .prepare(
+        `SELECT
+           thread_id, conversation_id, parent_thread_id, description, status,
+           started_at, completed_at, substr(result, 1, 2000) AS result,
+           substr(error, 1, 2000) AS error, updated_at, root_run_id
+         FROM claude_native_children
+         WHERE conversation_id = ?
+         ORDER BY started_at ASC, thread_id ASC`,
+      )
+      .all(conversationId) as Array<{
+      thread_id: string;
+      conversation_id: string;
+      parent_thread_id: string;
+      description: string;
+      status: ThreadActivityRecord["status"];
+      started_at: number;
+      completed_at: number | null;
+      result: string | null;
+      error: string | null;
+      updated_at: number;
+      root_run_id: string | null;
+    }>;
+    const native = nativeRows.map<ThreadActivityRecord>((row) => {
+      const assistantEntries = this.db
+        .prepare(
+          `SELECT content, created_at AS atMs, sequence
+           FROM claude_native_child_messages
+           WHERE child_thread_id = ? AND role = 'assistant'
+           ORDER BY sequence DESC
+           LIMIT ?`,
+        )
+        .all(
+          row.thread_id,
+          AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+        ) as Array<{ content: string; atMs: number; sequence: number }>;
+      assistantEntries.reverse();
+      const latest = assistantEntries[assistantEntries.length - 1];
+      return {
+        source: "claude-native",
+        readOnly: true,
+        threadId: row.thread_id,
+        conversationId: row.conversation_id,
+        agentType: "claude-native",
+        description: row.description,
+        status: row.status,
+        ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+        parentAgentId: row.parent_thread_id,
+        startedAt: row.started_at,
+        ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
+        ...(row.result ? { result: row.result } : {}),
+        ...(row.error ? { error: row.error } : {}),
+        ...(assistantEntries.length
+          ? {
+              assistantMessages: assistantEntries.map((entry) => entry.content),
+              assistantMessagesUpdatedAt: latest?.atMs,
+              assistantMessagesUpdatedSequence: latest?.sequence,
+            }
+          : {}),
+        updatedAt: row.updated_at,
+      };
+    });
+    return [...managed, ...native].sort(
+      (left, right) =>
+        left.startedAt - right.startedAt ||
+        left.threadId.localeCompare(right.threadId),
+    );
   }
 
   getOrchestratorReminderState(conversationId: string): {

@@ -638,9 +638,32 @@ export type RuntimeAutomationTurnResult =
   | { status: "busy"; finalText: ""; error: string }
   | { status: "error"; finalText: ""; error: string };
 
-export type RuntimeSelfModRevertResult = {
+export type RuntimeSelfModRevertRequest = {
+  /** Persisted grouped-card identity, used to patch the exact card after Undo. */
+  applyId?: string;
+  /** Complete grouped target in card finalize order. */
+  commitHashes?: string[];
+  /** Legacy single-card and crash-recovery target. */
+  commitHash?: string;
+  /** Legacy crash-recovery selector; grouped requests must not use it. */
+  steps?: number;
+};
+
+export type RuntimeSelfModRevertContribution = {
   commitHash: string;
+  conversationId: string | null;
+  originThreadKey: string | null;
+  files: string[];
+};
+
+export type RuntimeSelfModRevertResult = {
+  /** Legacy representative hash; grouped results also expose `commitHashes`. */
+  commitHash: string;
+  /** Complete grouped target normalized into oldest-to-newest topology order. */
+  commitHashes?: string[];
   revertedCommitHashes: string[];
+  /** Original per-commit attribution, in the same order as `commitHashes`. */
+  contributions?: RuntimeSelfModRevertContribution[];
   message: string;
   /** Conversation id parsed from the reverted commit's `Stella-Conversation` trailer (null when absent). */
   conversationId?: string | null;
@@ -750,6 +773,7 @@ export type RuntimeAgentEventPayload = {
         type: "agent_terminal_notice";
         agentId: string;
         terminalState: "completed" | "failed" | "canceled";
+        completionEventId?: string;
       };
   assistantMessageEventId?: string;
   assistantMessageText?: string;

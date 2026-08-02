@@ -24,7 +24,12 @@ import type {
   ToolUpdateCallback,
 } from "../../../../../runtime/kernel/tools/types.js";
 
-const { runClaudeCodeTurnMock, runCodexAgentTurnMock } = vi.hoisted(() => ({
+const {
+  getClaudeCodeErrorFileChangesMock,
+  runClaudeCodeTurnMock,
+  runCodexAgentTurnMock,
+} = vi.hoisted(() => ({
+  getClaudeCodeErrorFileChangesMock: vi.fn(() => []),
   runClaudeCodeTurnMock: vi.fn(),
   runCodexAgentTurnMock: vi.fn(),
 }));
@@ -38,6 +43,7 @@ vi.mock(
       >();
     return {
       ...actual,
+      getClaudeCodeErrorFileChanges: getClaudeCodeErrorFileChangesMock,
       runClaudeCodeTurn: runClaudeCodeTurnMock,
       shutdownClaudeCodeRuntime: vi.fn(),
     };
@@ -85,6 +91,9 @@ const toolCatalog = [
 ];
 
 type ExternalToolRequest = {
+  vanilla?: boolean;
+  sessionKey: string;
+  tools: Array<{ name: string }>;
   executeTool: (
     toolCallId: string,
     toolName: string,
@@ -157,6 +166,8 @@ describe("external engines receive image_gen terminal results", () => {
   beforeEach(() => {
     runClaudeCodeTurnMock.mockReset();
     runCodexAgentTurnMock.mockReset();
+    getClaudeCodeErrorFileChangesMock.mockReset();
+    getClaudeCodeErrorFileChangesMock.mockReturnValue([]);
   });
 
   it("keeps a Claude tool round pending and delivers the final artifact result", async () =>
@@ -199,6 +210,16 @@ describe("external engines receive image_gen terminal results", () => {
           maxAgentDepth: 1,
           reasoningEffort: "high",
           agentEngine: "claude_code_local",
+          // Even a stray per-spawn selection must never turn the root
+          // Orchestrator into vanilla Claude Code.
+          spawnEngine: { engine: "claude_code_local", model: "opus" },
+          modelConfigSnapshot: {
+            engine: "claude_code_local",
+            subscriptionHarnessEnabled: true,
+            routeModel: "stella/default",
+            engineModel: "opus",
+          },
+          toolsAllowlist: ["image_gen"],
           threadHistory: [],
         },
         toolCatalog,
@@ -227,6 +248,13 @@ describe("external engines receive image_gen terminal results", () => {
 
       await expect(run).resolves.toBeTruthy();
       expect(engineSaw).toEqual(finalToolResult);
+      expect(runClaudeCodeTurnMock.mock.calls[0]?.[0]).toMatchObject({
+        sessionKey: expect.not.stringContaining(":vanilla"),
+        tools: [expect.objectContaining({ name: "image_gen" })],
+      });
+      expect(runClaudeCodeTurnMock.mock.calls[0]?.[0]).not.toHaveProperty(
+        "vanilla",
+      );
       expect(toolExecutor).toHaveBeenCalledWith(
         "image_gen",
         { prompt: "draw a durable fox" },
@@ -234,6 +262,169 @@ describe("external engines receive image_gen terminal results", () => {
         undefined,
         undefined,
       );
+    }));
+
+  it("runs a globally configured Claude Code General agent in vanilla mode", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      runClaudeCodeTurnMock.mockResolvedValue({
+        text: "Vanilla Claude finished the delegated task.",
+        sessionId: "claude-general-vanilla-session",
+        fileChanges: [],
+      });
+      const toolExecutor = vi.fn(async () => ({ result: "must not run" }));
+
+      await expect(
+        runExternalSubagentTurn({
+          runId: "run-claude-general-vanilla",
+          rootRunId: "root-claude-general-vanilla",
+          conversationId: "conversation-claude-general-vanilla",
+          userMessageId: "user-claude-general-vanilla",
+          agentType: "general",
+          userPrompt: "Complete the delegated task with normal Claude Code.",
+          agentContext: {
+            systemPrompt: "Stella General system prompt must be ignored.",
+            dynamicContext: "",
+            maxAgentDepth: 2,
+            reasoningEffort: "high",
+            agentEngine: "claude_code_local",
+            activeThreadId: "claude-general-vanilla-thread",
+            toolsAllowlist: ["image_gen"],
+            threadHistory: [],
+          },
+          toolCatalog,
+          toolExecutor,
+          deviceId: "device-test",
+          stellaDataDir: dataDir,
+          stellaAppDir: dataDir,
+          resolvedLlm: {
+            model,
+            route: "direct-provider",
+            getApiKey: () => undefined,
+          },
+          store,
+          callbacks: callbacks(),
+          compactionScheduler: scheduler,
+        }),
+      ).resolves.toMatchObject({
+        result: "Vanilla Claude finished the delegated task.",
+      });
+
+      expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
+      expect(runClaudeCodeTurnMock.mock.calls[0]?.[0]).toMatchObject({
+        vanilla: true,
+        sessionKey: expect.stringContaining(":vanilla"),
+        tools: [],
+      });
+      expect(toolExecutor).not.toHaveBeenCalled();
+      expect(
+        store.getThreadExternalSessionId("claude-general-vanilla-thread"),
+      ).toBe("claude_code_local_vanilla:claude-general-vanilla-session");
+    }));
+
+  it("runs an opted-in Claude Code General through Stella's takeover harness", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      runClaudeCodeTurnMock.mockResolvedValue({
+        text: "Harnessed Claude finished the delegated task.",
+        sessionId: "claude-general-harness-session",
+        fileChanges: [],
+      });
+
+      await expect(
+        runExternalSubagentTurn({
+          runId: "run-claude-general-harness",
+          conversationId: "conversation-claude-general-harness",
+          userMessageId: "user-claude-general-harness",
+          agentType: "general",
+          userPrompt: "Use Stella's managed tools.",
+          agentContext: {
+            systemPrompt: "Stella General harness prompt.",
+            dynamicContext: "",
+            maxAgentDepth: 2,
+            agentEngine: "claude_code_local",
+            activeThreadId: "claude-general-harness-thread",
+            modelConfigSnapshot: {
+              engine: "claude_code_local",
+              subscriptionHarnessEnabled: true,
+              routeModel: "stella/default",
+              engineModel: "opus",
+            },
+            toolsAllowlist: ["image_gen"],
+            threadHistory: [],
+          },
+          toolCatalog,
+          toolExecutor: async () => ({ result: "unused" }),
+          deviceId: "device-test",
+          stellaDataDir: dataDir,
+          stellaAppDir: dataDir,
+          resolvedLlm: {
+            model,
+            route: "direct-provider",
+            getApiKey: () => undefined,
+          },
+          store,
+          callbacks: callbacks(),
+          compactionScheduler: scheduler,
+        }),
+      ).resolves.toMatchObject({
+        result: "Harnessed Claude finished the delegated task.",
+      });
+
+      expect(runClaudeCodeTurnMock.mock.calls[0]?.[0]).toMatchObject({
+        sessionKey: expect.not.stringContaining(":vanilla"),
+        tools: [expect.objectContaining({ name: "image_gen" })],
+      });
+      expect(runClaudeCodeTurnMock.mock.calls[0]?.[0]).not.toHaveProperty(
+        "vanilla",
+      );
+      expect(
+        store.getThreadExternalSessionId("claude-general-harness-thread"),
+      ).toBe("claude_code_local:claude-general-harness-session");
+    }));
+
+  it("surfaces vanilla filesystem writes when a Claude subagent turn fails", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      const failure = new Error("Claude exited after writing");
+      const changedPath = path.join(dataDir, "native-after-error.ts");
+      runClaudeCodeTurnMock.mockRejectedValue(failure);
+      getClaudeCodeErrorFileChangesMock.mockImplementation((error) =>
+        error === failure
+          ? [{ path: changedPath, kind: { type: "add" as const } }]
+          : [],
+      );
+
+      const result = await runExternalSubagentTurn({
+        runId: "run-claude-general-error-write",
+        conversationId: "conversation-claude-general-error-write",
+        userMessageId: "user-claude-general-error-write",
+        agentType: "general",
+        userPrompt: "Write the file.",
+        agentContext: {
+          systemPrompt: "ignored",
+          dynamicContext: "",
+          maxAgentDepth: 2,
+          agentEngine: "claude_code_local",
+          activeThreadId: "claude-general-error-write-thread",
+          threadHistory: [],
+        },
+        toolCatalog: [],
+        toolExecutor: async () => ({ result: "unused" }),
+        deviceId: "device-test",
+        stellaDataDir: dataDir,
+        stellaAppDir: dataDir,
+        resolvedLlm: {
+          model,
+          route: "direct-provider",
+          getApiKey: () => undefined,
+        },
+        store,
+        callbacks: callbacks(),
+        compactionScheduler: scheduler,
+      });
+
+      expect(result).toMatchObject({
+        error: expect.stringContaining("Claude exited after writing"),
+        fileChanges: [{ path: changedPath, kind: { type: "add" } }],
+      });
     }));
 
   it("keeps a Codex tool round pending and delivers the final artifact result", async () =>
@@ -312,6 +503,47 @@ describe("external engines receive image_gen terminal results", () => {
         undefined,
         undefined,
       );
+    }));
+
+  it("bypasses Codex app-server when the durable General snapshot opts into Stella's harness", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      const result = await runExternalSubagentTurn({
+        runId: "run-codex-harness",
+        conversationId: "conversation-codex-harness",
+        userMessageId: "user-codex-harness",
+        agentType: "general",
+        userPrompt: "Run through the in-process harness.",
+        agentContext: {
+          systemPrompt: "General",
+          dynamicContext: "",
+          maxAgentDepth: 2,
+          agentEngine: "codex_cli",
+          modelConfigSnapshot: {
+            engine: "codex_cli",
+            subscriptionHarnessEnabled: true,
+            routeModel: "openai-codex/gpt-5.6-sol",
+            engineModel: "gpt-5.6-sol",
+            serviceTier: "fast",
+          },
+          threadHistory: [],
+        },
+        toolCatalog,
+        toolExecutor: async () => ({ result: "unused" }),
+        deviceId: "device-test",
+        stellaDataDir: dataDir,
+        stellaAppDir: dataDir,
+        resolvedLlm: {
+          model,
+          route: "direct-provider",
+          getApiKey: () => undefined,
+        },
+        store,
+        callbacks: callbacks(),
+        compactionScheduler: scheduler,
+      });
+
+      expect(result).toBeNull();
+      expect(runCodexAgentTurnMock).not.toHaveBeenCalled();
     }));
 
   it("delivers a structured image failure to the Codex continuation", async () =>

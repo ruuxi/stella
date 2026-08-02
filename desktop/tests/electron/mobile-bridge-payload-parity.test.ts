@@ -48,7 +48,7 @@ describe("ipc payload contract stays derived from preload", () => {
     });
     expect(IPC_PAYLOAD_CONTRACT["selfmod:revert"]).toEqual({
       kind: "object",
-      fields: ["commitHash", "steps"],
+      fields: ["applyId", "commitHashes", "commitHash", "steps"],
     });
     expect(IPC_PAYLOAD_CONTRACT["display:readFile"]).toEqual({
       kind: "object",

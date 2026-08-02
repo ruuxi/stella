@@ -20,6 +20,7 @@ import { IPC_AGENT_ONE_SHOT_COMPLETION } from "../../src/shared/contracts/ipc-ch
 import type {
   RuntimeOneShotCompletionRequest,
   RuntimeOneShotCompletionResult,
+  RuntimeSelfModRevertRequest,
 } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
@@ -1124,7 +1125,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "selfmod:apply",
-    async (event, payload: { commitHash?: string }) => {
+    async (event, payload: { applyId?: string; commitHash?: string }) => {
       if (!options.assertPrivilegedSender(event, "selfmod:apply")) {
         throw new Error("Blocked untrusted request.");
       }
@@ -1133,6 +1134,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         throw new Error("Stella runtime not available");
       }
       return await stellaHostRunner.applySelfModCommit({
+        applyId: payload.applyId,
         commitHash: payload.commitHash,
       });
     },
@@ -1140,7 +1142,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "selfmod:revert",
-    async (event, payload: { commitHash?: string; steps?: number }) => {
+    async (event, payload: RuntimeSelfModRevertRequest) => {
       if (!options.assertPrivilegedSender(event, "selfmod:revert")) {
         throw new Error("Blocked untrusted request.");
       }
@@ -1149,6 +1151,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         throw new Error("Stella runtime not available");
       }
       return await stellaHostRunner.revertSelfModCommit({
+        applyId: payload.applyId,
+        commitHashes: payload.commitHashes,
         commitHash: payload.commitHash,
         steps: payload.steps,
       });

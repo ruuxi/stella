@@ -17,6 +17,7 @@ import {
 import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type {
+  AgentModelConfigSnapshot,
   AgentRuntimeEngine,
   SpawnEngineSelection,
   SpawnReasoningEffort,
@@ -41,6 +42,12 @@ export type StateContext = {
     modelName: string,
     reasoningEffort?: SpawnReasoningEffort,
   ) => Promise<void>;
+  captureSpawnModelConfig?: (args: {
+    agentType: string;
+    spawnEngine: SpawnEngineSelection;
+    model?: string;
+    spawnReasoningEffort?: SpawnReasoningEffort;
+  }) => Promise<AgentModelConfigSnapshot | undefined>;
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -233,12 +240,14 @@ export const createStateContext = (
   agentApi?: AgentToolApi,
   validateSpawnModel?: (modelName: string) => void,
   validateSpawnModelWithMetadata?: StateContext["validateSpawnModelWithMetadata"],
+  captureSpawnModelConfig?: StateContext["captureSpawnModelConfig"],
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
   validateSpawnModel,
   validateSpawnModelWithMetadata,
+  captureSpawnModelConfig,
 });
 
 export const handleSendInput = async (
@@ -428,6 +437,26 @@ export const handleSpawnAgent = async (
       promptPreview: prompt.slice(0, 160),
       rootRunId: context.rootRunId,
     });
+    let explicitModelConfig: AgentModelConfigSnapshot | undefined;
+    if (modelSelection.kind !== "default" && ctx.captureSpawnModelConfig) {
+      try {
+        explicitModelConfig = await ctx.captureSpawnModelConfig({
+          agentType,
+          spawnEngine:
+            modelSelection.kind === "model"
+              ? { engine: "default" }
+              : modelSelection.engine,
+          ...(modelSelection.kind === "model"
+            ? { model: modelSelection.model }
+            : {}),
+          ...(modelSelection.reasoningEffort
+            ? { spawnReasoningEffort: modelSelection.reasoningEffort }
+            : {}),
+        });
+      } catch (error) {
+        return { error: (error as Error).message };
+      }
+    }
     let created: Awaited<ReturnType<AgentToolApi["createAgent"]>>;
     try {
       created = await ctx.agentApi.createAgent({
@@ -447,6 +476,15 @@ export const handleSpawnAgent = async (
         ...(modelSelection.reasoningEffort
           ? { spawnReasoningEffort: modelSelection.reasoningEffort }
           : {}),
+        // An unqualified child inherits the caller's durable engine/model
+        // execution snapshot, including subscription-harness mode. Explicit
+        // Stella/Codex/Claude selections intentionally start a fresh snapshot
+        // so the requested engine can be resolved for that new run.
+        ...(modelSelection.kind === "default" && context.modelConfigSnapshot
+          ? { modelConfigSnapshot: context.modelConfigSnapshot }
+          : explicitModelConfig
+            ? { modelConfigSnapshot: explicitModelConfig }
+            : {}),
         rootRunId: context.rootRunId,
         agentDepth: nextAgentDepth,
         ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),

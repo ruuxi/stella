@@ -19,6 +19,11 @@ export type AgentThreadTabArgs = {
   conversationId: string;
   agentType: string;
   title: string;
+  /** Passive Claude children reuse the thread viewer but never acquire
+   * Stella lifecycle controls. Omitted callers are Stella-managed threads. */
+  source?: "stella" | "claude-native";
+  readOnly?: boolean;
+  parentAgentId?: string;
 };
 
 let adapter: WorkspaceDisplayPayloadAdapter | null = null;

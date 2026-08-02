@@ -31,10 +31,11 @@
  */
 
 import path from "path";
-import type {
-  TaskToolActivity,
-  TaskLifecycleStatus,
-  TerminalTaskLifecycleStatus,
+import {
+  AGENT_IDS,
+  type TaskToolActivity,
+  type TaskLifecycleStatus,
+  type TerminalTaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
 import { AGENT_ORCHESTRATION_TOOL_NAMES } from "../tools/defs/task.js";
 import type {
@@ -109,9 +110,9 @@ export type LocalAgentContext = {
   /**
    * Per-spawn engine selection from spawn_agent's `model` parameter. When
    * set, `agentEngine` reflects the selected engine for this run and external
-   * engines honor the pinned engine-native model (if any). For Claude Code
-   * this also switches the run to vanilla pass-through mode (CC's own tools
-   * and config, no Stella tool bridge or system-prompt override).
+   * engines honor the pinned engine-native model (if any). General Claude
+   * Code agents use vanilla pass-through by default; a durable subscription
+   * harness snapshot instead selects Stella's managed takeover integration.
    */
   spawnEngine?: SpawnEngineSelection;
   /** Per-spawn reasoning override; never persisted to user preferences. */
@@ -176,6 +177,21 @@ type RuntimeAgentRecord = {
   /** Resolves when the cloud task record has been created (or rejected). */
   cloudCreatePromise?: Promise<void>;
   parentAgentId?: string;
+  /**
+   * This turn produced a natural final while Stella/Claude descendants were
+   * still active. The final is private and the thread remains projected as
+   * running until a descendant report wakes it for a post-descendant turn.
+   * Persisted as a boundary so restart recovery does not orphan-cancel it.
+   */
+  descendantFinalParked: boolean;
+  /** Child terminal events whose report-to-parent wake is durably consumed. */
+  consumedDescendantEventIds: string[];
+  /** A child report has made another parent turn durably necessary. */
+  descendantWakePending: boolean;
+  /** This child terminal event still needs durable acceptance by its parent. */
+  parentWakePendingEventId?: string;
+  /** This child terminal event was durably accepted by its parent. */
+  parentWakeDeliveredEventId?: string;
   /** Monotonic ownership token for mutable executeTask attempts. */
   attemptGeneration: number;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
@@ -320,12 +336,8 @@ export type AgentLifecycleEvent = {
    * OS notification); `display-only` skips the hidden orchestrator
    * follow-up. Absent = both.
    *
-   * No current emit site sets this: completions follow the state-based
-   * rule (a real finish — the thread going idle with no pending follow-up
-   * — always emits the full event immediately; internal turn boundaries
-   * superseded by a pending follow-up emit nothing). The field is kept for
-   * protocol compatibility and for future internal-boundary events that
-   * should reach only the orchestrator.
+   * No current emit site sets this: completions follow the state-based rule
+   * that only a real finish with no pending descendant boundary emits.
    */
   audience?: "orchestrator-only" | "display-only";
 };
@@ -759,6 +771,8 @@ export class LocalAgentManager implements AgentToolApi {
     threadId: string;
     conversationId: string;
   }> = [];
+  /** Crash-repair work excluded from the ordinary orphan-cancel sweep. */
+  private readonly bootPendingBoundaryRecords: PersistedAgentRecord[] = [];
   /** Episode id the boot capture was authorized under (see opts). */
   private bootInterruptionEpisodeId: string | null = null;
 
@@ -784,11 +798,87 @@ export class LocalAgentManager implements AgentToolApi {
     return this.bootInterruptionEpisodeId;
   }
 
+  /**
+   * Repair crash windows that deliberately remain `running` on disk until
+   * their durable lifecycle boundary is complete. Called after the runner has
+   * installed this manager in shared state, so parent ownership routing works.
+   */
+  repairInterruptedDescendantBoundaries(): void {
+    const records = this.bootPendingBoundaryRecords.splice(0);
+    for (const record of records) {
+      const pendingCompletionEventId =
+        record.descendantBoundaryState?.pendingCompletionEventId;
+      if (pendingCompletionEventId) {
+        this.emitAgentLifecycleEventOnce({
+          type: "agent-completed",
+          conversationId: record.conversationId,
+          eventId: pendingCompletionEventId,
+          rootRunId: record.rootRunId,
+          agentId: record.threadId,
+          agentType: record.agentType,
+          description: record.description,
+          parentAgentId: record.parentAgentId,
+          attemptGeneration: record.attemptGeneration,
+          result: record.result,
+        });
+        const boundary = record.descendantBoundaryState;
+        const consumedEventIds = boundary?.consumedEventIds ?? [];
+        const retainsBoundary =
+          consumedEventIds.length > 0 ||
+          Boolean(boundary?.finalParked) ||
+          Boolean(boundary?.parentWakePendingEventId) ||
+          Boolean(boundary?.parentWakeDeliveredEventId);
+        this.opts.saveAgentRecord?.({
+          ...record,
+          status: "completed",
+          completedAt: Date.now(),
+          descendantBoundaryState: retainsBoundary
+            ? {
+                consumedEventIds,
+                wakePending: false,
+                ...(boundary?.finalParked ? { finalParked: true } : {}),
+                ...(boundary?.parentWakePendingEventId
+                  ? {
+                      parentWakePendingEventId:
+                        boundary.parentWakePendingEventId,
+                    }
+                  : {}),
+                ...(boundary?.parentWakeDeliveredEventId
+                  ? {
+                      parentWakeDeliveredEventId:
+                        boundary.parentWakeDeliveredEventId,
+                    }
+                  : {}),
+              }
+            : undefined,
+          updatedAt: Date.now(),
+        });
+        continue;
+      }
+      if (!record.descendantBoundaryState?.wakePending) continue;
+      if (this.tasks.has(record.threadId)) continue;
+      const resumedTask = this.hydrateTaskFromRecord(
+        record,
+        "A subagent you started has finished. Review its newly persisted report in this thread and continue your task.",
+        "Reviewing a subagent's report",
+      );
+      resumedTask.rootRunId = record.rootRunId;
+      this.enqueueTask(resumedTask, true);
+    }
+  }
+
   private recoverOrCancelOrphanedPersistedAgents(): void {
     const now = Date.now();
     const runningRecords =
       this.opts.listAgentRecordsByStatus?.("running") ?? [];
     for (const record of runningRecords) {
+      if (
+        record.descendantBoundaryState?.pendingCompletionEventId ||
+        record.descendantBoundaryState?.wakePending ||
+        record.descendantBoundaryState?.finalParked
+      ) {
+        continue;
+      }
       this.bootInterruptedThreads.push({
         threadId: record.threadId,
         conversationId: record.conversationId,
@@ -812,12 +902,38 @@ export class LocalAgentManager implements AgentToolApi {
       }
     }
     for (const record of runningRecords) {
+      if (
+        record.descendantBoundaryState?.pendingCompletionEventId ||
+        record.descendantBoundaryState?.wakePending ||
+        record.descendantBoundaryState?.finalParked
+      ) {
+        this.bootPendingBoundaryRecords.push(record);
+        continue;
+      }
       const error = AGENT_ORPHANED_RESTART_CANCEL_REASON;
+      const cancellationEventId = `${record.threadId}:${record.attemptGeneration}:agent-canceled`;
+      const boundary = record.descendantBoundaryState;
       this.opts.saveAgentRecord?.({
         ...record,
         status: "canceled",
         completedAt: now,
         error,
+        ...(record.parentAgentId
+          ? {
+              descendantBoundaryState: {
+                consumedEventIds: boundary?.consumedEventIds ?? [],
+                wakePending: boundary?.wakePending ?? false,
+                ...(boundary?.finalParked ? { finalParked: true } : {}),
+                ...(boundary?.pendingCompletionEventId
+                  ? {
+                      pendingCompletionEventId:
+                        boundary.pendingCompletionEventId,
+                    }
+                  : {}),
+                parentWakePendingEventId: cancellationEventId,
+              },
+            }
+          : {}),
         updatedAt: now,
       });
       // The runtime worker, not Electron's renderer/main process, owns agent
@@ -829,6 +945,7 @@ export class LocalAgentManager implements AgentToolApi {
       this.opts.onAgentEvent?.({
         type: "agent-canceled",
         conversationId: record.conversationId,
+        eventId: cancellationEventId,
         agentId: record.threadId,
         agentType: record.agentType,
         description: record.description,
@@ -930,8 +1047,35 @@ export class LocalAgentManager implements AgentToolApi {
     });
   }
 
-  private persistTask(task: RuntimeAgentRecord): void {
+  private persistTask(
+    task: RuntimeAgentRecord,
+    options?: { pendingCompletionEventId?: string },
+  ): void {
     this.notifyAgentUpdated(task.threadId);
+    const isParked = task.status === "completed" && task.descendantFinalParked;
+    const completionPending = Boolean(options?.pendingCompletionEventId);
+    const boundaryState =
+      task.consumedDescendantEventIds.length > 0 ||
+      task.descendantWakePending ||
+      isParked ||
+      completionPending ||
+      Boolean(task.parentWakePendingEventId) ||
+      Boolean(task.parentWakeDeliveredEventId)
+        ? {
+            consumedEventIds: task.consumedDescendantEventIds.slice(-256),
+            wakePending: task.descendantWakePending,
+            ...(isParked ? { finalParked: true } : {}),
+            ...(options?.pendingCompletionEventId
+              ? { pendingCompletionEventId: options.pendingCompletionEventId }
+              : {}),
+            ...(task.parentWakePendingEventId
+              ? { parentWakePendingEventId: task.parentWakePendingEventId }
+              : {}),
+            ...(task.parentWakeDeliveredEventId
+              ? { parentWakeDeliveredEventId: task.parentWakeDeliveredEventId }
+              : {}),
+          }
+        : undefined;
     this.opts.saveAgentRecord?.({
       threadId: task.threadId,
       conversationId: task.conversationId,
@@ -942,17 +1086,21 @@ export class LocalAgentManager implements AgentToolApi {
         ? { maxAgentDepth: task.maxAgentDepth }
         : {}),
       ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
+      ...(boundaryState ? { descendantBoundaryState: boundaryState } : {}),
       ...(task.selfModMetadata
         ? { selfModMetadata: task.selfModMetadata }
         : {}),
       ...(task.modelConfigSnapshot
         ? { modelConfigSnapshot: task.modelConfigSnapshot }
         : {}),
-      status: task.status === "pending" ? "running" : task.status,
+      status:
+        task.status === "pending" || isParked || completionPending
+          ? "running"
+          : task.status,
       attemptGeneration: task.attemptGeneration,
       ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
       startedAt: task.startedAt,
-      completedAt: task.completedAt,
+      completedAt: isParked || completionPending ? null : task.completedAt,
       ...(typeof task.result === "string" ? { result: task.result } : {}),
       ...(typeof task.error === "string" ? { error: task.error } : {}),
       updatedAt: Date.now(),
@@ -960,23 +1108,20 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   private buildTaskSnapshot(task: RuntimeAgentRecord): AgentToolSnapshot {
+    const isParked = task.status === "completed" && task.descendantFinalParked;
+    const isActive =
+      isParked || task.status === "running" || task.status === "pending";
     return {
       id: task.threadId,
       description: task.description,
-      status: task.status === "pending" ? "running" : task.status,
+      status: isActive || task.status === "pending" ? "running" : task.status,
       startedAt: task.startedAt,
-      completedAt: task.completedAt,
-      result: task.result,
+      completedAt: isParked ? null : task.completedAt,
+      result: isParked ? undefined : task.result,
       error: task.error,
-      recentActivity:
-        task.status === "running" || task.status === "pending"
-          ? task.recentActivity
-          : undefined,
+      recentActivity: isActive ? task.recentActivity : undefined,
       lastActivityAt: task.lastActivityAt,
-      activeToolCount:
-        task.status === "running" || task.status === "pending"
-          ? task.activeToolCount
-          : 0,
+      activeToolCount: isActive ? task.activeToolCount : 0,
       messages: task.messageLog.slice(-10),
     };
   }
@@ -1005,6 +1150,42 @@ export class LocalAgentManager implements AgentToolApi {
       cursor = this.getAgentState(cursor)?.parentAgentId;
     }
     return false;
+  }
+
+  private hasActiveDescendants(parentThreadId: string): boolean {
+    for (const task of this.tasks.values()) {
+      if (
+        task.threadId !== parentThreadId &&
+        this.isActiveAgentState(task) &&
+        this.isDescendantOf(task.threadId, parentThreadId)
+      ) {
+        return true;
+      }
+    }
+    for (const record of this.opts.listAgentRecordsByStatus?.("running") ??
+      []) {
+      if (
+        !this.tasks.has(record.threadId) &&
+        this.isDescendantOf(record.threadId, parentThreadId)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private shouldParkFinalForDescendants(task: RuntimeAgentRecord): boolean {
+    // Native Codex/ChatGPT owns its parent/child completion protocol. Stella,
+    // Claude Code, and harnessed Codex share this manager boundary: a
+    // General's natural final is not root-facing until every descendant has
+    // reached a terminal state.
+    return (
+      task.status === "completed" &&
+      task.agentType === AGENT_IDS.GENERAL &&
+      (task.modelConfigSnapshot?.engine !== "codex_cli" ||
+        task.modelConfigSnapshot.subscriptionHarnessEnabled === true) &&
+      this.hasActiveDescendants(task.threadId)
+    );
   }
 
   /**
@@ -1056,7 +1237,13 @@ export class LocalAgentManager implements AgentToolApi {
   private isActiveAgentState(
     task: RuntimeAgentRecord | PersistedAgentRecord | null,
   ): boolean {
-    return task?.status === "pending" || task?.status === "running";
+    return (
+      task?.status === "pending" ||
+      task?.status === "running" ||
+      (task?.status === "completed" &&
+        "descendantFinalParked" in task &&
+        task.descendantFinalParked)
+    );
   }
 
   private lifecycleEventId(
@@ -1135,6 +1322,9 @@ export class LocalAgentManager implements AgentToolApi {
     task.completedAt = null;
     task.result = undefined;
     task.error = undefined;
+    task.descendantFinalParked = false;
+    task.parentWakePendingEventId = undefined;
+    task.parentWakeDeliveredEventId = undefined;
     task.progressBuffer = "";
     task.recentActivity = [`Continuing thread: ${truncate(prompt, 200)}`];
     task.lastActivityAt = Date.now();
@@ -1175,6 +1365,12 @@ export class LocalAgentManager implements AgentToolApi {
       controller: new AbortController(),
       storageMode: "local",
       parentAgentId: record.parentAgentId,
+      descendantFinalParked: false,
+      consumedDescendantEventIds: [
+        ...(record.descendantBoundaryState?.consumedEventIds ?? []),
+      ],
+      descendantWakePending:
+        record.descendantBoundaryState?.wakePending ?? false,
       selfModMetadata: record.selfModMetadata,
       modelConfigSnapshot: record.modelConfigSnapshot,
       activeSelfModRunId: undefined,
@@ -1772,6 +1968,15 @@ export class LocalAgentManager implements AgentToolApi {
 
     if (!isCurrentAttempt()) return;
 
+    if (this.shouldParkFinalForDescendants(task)) {
+      // The model is allowed to yield while background descendants continue,
+      // but that text is not a root completion. A child terminal report will
+      // resume this same thread; its next natural final becomes root-facing
+      // once no descendants remain.
+      task.descendantFinalParked = true;
+      task.result = undefined;
+    }
+
     if (
       this.shouldDeliverFollowUp(task) ||
       (task.toSubagentQueue.length > 0 && task.status === "completed")
@@ -1787,7 +1992,7 @@ export class LocalAgentManager implements AgentToolApi {
     // is sticky). Done before persistTask + lifecycle emit so any
     // listener-triggered work (e.g. cloud sync) doesn't see stale state.
     const session = this.subagentSessions.get(task.threadId);
-    if (session) {
+    if (session && !task.descendantFinalParked) {
       this.subagentSessions.delete(task.threadId);
       try {
         session.dispose();
@@ -1796,50 +2001,74 @@ export class LocalAgentManager implements AgentToolApi {
       }
     }
 
-    this.persistTask(task);
+    if (
+      task.parentAgentId &&
+      !task.descendantFinalParked &&
+      !task.terminalEventEmitted
+    ) {
+      const terminalType =
+        task.status === "completed"
+          ? "agent-completed"
+          : task.status === "error"
+            ? "agent-failed"
+            : task.status === "canceled"
+              ? "agent-canceled"
+              : undefined;
+      if (terminalType) {
+        task.parentWakePendingEventId = this.lifecycleEventId(
+          task,
+          terminalType,
+        );
+        task.parentWakeDeliveredEventId = undefined;
+      }
+    }
+
+    const publishesCompletion =
+      task.status === "completed" && !task.descendantFinalParked;
+    if (!publishesCompletion) {
+      this.persistTask(task);
+    }
 
     // Emit task lifecycle event
     if (!task.terminalEventEmitted) {
       if (task.status === "completed") {
-        const completedEvent: AgentLifecycleEvent = {
-          type: "agent-completed",
-          conversationId: task.conversationId,
-          eventId: this.lifecycleEventId(task, "agent-completed"),
-          rootRunId: task.rootRunId,
-          agentId: task.threadId,
-          agentType: task.agentType,
-          description: task.description,
-          parentAgentId: task.parentAgentId,
-          attemptGeneration: task.attemptGeneration,
-          result: task.result,
-          ...(task.fileChanges?.length
-            ? { fileChanges: task.fileChanges }
-            : {}),
-          ...(task.producedFiles?.length
-            ? { producedFiles: task.producedFiles }
-            : {}),
-        };
-        // The rollup is now captured on the event — drain the bank so a
-        // send_input re-run's later completion only reveals new files.
-        task.bankedFileChanges = undefined;
-        task.bankedProducedFiles = undefined;
-        // State-based completion rule: reaching this emit means the thread
-        // is going idle with no pending follow-up (a pending follow-up
-        // short-circuited into `deliverFollowUpAsNextTurn` above, before
-        // this block) — that IS the real finish, so the full event emits
-        // immediately. No deferral: if the orchestrator resumes the thread
-        // afterwards, that's a new run with its own completion card —
-        // Done → running-again is honest history, not a glitch.
-        //
-        // Busy-vs-idle classification is atomic with turn state: there is
-        // no `await` between `runSubagent` resolving and this emit, so a
-        // `send_input` either ran before dispatch (task still "running" →
-        // queued as a follow-up → the short-circuit above wins and no
-        // completion emits for this boundary) or runs after it (task
-        // terminal → the terminal-resume path in `sendAgentMessage`, with
-        // this completion already emitted). A completion can never be
-        // misclassified as interjected.
-        this.opts.onAgentEvent?.(completedEvent);
+        if (!task.descendantFinalParked) {
+          const completionEventId = this.lifecycleEventId(
+            task,
+            "agent-completed",
+          );
+          const completedEvent: AgentLifecycleEvent = {
+            type: "agent-completed",
+            conversationId: task.conversationId,
+            eventId: completionEventId,
+            rootRunId: task.rootRunId,
+            agentId: task.threadId,
+            agentType: task.agentType,
+            description: task.description,
+            parentAgentId: task.parentAgentId,
+            attemptGeneration: task.attemptGeneration,
+            result: task.result,
+            ...(task.fileChanges?.length
+              ? { fileChanges: task.fileChanges }
+              : {}),
+            ...(task.producedFiles?.length
+              ? { producedFiles: task.producedFiles }
+              : {}),
+          };
+          // The rollup is now captured on the event — drain the bank so a
+          // send_input re-run's later completion only reveals new files.
+          // First persist a recoverable running row carrying the final result;
+          // only after both lifecycle artifacts are durable may the row become
+          // irrecoverably completed.
+          this.persistTask(task, {
+            pendingCompletionEventId: completionEventId,
+          });
+          this.emitAgentLifecycleEventOnce(completedEvent);
+          task.bankedFileChanges = undefined;
+          task.bankedProducedFiles = undefined;
+          task.descendantWakePending = false;
+          this.persistTask(task);
+        }
       } else if (task.status === "error") {
         this.opts.onAgentEvent?.({
           type: "agent-failed",
@@ -1871,7 +2100,7 @@ export class LocalAgentManager implements AgentToolApi {
     }
 
     // Sync task completion to Convex in background (non-blocking)
-    if (task.storageMode === "cloud") {
+    if (task.storageMode === "cloud" && !task.descendantFinalParked) {
       void (async () => {
         // Wait for cloud task creation to finish so we have the cloudAgentId
         if (task.cloudCreatePromise) {
@@ -1943,6 +2172,9 @@ export class LocalAgentManager implements AgentToolApi {
       controller,
       storageMode: request.storageMode,
       parentAgentId: request.parentAgentId,
+      descendantFinalParked: false,
+      consumedDescendantEventIds: [],
+      descendantWakePending: false,
       selfModMetadata: request.selfModMetadata,
       activeSelfModRunId: undefined,
       recentActivity: [],
@@ -2105,7 +2337,7 @@ export class LocalAgentManager implements AgentToolApi {
       if (
         task.threadId !== parentThreadId &&
         this.isDescendantOf(task.threadId, parentThreadId) &&
-        (task.status === "pending" || task.status === "running")
+        this.isActiveAgentState(task)
       ) {
         threadIds.add(task.threadId);
       }
@@ -2156,13 +2388,7 @@ export class LocalAgentManager implements AgentToolApi {
   getActiveAgentCount(): number {
     let count = 0;
     for (const task of this.tasks.values()) {
-      if (
-        task.status === "completed" ||
-        task.status === "error" ||
-        task.status === "canceled"
-      ) {
-        continue;
-      }
+      if (!this.isActiveAgentState(task)) continue;
       count++;
     }
     return count;
@@ -2171,13 +2397,7 @@ export class LocalAgentManager implements AgentToolApi {
   listActiveAgentRuns(): RuntimeActiveRun[] {
     const byRunId = new Map<string, RuntimeActiveRun>();
     for (const task of this.tasks.values()) {
-      if (
-        task.status === "completed" ||
-        task.status === "error" ||
-        task.status === "canceled"
-      ) {
-        continue;
-      }
+      if (!this.isActiveAgentState(task)) continue;
       const runId = task.rootRunId ?? task.threadId;
       if (!runId) continue;
       byRunId.set(runId, {
@@ -2194,9 +2414,7 @@ export class LocalAgentManager implements AgentToolApi {
     }
     this.attemptTakeoverTimers.clear();
     for (const task of this.tasks.values()) {
-      if (task.status !== "pending" && task.status !== "running") {
-        continue;
-      }
+      if (!this.isActiveAgentState(task)) continue;
       void this.cancelAgent(task.threadId, reason);
     }
   }
@@ -2207,8 +2425,10 @@ export class LocalAgentManager implements AgentToolApi {
   ): Promise<{ canceled: boolean }> {
     const local = this.tasks.get(agentId);
     if (local) {
+      const wasParked =
+        local.status === "completed" && local.descendantFinalParked;
       if (
-        local.status === "completed" ||
+        (local.status === "completed" && !wasParked) ||
         local.status === "error" ||
         local.status === "canceled"
       ) {
@@ -2218,6 +2438,8 @@ export class LocalAgentManager implements AgentToolApi {
       const previousStatus = local.status;
       local.error = reason ?? "Canceled";
       local.status = "canceled";
+      local.descendantFinalParked = false;
+      local.descendantWakePending = false;
       local.completedAt = Date.now();
       local.interruptedForFollowUp = false;
       local.pendingStartStatusText = undefined;
@@ -2256,13 +2478,26 @@ export class LocalAgentManager implements AgentToolApi {
         }
       }
       if (
-        !local.terminalEventEmitted &&
-        (previousStatus === "pending" || previousStatus === "running")
+        (!local.terminalEventEmitted || wasParked) &&
+        (previousStatus === "pending" ||
+          previousStatus === "running" ||
+          wasParked)
       ) {
+        const cancellationEventId = this.lifecycleEventId(
+          local,
+          "agent-canceled",
+        );
+        if (local.parentAgentId) {
+          local.parentWakePendingEventId = cancellationEventId;
+          local.parentWakeDeliveredEventId = undefined;
+        }
+        // Parent-owned terminal intent must survive a crash before the
+        // lifecycle listener can durably wake the parent.
+        this.persistTask(local);
         this.opts.onAgentEvent?.({
           type: "agent-canceled",
           conversationId: local.conversationId,
-          eventId: this.lifecycleEventId(local, "agent-canceled"),
+          eventId: cancellationEventId,
           rootRunId: local.rootRunId,
           agentId: local.threadId,
           agentType: local.agentType,
@@ -2283,11 +2518,17 @@ export class LocalAgentManager implements AgentToolApi {
     const persisted = this.opts.getAgentRecord?.(agentId);
     if (persisted) {
       if (persisted.status === "running") {
+        const consumedEventIds =
+          persisted.descendantBoundaryState?.consumedEventIds ?? [];
         this.opts.saveAgentRecord?.({
           ...persisted,
           status: "canceled",
           completedAt: Date.now(),
           error: reason ?? "Canceled",
+          descendantBoundaryState:
+            consumedEventIds.length > 0
+              ? { consumedEventIds, wakePending: false }
+              : undefined,
           updatedAt: Date.now(),
         });
       }
@@ -2295,6 +2536,41 @@ export class LocalAgentManager implements AgentToolApi {
       return { canceled: true };
     }
     return await this.opts.cancelCloudAgentRecord(agentId, reason);
+  }
+
+  /**
+   * Complete the child side of the parent-wake handshake. The positive
+   * pending marker is the only state boot replay considers; legacy rows with
+   * no marker are therefore treated as already settled.
+   */
+  markParentWakeDelivered(agentId: string, eventIdInput: string): boolean {
+    const eventId = eventIdInput.trim();
+    if (!eventId) return false;
+    const task = this.tasks.get(agentId);
+    if (task) {
+      if (task.parentWakeDeliveredEventId === eventId) return true;
+      if (task.parentWakePendingEventId !== eventId) return false;
+      task.parentWakePendingEventId = undefined;
+      task.parentWakeDeliveredEventId = eventId;
+      this.persistTask(task);
+      return true;
+    }
+
+    const record = this.opts.getAgentRecord?.(agentId);
+    const boundary = record?.descendantBoundaryState;
+    if (!record || !boundary) return false;
+    if (boundary.parentWakeDeliveredEventId === eventId) return true;
+    if (boundary.parentWakePendingEventId !== eventId) return false;
+    const { parentWakePendingEventId: _pending, ...settledBoundary } = boundary;
+    this.opts.saveAgentRecord?.({
+      ...record,
+      descendantBoundaryState: {
+        ...settledBoundary,
+        parentWakeDeliveredEventId: eventId,
+      },
+      updatedAt: Date.now(),
+    });
+    return true;
   }
 
   async sendAgentMessage(
@@ -2306,6 +2582,8 @@ export class LocalAgentManager implements AgentToolApi {
       rootRunId?: string;
       parentAgentId?: string;
       deliveryKind?: "child-report" | "external-input";
+      /** Stable child lifecycle id used as the durable parent-wake fence. */
+      deliveryEventId?: string;
       modelConfigSnapshot?: AgentModelConfigSnapshot;
     },
   ): Promise<{ delivered: boolean; reason?: string }> {
@@ -2315,6 +2593,9 @@ export class LocalAgentManager implements AgentToolApi {
     // orchestration layer, so the delivered turn input is a pointer rather
     // than a second copy of the report.
     const isChildReport = options?.deliveryKind === "child-report";
+    const deliveryEventId = isChildReport
+      ? options?.deliveryEventId?.trim() || undefined
+      : undefined;
     // The parent is a root-spawned agent, so the status text on its resumed
     // turn is projected into root chat and Activity. Deriving it from the
     // delivered text would leak the subagent's report there — the one place
@@ -2356,12 +2637,34 @@ export class LocalAgentManager implements AgentToolApi {
         };
       }
       if (
+        deliveryEventId &&
+        persisted.descendantBoundaryState?.consumedEventIds.includes(
+          deliveryEventId,
+        )
+      ) {
+        return { delivered: true };
+      }
+      if (
         isChildReport &&
         (persisted.status === "error" || persisted.status === "canceled")
       ) {
         // A child report wakes an idle parent, but must never resurrect one
         // the user paused or that failed. The report is already durable in
         // the thread, so a later explicit send_input still picks it up.
+        if (deliveryEventId) {
+          const consumedEventIds = [
+            ...(persisted.descendantBoundaryState?.consumedEventIds ?? []),
+            deliveryEventId,
+          ].slice(-256);
+          this.opts.saveAgentRecord?.({
+            ...persisted,
+            descendantBoundaryState: {
+              consumedEventIds,
+              wakePending: false,
+            },
+            updatedAt: Date.now(),
+          });
+        }
         return { delivered: true };
       }
       // Re-activate the durable thread row (and its whole group) so the
@@ -2387,6 +2690,10 @@ export class LocalAgentManager implements AgentToolApi {
       if (followUpDescription) {
         resumedTask.description = followUpDescription;
       }
+      if (deliveryEventId) {
+        resumedTask.consumedDescendantEventIds.push(deliveryEventId);
+        resumedTask.descendantWakePending = true;
+      }
       resumedTask.messageLog.push({
         from,
         text: truncate(text, 500),
@@ -2400,9 +2707,20 @@ export class LocalAgentManager implements AgentToolApi {
       // that durable row the only report source; a live session refreshes it
       // at the next turn instead of receiving a duplicate prompt copy.
       this.subagentSessions.get(agentId)?.notifyHistoryChanged();
+      if (
+        deliveryEventId &&
+        task.consumedDescendantEventIds.includes(deliveryEventId)
+      ) {
+        return { delivered: true };
+      }
       if (task.status === "error" || task.status === "canceled") {
         // Same rule as the persisted-record path: never resurrect a parent
         // the user paused or that failed.
+        if (deliveryEventId) {
+          task.consumedDescendantEventIds.push(deliveryEventId);
+          task.descendantWakePending = false;
+          this.persistTask(task);
+        }
         return { delivered: true };
       }
     }
@@ -2433,6 +2751,10 @@ export class LocalAgentManager implements AgentToolApi {
       }
       if (followUpDescription) {
         task.description = followUpDescription;
+      }
+      if (deliveryEventId) {
+        task.consumedDescendantEventIds.push(deliveryEventId);
+        task.descendantWakePending = true;
       }
       // Same re-activation as the persisted-record path above: the thread
       // row may have been evicted while this task sat terminal in memory.
@@ -2466,6 +2788,10 @@ export class LocalAgentManager implements AgentToolApi {
 
     const targetQueue =
       from === "orchestrator" ? task.toSubagentQueue : task.toOrchestratorQueue;
+    if (deliveryEventId) {
+      task.consumedDescendantEventIds.push(deliveryEventId);
+      task.descendantWakePending = true;
+    }
     targetQueue.push(deliveredInput);
     if (targetQueue.length > LocalAgentManager.MAX_QUEUE_MESSAGES) {
       targetQueue.splice(

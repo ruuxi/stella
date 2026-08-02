@@ -10,9 +10,12 @@ import type {
 import type { AgentMessage } from "../agent-core/types.js";
 import type { ToolResult, ToolUpdateCallback } from "../tools/types.js";
 import {
+  getClaudeCodeErrorFileChanges,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
+  type ClaudeCodeNativeChildEvent,
 } from "../integrations/claude-code-session-runtime.js";
+import type { ClaudeNativeChildObservation } from "../storage/session-store.js";
 import {
   getClaudeCodeAgentModelId,
   getClaudeCodeRuntimeEffortLevel,
@@ -69,6 +72,7 @@ import type {
 } from "../../protocol/index.js";
 import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
 import { markImageOperationDelivered } from "../tools/image-operation-store.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const EMPTY_USAGE: Usage = {
   input: 0,
@@ -1095,13 +1099,20 @@ const runClaudeHostedTurn = async (args: {
     agentType: args.opts.agentType,
     stellaAppDir: args.opts.stellaAppDir,
   });
-  // Per-spawn claude-code selection (spawn_agent `model: claude-code[/...]`)
-  // runs vanilla Claude Code: CC keeps its own tools and config — no Stella
-  // tool bridge, no system-prompt override (the headless flags and hook
-  // settings still apply). The global engine preference keeps the full
-  // takeover behavior (spawnEngine is never set on that path).
+  // Claude Code is role-split at this boundary. The root orchestrator keeps
+  // Stella's takeover integration. General subagents default to vanilla
+  // Claude Code, unless their durable snapshot opted into Stella's managed
+  // subscription harness; that mode restores the prior takeover/tool bridge.
   const spawnEngine = args.opts.agentContext.spawnEngine;
-  const vanilla = spawnEngine?.engine === "claude_code_local";
+  const usesSubscriptionHarness =
+    args.session.kind === "subagent" &&
+    args.opts.agentContext.modelConfigSnapshot?.subscriptionHarnessEnabled ===
+      true;
+  const vanilla =
+    args.session.kind === "subagent" &&
+    !usesSubscriptionHarness &&
+    (spawnEngine?.engine === "claude_code_local" ||
+      args.opts.agentType === AGENT_IDS.GENERAL);
   const baseSessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
     : `${args.opts.conversationId}:run:${runId}`;
@@ -1112,6 +1123,19 @@ const runClaudeHostedTurn = async (args: {
   // run never resumes a vanilla conversation on the same thread.
   const sessionEngine: "claude_code_local" | "claude_code_local_vanilla" =
     vanilla ? "claude_code_local_vanilla" : "claude_code_local";
+  const observeClaudeNativeChild = vanilla
+    ? (nativeEvent: ClaudeCodeNativeChildEvent) => {
+        const { claudeSessionId, ...event } = nativeEvent;
+        args.opts.store.observeClaudeNativeChild({
+          conversationId: args.opts.conversationId,
+          ownerThreadId: threadKey,
+          rootRunId: args.opts.rootRunId ?? runId,
+          claudeSessionId,
+          atMs: now(),
+          event: event as ClaudeNativeChildObservation["event"],
+        });
+      }
+    : undefined;
   const persistedSessionId = getExternalEngineSessionId({
     store: args.opts.store,
     threadKey,
@@ -1369,6 +1393,9 @@ const runClaudeHostedTurn = async (args: {
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
     cwd: localCliCwd,
+    ...(vanilla && args.opts.stellaAppDir
+      ? { mutationRoot: args.opts.stellaAppDir }
+      : {}),
     attachments: args.opts.attachments,
     tools: toolMetadata,
     abortSignal: args.opts.abortSignal,
@@ -1378,6 +1405,9 @@ const runClaudeHostedTurn = async (args: {
       );
     },
     onStream: acceptClaudeStreamChunk,
+    ...(observeClaudeNativeChild
+      ? { onNativeChildEvent: observeClaudeNativeChild }
+      : {}),
     onNativeToolStart: flushPreambleBeforeTool,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     onToolResponseWritten: ({ toolCallId, toolName }) => {
@@ -1483,6 +1513,9 @@ const runClaudeHostedTurn = async (args: {
         : {}),
       systemPrompt: args.systemPrompt,
       cwd: localCliCwd,
+      ...(vanilla && args.opts.stellaAppDir
+        ? { mutationRoot: args.opts.stellaAppDir }
+        : {}),
       attachments: queuedAttachments,
       tools: toolMetadata,
       abortSignal: args.opts.abortSignal,
@@ -1492,6 +1525,9 @@ const runClaudeHostedTurn = async (args: {
         );
       },
       onStream: acceptClaudeStreamChunk,
+      ...(observeClaudeNativeChild
+        ? { onNativeChildEvent: observeClaudeNativeChild }
+        : {}),
       onNativeToolStart: flushPreambleBeforeTool,
       executeTool: executeClaudeTool,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
@@ -1842,6 +1878,20 @@ const runCodexHostedTurn = async (args: {
     streamFinalAnswer: args.session.kind === "orchestrator",
   });
   assistantUpdateBuffer.discard();
+  const collectedFileChanges: NonNullable<SubagentRunResult["fileChanges"]> =
+    [];
+  const collectedFileChangeKeys = new Set<string>();
+  const collectTurnFileChanges = (
+    fileChanges: SubagentRunResult["fileChanges"],
+  ) => {
+    for (const change of fileChanges ?? []) {
+      const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? (change.kind.move_path ?? "") : ""}`;
+      if (collectedFileChangeKeys.has(key)) continue;
+      collectedFileChangeKeys.add(key);
+      collectedFileChanges.push(change);
+    }
+  };
+  collectTurnFileChanges(finalResult.fileChanges);
 
   for (;;) {
     await persistCompletedExternalReply({
@@ -1943,6 +1993,7 @@ const runCodexHostedTurn = async (args: {
       streamFinalAnswer: args.session.kind === "orchestrator",
     });
     assistantUpdateBuffer.discard();
+    collectTurnFileChanges(finalResult.fileChanges);
   }
   persistCodexSessionId(finalResult.sessionId);
   // Only persisted on success: an aborted/failed turn re-delivers the same
@@ -1962,8 +2013,8 @@ const runCodexHostedTurn = async (args: {
   return {
     finalText: finalResult.text,
     sessionId: finalResult.sessionId,
-    ...(finalResult.fileChanges?.length
-      ? { fileChanges: finalResult.fileChanges }
+    ...(collectedFileChanges.length
+      ? { fileChanges: collectedFileChanges }
       : {}),
   };
 };
@@ -2057,10 +2108,13 @@ export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
   if (!shouldUseClaudeCodeRuntime(opts)) {
-    const useCodex = shouldUseCodexAgentRuntime({
-      agentType: opts.agentType,
-      agentEngine: opts.agentContext.agentEngine,
-    });
+    const useCodex =
+      opts.agentContext.modelConfigSnapshot?.subscriptionHarnessEnabled !==
+        true &&
+      shouldUseCodexAgentRuntime({
+        agentType: opts.agentType,
+        agentEngine: opts.agentContext.agentEngine,
+      });
     if (!useCodex) {
       return null;
     }
@@ -2157,14 +2211,19 @@ export const runExternalSubagentTurn = async (
     }
     return finalized;
   } catch (error) {
+    const fileChanges = getClaudeCodeErrorFileChanges(error);
     const interruptedReason = resolveInterruptionReason({
       abortSignal: opts.abortSignal,
       error,
     });
     if (interruptedReason) {
-      return session.finalizeInterrupted(interruptedReason);
+      const finalized = session.finalizeInterrupted(interruptedReason);
+      if (fileChanges.length > 0) finalized.fileChanges = fileChanges;
+      return finalized;
     }
-    return session.finalizeError(error);
+    const finalized = session.finalizeError(error);
+    if (fileChanges.length > 0) finalized.fileChanges = fileChanges;
+    return finalized;
   }
 };
 

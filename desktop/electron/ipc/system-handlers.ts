@@ -2170,6 +2170,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           payload.claudeCodeReasoningEffort,
         );
       }
+      if (payload?.subscriptionHarnessEnabled !== undefined) {
+        patch.subscriptionHarnessEnabled =
+          payload.subscriptionHarnessEnabled === true;
+      }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;
       }

@@ -237,14 +237,18 @@ describe("session-store", () => {
       name: string;
     }>;
     expect(columns.map((column) => column.name)).toContain("model_config_json");
+    expect(columns.map((column) => column.name)).toContain(
+      "descendant_boundary_state_json",
+    );
   });
 
   it("round-trips a subagent's inherited model configuration", () => {
     const { store } = createTestContext();
     const modelConfigSnapshot = {
       engine: "codex_cli" as const,
-      routeModel: "stella/openai/gpt-5.6-sol",
-      engineModel: "gpt-5.6-codex",
+      subscriptionHarnessEnabled: true,
+      routeModel: "openai-codex/gpt-5.6-sol",
+      engineModel: "gpt-5.6-sol",
       reasoningEffort: "high" as const,
     };
     store.saveAgentRecord({
@@ -267,6 +271,235 @@ describe("session-store", () => {
     expect(
       store.listAgentRecordsByStatus("completed")[0]?.modelConfigSnapshot,
     ).toEqual(modelConfigSnapshot);
+  });
+
+  it("round-trips a General agent's durable descendant boundary fence", () => {
+    const { store } = createTestContext();
+    const descendantBoundaryState = {
+      consumedEventIds: ["child-1:2:agent-completed"],
+      wakePending: true,
+      pendingCompletionEventId: "parent-1:4:agent-completed",
+    };
+    type BoundaryRecord = Parameters<SessionStore["saveAgentRecord"]>[0] & {
+      descendantBoundaryState: typeof descendantBoundaryState;
+    };
+    const record: BoundaryRecord = {
+      threadId: "parent-general",
+      conversationId: "conversation-descendant-boundary",
+      agentType: "general",
+      description: "Wait for child checks",
+      agentDepth: 1,
+      status: "running",
+      attemptGeneration: 3,
+      startedAt: 1,
+      completedAt: null,
+      updatedAt: 2,
+      descendantBoundaryState,
+    };
+    store.saveAgentRecord(record);
+
+    const hydrated = store.getAgentRecord(
+      record.threadId,
+    ) as BoundaryRecord | null;
+    expect(hydrated?.descendantBoundaryState).toEqual(descendantBoundaryState);
+    const listed = store.listAgentRecordsByStatus(
+      "running",
+    ) as BoundaryRecord[];
+    expect(listed[0]?.descendantBoundaryState).toEqual(descendantBoundaryState);
+  });
+
+  it("persists Claude-native child trees passively with replay, session, stale-event, restart, and sanitization fences", () => {
+    const { db, store } = createTestContext();
+    store.saveAgentRecord({
+      threadId: "general-owner",
+      conversationId: "conversation-native-children",
+      agentType: "general",
+      description: "Coordinate native work",
+      agentDepth: 1,
+      status: "completed",
+      attemptGeneration: 1,
+      startedAt: 10,
+      completedAt: 200,
+      updatedAt: 200,
+      rootRunId: "root-native",
+    });
+    const observe = (
+      claudeSessionId: string,
+      atMs: number,
+      event: Parameters<SessionStore["observeClaudeNativeChild"]>[0]["event"],
+    ) =>
+      store.observeClaudeNativeChild({
+        conversationId: "conversation-native-children",
+        ownerThreadId: "general-owner",
+        rootRunId: "root-native",
+        claudeSessionId,
+        atMs,
+        event,
+      });
+
+    observe("session-a", 100, {
+      type: "launch",
+      toolUseId: "agent-tool",
+      taskId: "task-1",
+      description: "Inspect storage Authorization: Bearer description-secret",
+      prompt: "Use sk-abcDEF1234567890ghiJKLmno while reviewing",
+      subagentType: "Explore",
+    });
+    observe("session-a", 110, {
+      type: "message",
+      parentToolUseId: "agent-tool",
+      entryId: "child-message-1",
+      role: "assistant",
+      content:
+        "Stored safely Authorization: Bearer transcript-secret sk-abcDEF1234567890ghiJKLmno",
+    });
+    // At-least-once stream replay must not duplicate transcript rows.
+    observe("session-a", 110, {
+      type: "message",
+      parentToolUseId: "agent-tool",
+      entryId: "child-message-1",
+      role: "assistant",
+      content:
+        "Stored safely Authorization: Bearer transcript-secret sk-abcDEF1234567890ghiJKLmno",
+    });
+    observe("session-a", 115, {
+      type: "launch",
+      toolUseId: "nested-tool",
+      parentToolUseId: "agent-tool",
+      description: "Check schema",
+      prompt: "Inspect passive tables",
+    });
+    observe("session-a", 140, {
+      type: "task-status",
+      taskId: "task-1",
+      toolUseId: "agent-tool",
+      entryId: "task-complete-1",
+      status: "completed",
+      content: "Storage inspection finished.",
+    });
+    // A delayed/replayed progress edge cannot reopen a terminal child.
+    observe("session-a", 120, {
+      type: "task-status",
+      taskId: "task-1",
+      toolUseId: "agent-tool",
+      entryId: "stale-progress-1",
+      status: "running",
+      content: "Still checking",
+    });
+    // Tool results from Bash/Edit/etc inside the child carry their own tool
+    // IDs. They are transcript transport, not additional native agents.
+    observe("session-a", 130, {
+      type: "tool-result",
+      toolUseId: "child-internal-bash",
+      entryId: "child-internal-bash-result",
+      content: "command completed",
+      isError: false,
+    });
+
+    // Reused native IDs in another resumed CLI session are distinct rows.
+    observe("session-b", 150, {
+      type: "launch",
+      toolUseId: "agent-tool",
+      taskId: "task-1",
+      description: "Second session child",
+    });
+    observe("session-b", 160, {
+      type: "run-ended",
+      error: "Claude process exited Authorization: Bearer process-secret",
+    });
+
+    const firstRead = store.listThreadActivity("conversation-native-children");
+    const owner = firstRead.find(
+      (record) => record.threadId === "general-owner",
+    );
+    const native = firstRead.filter(
+      (record) => record.source === "claude-native",
+    );
+    expect(owner).toMatchObject({ source: "stella", status: "completed" });
+    expect(native).toHaveLength(3);
+    const outerA = native.find((record) =>
+      record.description.startsWith("Inspect storage"),
+    );
+    const nestedA = native.find(
+      (record) => record.description === "Check schema",
+    );
+    const outerB = native.find(
+      (record) => record.description === "Second session child",
+    );
+    expect(outerA).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-owner",
+      status: "completed",
+      assistantMessages: [expect.stringContaining("[REDACTED]")],
+    });
+    expect(nestedA).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: outerA?.threadId,
+      status: "running",
+    });
+    expect(outerB).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-owner",
+      status: "error",
+    });
+    expect(outerB?.error).not.toContain("process-secret");
+    expect(outerA?.threadId).not.toBe(outerB?.threadId);
+    expect(store.getAgentRecord(outerA!.threadId)).toBeNull();
+    expect(
+      db.prepare("SELECT COUNT(*) AS count FROM runtime_agents").get(),
+    ).toEqual({ count: 1 });
+
+    const page = store.listClaudeNativeChildMessagePage({
+      threadId: outerA!.threadId,
+      limit: 200,
+    });
+    expect(
+      page.messages.filter((message) => message.role === "assistant"),
+    ).toEqual([
+      expect.objectContaining({
+        source: "claude-native",
+        content: expect.stringContaining("[REDACTED]"),
+      }),
+    ]);
+    expect(JSON.stringify(page)).not.toMatch(
+      /transcript-secret|abcDEF1234567890ghiJKLmno/,
+    );
+    const storedPrompt = db
+      .prepare(
+        "SELECT prompt, description FROM claude_native_children WHERE thread_id = ?",
+      )
+      .get(outerA!.threadId) as { prompt: string; description: string };
+    expect(JSON.stringify(storedPrompt)).not.toMatch(
+      /description-secret|abcDEF1234567890ghiJKLmno/,
+    );
+
+    // Store recreation (worker restart boundary) preserves the projection.
+    const restartedStore = new SessionStore(db);
+    expect(
+      restartedStore.listThreadActivity("conversation-native-children"),
+    ).toEqual(firstRead);
+    expect(restartedStore.recoverInterruptedClaudeNativeChildren(170)).toBe(1);
+    const afterRestartRecovery = store.listThreadActivity(
+      "conversation-native-children",
+    );
+    expect(
+      afterRestartRecovery.find(
+        (record) => record.threadId === outerA?.threadId,
+      )?.status,
+    ).toBe("completed");
+    expect(
+      afterRestartRecovery.find(
+        (record) => record.threadId === nestedA?.threadId,
+      )?.status,
+    ).toBe("error");
+    expect(
+      afterRestartRecovery.find(
+        (record) => record.threadId === nestedA?.threadId,
+      )?.error,
+    ).toContain("restarted");
   });
 
   it("starts a fresh default conversation without deleting old messages", () => {
@@ -365,6 +598,50 @@ describe("session-store", () => {
       )
       .all() as Array<{ name: string }>;
     expect(oldTables).toEqual([]);
+  });
+
+  it("loads an exact old event outside the bounded recent-event window", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+    const target = store.appendEvent({
+      conversationId,
+      eventId: "old-self-mod-card",
+      type: "assistant_message",
+      timestamp: 1,
+      payload: {
+        text: "Old card",
+        selfModApplied: { applyId: "set-1" },
+        metadata: {
+          runtime: {
+            responseTarget: {
+              type: "agent_terminal_notice",
+              completionEventId: "completion-old",
+            },
+          },
+        },
+      },
+    });
+    for (let index = 0; index < 510; index += 1) {
+      store.appendEvent({
+        conversationId,
+        eventId: `later-${index}`,
+        type: "assistant_message",
+        timestamp: index + 2,
+        payload: { text: `Later ${index}` },
+      });
+    }
+
+    expect(
+      store
+        .listEvents(conversationId, 500)
+        .some((event) => event._id === target._id),
+    ).toBe(false);
+    expect(store.getEvent(conversationId, target._id)?.payload).toMatchObject({
+      selfModApplied: { applyId: "set-1" },
+    });
+    expect(
+      store.findTerminalAssistantEvent(conversationId, "completion-old")?._id,
+    ).toBe(target._id);
   });
 
   it("anchors turn tools to the first assistant of the turn, falling back to the user_message when none exists", () => {

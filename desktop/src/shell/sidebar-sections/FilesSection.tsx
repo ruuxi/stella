@@ -306,6 +306,9 @@ function WorkList() {
                               item.task.description.trim() ||
                               item.task.agentType ||
                               "Agent thread",
+                            source: item.task.source,
+                            readOnly: item.task.readOnly,
+                            parentAgentId: item.task.parentAgentId,
                           })
                         : undefined
                     }
@@ -321,7 +324,11 @@ function WorkList() {
                     <span className="files-list__title">
                       {workItemLabel(item)}
                     </span>
-                    <span className="files-list__meta">Agent</span>
+                    <span className="files-list__meta">
+                      {item.task.source === "claude-native"
+                        ? "Claude · read-only"
+                        : "Agent"}
+                    </span>
                   </button>
                 </li>
               ) : (

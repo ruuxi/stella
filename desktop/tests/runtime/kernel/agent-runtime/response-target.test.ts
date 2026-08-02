@@ -114,4 +114,19 @@ describe("task lifecycle response targets", () => {
       agentId: "task-1",
     });
   });
+
+  it("carries the exact self-mod publication boundary on terminal completion", () => {
+    expect(
+      createAgentLifecycleResponseTarget({
+        agentId: "task-2",
+        eventType: "agent-completed",
+        completionEventId: "task-2:1:agent-completed",
+      }),
+    ).toEqual({
+      type: "agent_terminal_notice",
+      agentId: "task-2",
+      terminalState: "completed",
+      completionEventId: "task-2:1:agent-completed",
+    });
+  });
 });

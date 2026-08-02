@@ -252,6 +252,17 @@ export type ToolHostOptions = {
     modelName: string,
     reasoningEffort?: SpawnReasoningEffort,
   ) => Promise<void>;
+  /**
+   * Resolve and freeze any explicit model/engine spawn before enqueue so a
+   * later preference toggle or worker restart cannot change its execution
+   * boundary.
+   */
+  captureSpawnModelConfig?: (args: {
+    agentType: string;
+    spawnEngine: SpawnEngineSelection;
+    model?: string;
+    spawnReasoningEffort?: SpawnReasoningEffort;
+  }) => Promise<AgentModelConfigSnapshot | undefined>;
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];

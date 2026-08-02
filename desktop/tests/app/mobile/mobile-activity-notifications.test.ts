@@ -10,6 +10,8 @@ const task = (id: string, overrides: Partial<TaskItem> = {}): TaskItem => ({
   id,
   description: `Task ${id}`,
   agentType: "general",
+  source: "stella",
+  readOnly: false,
   status: "running",
   startedAtMs: 1_000,
   lastUpdatedAtMs: 1_000,
@@ -45,6 +47,20 @@ describe("mobile Activity notification ownership", () => {
     ];
 
     expect(selectedIds(tasks)).toEqual(["root-general"]);
+  });
+
+  it("never notifies for passive Claude-native observations", () => {
+    expect(
+      selectedIds([
+        task("root-general"),
+        task("claude-child", {
+          source: "claude-native",
+          readOnly: true,
+          agentType: "claude-native",
+          parentAgentId: "root-general",
+        }),
+      ]),
+    ).toEqual(["root-general"]);
   });
 
   it("applies the subagent suppression regardless of status or attempt", () => {

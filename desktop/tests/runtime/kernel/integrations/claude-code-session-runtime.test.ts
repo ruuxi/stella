@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   claudeCodeSessionHasActiveProcess,
+  collectClaudeCodeNativeChildEvents,
   collectClaudeCodeNativeFileChanges,
   createClaudeNativeToolUseCorrelator,
   createClaudeCodeStreamEmitter,
+  getClaudeCodeBackgroundTaskIdsFromStreamEvent,
   getClaudeCodeModelRoundFromStreamEvent,
   getClaudeCodeModelFallbackFromStreamEvent,
   getClaudeCodeTruncatedToolUseFromStreamEvent,
@@ -18,6 +21,7 @@ import {
   runClaudeCodeTurn,
   scheduleClaudeCodeSessionCloseWhenIdle,
   shutdownClaudeCodeRuntime,
+  type ClaudeCodeNativeChildEvent,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 import { recordClaudeCodeResolvedModel } from "../../../../../runtime/kernel/integrations/claude-code-resolved-models.js";
 import {
@@ -37,6 +41,175 @@ import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/share
 import { DatabaseSync } from "node:sqlite";
 
 describe("claude-code-session-runtime", () => {
+  it("projects foreground, background, parallel, and nested Claude-native agents without leaking child transport into the parent", () => {
+    const topLevel = collectClaudeCodeNativeChildEvents({
+      type: "assistant",
+      session_id: "claude-session",
+      parent_tool_use_id: null,
+      message: {
+        id: "parent-message",
+        content: [
+          {
+            type: "tool_use",
+            id: "outer-agent",
+            name: "Agent",
+            input: {
+              description: "Inspect storage",
+              prompt: "Review the durable projection",
+              subagent_type: "Explore",
+              run_in_background: true,
+            },
+          },
+          {
+            type: "tool_use",
+            id: "parallel-agent",
+            name: "Task",
+            input: { description: "Inspect renderer", prompt: "Review UI" },
+          },
+        ],
+      },
+    });
+    expect(topLevel.forwardedChildMessage).toBe(false);
+    expect(topLevel.events).toEqual([
+      expect.objectContaining({
+        type: "launch",
+        toolUseId: "outer-agent",
+        description: "Inspect storage",
+        subagentType: "Explore",
+      }),
+      expect.objectContaining({
+        type: "launch",
+        toolUseId: "parallel-agent",
+        description: "Inspect renderer",
+      }),
+    ]);
+
+    const nested = collectClaudeCodeNativeChildEvents({
+      type: "assistant",
+      uuid: "child-message-uuid",
+      session_id: "claude-session",
+      parent_tool_use_id: "outer-agent",
+      message: {
+        id: "child-message",
+        content: [
+          { type: "thinking", thinking: "private chain of thought" },
+          { type: "text", text: "I found the storage boundary." },
+          {
+            type: "tool_use",
+            id: "nested-agent",
+            name: "Agent",
+            input: { description: "Check schema", prompt: "Inspect tables" },
+          },
+          {
+            type: "tool_use",
+            id: "child-bash",
+            name: "Bash",
+            input: { command: "pwd" },
+          },
+        ],
+      },
+    });
+    expect(nested.forwardedChildMessage).toBe(true);
+    expect(nested.events).toContainEqual(
+      expect.objectContaining({
+        type: "launch",
+        toolUseId: "nested-agent",
+        parentToolUseId: "outer-agent",
+      }),
+    );
+    const childMessage = nested.events.find(
+      (event) => event.type === "message",
+    );
+    expect(childMessage).toMatchObject({
+      type: "message",
+      parentToolUseId: "outer-agent",
+      role: "assistant",
+      content: "I found the storage boundary.",
+    });
+    expect(JSON.stringify(childMessage)).not.toMatch(
+      /private chain of thought|\[Tool call\]|child-bash|pwd/,
+    );
+
+    const partial = collectClaudeCodeNativeChildEvents({
+      type: "stream_event",
+      session_id: "claude-session",
+      parent_tool_use_id: "outer-agent",
+      event: {
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "child-only partial" },
+      },
+    });
+    expect(partial.forwardedChildMessage).toBe(true);
+    expect(partial.events).toEqual([]);
+
+    const asyncLaunchResult = collectClaudeCodeNativeChildEvents({
+      type: "user",
+      session_id: "claude-session",
+      parent_tool_use_id: null,
+      uuid: "async-launch-result",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "outer-agent",
+            content: "Agent launched in the background.",
+          },
+        ],
+      },
+      tool_use_result: {
+        status: "async_launched",
+        agentId: "background-task-1",
+        description: "Inspect storage",
+        prompt: "Review the durable projection",
+        outputFile: "/tmp/background-task-1.output",
+      },
+    });
+    expect(asyncLaunchResult.events).toEqual([
+      expect.objectContaining({
+        type: "task-status",
+        toolUseId: "outer-agent",
+        taskId: "background-task-1",
+        status: "running",
+        description: "Inspect storage",
+      }),
+    ]);
+
+    const notification = collectClaudeCodeNativeChildEvents({
+      type: "system",
+      subtype: "task_notification",
+      session_id: "claude-session",
+      uuid: "notification-1",
+      task_id: "background-task-1",
+      tool_use_id: "outer-agent",
+      status: "completed",
+      summary: "Storage review complete.",
+    });
+    expect(notification.events).toEqual([
+      expect.objectContaining({
+        type: "task-status",
+        taskId: "background-task-1",
+        toolUseId: "outer-agent",
+        status: "completed",
+        content: "Storage review complete.",
+      }),
+    ]);
+
+    // Transport replay derives the same durable entry identity.
+    expect(
+      collectClaudeCodeNativeChildEvents({
+        type: "system",
+        subtype: "task_notification",
+        session_id: "claude-session",
+        uuid: "notification-1",
+        task_id: "background-task-1",
+        tool_use_id: "outer-agent",
+        status: "completed",
+        summary: "Storage review complete.",
+      }),
+    ).toEqual(notification);
+  });
+
   it("correlates protocol-shaped Claude tool_use ids across transport replay and intentional repeats", async () => {
     const fixture = fs
       .readFileSync(
@@ -1303,7 +1476,7 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
-  it("runs vanilla Claude Code untouched for per-spawn engine selections", async () => {
+  it("keeps Claude Code's native tool and MCP surface in vanilla mode", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-claude-vanilla-"),
     );
@@ -1379,12 +1552,15 @@ describe("claude-code-session-runtime", () => {
       expect(result.text).toBe('{"final": "answer that looks like JSON"}');
       expect(records).toHaveLength(1);
       const argv = records[0]?.argv ?? [];
-      // Stock Claude Code: no built-in-tool strip, no Stella decision schema,
-      // no MCP override, no injected system prompt.
+      // Native Claude Code tool/config surface: no built-in-tool strip, no
+      // Stella decision schema, no MCP override, no injected system prompt.
       expect(argv).toContain("--dangerously-skip-permissions");
+      expect(argv).toContain("--forward-subagent-text");
       expect(argv).toContain("--model");
       expect(argv).toContain("opus");
       expect(argv).not.toContain("--tools");
+      expect(argv).not.toContain("--allowedTools");
+      expect(argv).not.toContain("--disallowedTools");
       expect(argv).not.toContain("--json-schema");
       expect(argv).not.toContain("--system-prompt");
       expect(argv).not.toContain("--mcp-config");
@@ -1394,6 +1570,187 @@ describe("claude-code-session-runtime", () => {
         "Fix the failing test in the repo.",
       );
       expect(records[0]?.content).not.toContain("must NOT be forwarded");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for native background descendants and attributes their late filesystem writes", async () => {
+    expect(
+      getClaudeCodeBackgroundTaskIdsFromStreamEvent({
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: ["agent-1", { task_id: "bash-2" }],
+      }),
+    ).toEqual(["agent-1", "bash-2"]);
+
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-background-write-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const repoPath = path.join(dir, "repo");
+    const homeDir = path.join(dir, "home");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.mkdirSync(homeDir, { recursive: true });
+    const repoDir = fs.realpathSync(repoPath);
+    const changedFile = path.join(repoDir, "native-background.txt");
+    execFileSync("git", ["init"], { cwd: repoDir });
+    execFileSync("git", ["config", "user.email", "stella@example.com"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "user.name", "Stella"], {
+      cwd: repoDir,
+    });
+    fs.writeFileSync(path.join(repoDir, "baseline.txt"), "baseline\n");
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: repoDir });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "const emit = payload => process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "function handle() {",
+        "  emit({ type: 'assistant', session_id: 'background-session', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-bg-1', name: 'Agent', input: { description: 'late write', prompt: 'write later', run_in_background: true } }] } });",
+        "  emit({ type: 'stream_event', session_id: 'background-session', parent_tool_use_id: 'tool-bg-1', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'CHILD PARTIAL MUST STAY PRIVATE' } } });",
+        "  emit({ type: 'assistant', session_id: 'background-session', parent_tool_use_id: 'tool-bg-1', message: { id: 'child-message', role: 'assistant', content: [{ type: 'text', text: 'Child authored finding.' }] } });",
+        "  emit({ type: 'result', session_id: 'background-session', is_error: false, result: 'parent final' });",
+        "  setTimeout(() => emit({ type: 'system', subtype: 'background_tasks_changed', session_id: 'background-session', tasks: ['native-agent-1'] }), 75);",
+        "  setTimeout(() => {",
+        "    fs.writeFileSync(process.env.STELLA_FAKE_BACKGROUND_WRITE, 'written by native descendant\\n');",
+        "    emit({ type: 'task_notification', session_id: 'background-session', task_id: 'native-agent-1', status: 'completed' });",
+        "    emit({ type: 'system', subtype: 'background_tasks_changed', session_id: 'background-session', tasks: [] });",
+        "  }, 150);",
+        "  setTimeout(() => emit({ type: 'result', session_id: 'background-session', is_error: false, result: 'post-child synthesized final' }), 225);",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  if (buffer.includes('\\n')) { buffer = ''; handle(); }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousWrite = process.env.STELLA_FAKE_BACKGROUND_WRITE;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_BACKGROUND_WRITE = changedFile;
+    try {
+      let settled = false;
+      const parentStream: string[] = [];
+      const nativeChildEvents: ClaudeCodeNativeChildEvent[] = [];
+      const turn = runClaudeCodeTurn({
+        runId: "run-native-background-write",
+        sessionKey: `test-native-background-write:${Date.now()}`,
+        prompt: "delegate and finish",
+        modelId: "claude-code/default",
+        vanilla: true,
+        cwd: homeDir,
+        mutationRoot: repoDir,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+        onStream: (chunk) => parentStream.push(chunk),
+        onNativeChildEvent: (event) => nativeChildEvents.push(event),
+      }).finally(() => {
+        settled = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(settled).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 160));
+      expect(settled).toBe(false);
+
+      const result = await turn;
+      expect(result.text).toBe("post-child synthesized final");
+      expect(parentStream.join("")).not.toMatch(
+        /CHILD PARTIAL MUST STAY PRIVATE|Child authored finding/,
+      );
+      expect(nativeChildEvents).toContainEqual(
+        expect.objectContaining({
+          type: "message",
+          parentToolUseId: "tool-bg-1",
+          content: "Child authored finding.",
+        }),
+      );
+      expect(fs.readFileSync(changedFile, "utf8")).toContain(
+        "native descendant",
+      );
+      expect(result.fileChanges).toContainEqual({
+        path: changedFile,
+        kind: { type: "add" },
+      });
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousWrite === undefined) {
+        delete process.env.STELLA_FAKE_BACKGROUND_WRITE;
+      } else {
+        process.env.STELLA_FAKE_BACKGROUND_WRITE = previousWrite;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to parent-only visibility when the installed Claude CLI lacks subagent forwarding", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-forward-fallback-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "argv.jsonl");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const argv = process.argv.slice(2);",
+        "fs.appendFileSync(process.env.STELLA_FAKE_CLAUDE_LOG, JSON.stringify(argv) + '\\n');",
+        "if (argv.includes('--forward-subagent-text')) {",
+        "  setTimeout(() => { console.error(\"error: unknown option '--forward-subagent-text'\"); process.exit(1); }, 25);",
+        "} else {",
+        "  let buffer = '';",
+        "  process.stdin.on('data', chunk => {",
+        "    buffer += chunk.toString('utf8');",
+        "    if (!buffer.includes('\\n')) return;",
+        "    process.stdout.write(JSON.stringify({ type: 'result', session_id: 'fallback-session', is_error: false, result: 'Parent-only fallback succeeded.' }) + '\\n');",
+        "  });",
+        "}",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-forward-fallback",
+        sessionKey: `test-forward-fallback:${Date.now()}`,
+        prompt: "Complete without native child visibility.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Parent-only fallback succeeded.");
+      const launches = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as string[]);
+      expect(launches).toHaveLength(2);
+      expect(launches[0]).toContain("--forward-subagent-text");
+      expect(launches[1]).not.toContain("--forward-subagent-text");
     } finally {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;
@@ -1965,6 +2322,77 @@ describe("claude-code-session-runtime", () => {
       expect(prompts[1]?.content).not.toContain("Apply the hardening edits.");
       expect(prompts[1]?.content).toContain(
         "Do NOT redo, repeat, or revert those tool calls or file operations",
+      );
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not replay an unknown-outcome vanilla native side effect", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-side-effect-exit-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const spawnCount = (fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\\n').length : 0) + 1;",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  if (!buffer.includes('\\n')) return;",
+        "  const parsed = JSON.parse(buffer.slice(0, buffer.indexOf('\\n')));",
+        "  fs.appendFileSync(logPath, JSON.stringify({ spawnCount, content: parsed.message.content }) + '\\n');",
+        "  if (spawnCount === 1) {",
+        "    process.stdout.write(JSON.stringify({ type: 'assistant', session_id: 'side-effect-session', message: { content: [{ type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'deploy production' } }] } }) + '\\n');",
+        "    setTimeout(() => process.exit(0), 20);",
+        "  } else {",
+        "    process.stdout.write(JSON.stringify({ type: 'result', session_id: 'side-effect-session', is_error: false, result: 'Reconciled unknown outcome.' }) + '\\n');",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-native-side-effect-exit",
+        sessionKey: `test-native-side-effect-exit:${Date.now()}`,
+        prompt: "Deploy production exactly once.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Reconciled unknown outcome.");
+      const prompts = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { content: string });
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]?.content).not.toContain(
+        "Deploy production exactly once.",
+      );
+      expect(prompts[1]?.content).toContain(
+        "side-effecting work may already have been applied",
       );
     } finally {
       shutdownClaudeCodeRuntime();

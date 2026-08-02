@@ -82,6 +82,33 @@ describe("payloadToTabSpec", () => {
     });
   });
 
+  it("preserves Claude-native observational identity in the tab", () => {
+    const spec = createAgentThreadTabSpec({
+      threadId: "claude-native:session:child",
+      conversationId: "conversation-4",
+      agentType: "claude-native",
+      title: "Review the renderer",
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-parent",
+    });
+    const element = spec.render() as {
+      props: Record<string, unknown>;
+    };
+
+    expect(spec.tooltip).toBe("Claude subagent · read-only");
+    expect(spec.metadata).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-parent",
+    });
+    expect(element.props).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-parent",
+    });
+  });
+
   it("keeps docx office previews as office-document tabs", () => {
     const payload: DisplayPayload = {
       kind: "office",

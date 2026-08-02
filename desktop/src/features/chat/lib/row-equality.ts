@@ -79,7 +79,20 @@ const selfModAppliedEqual = (
 ): boolean => {
   if (a === b) return true;
   if (!a || !b) return a === b;
-  if (a.commitHash !== b.commitHash || a.batchIndex !== b.batchIndex) {
+  if (
+    a.applyId !== b.applyId ||
+    a.changeSetId !== b.changeSetId ||
+    a.commitHash !== b.commitHash ||
+    a.batchIndex !== b.batchIndex
+  ) {
+    return false;
+  }
+  const aCommitHashes = a.commitHashes ?? [];
+  const bCommitHashes = b.commitHashes ?? [];
+  if (
+    aCommitHashes.length !== bCommitHashes.length ||
+    aCommitHashes.some((hash, index) => hash !== bCommitHashes[index])
+  ) {
     return false;
   }
   if ((a.status ?? "applied") !== (b.status ?? "applied")) {

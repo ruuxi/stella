@@ -105,6 +105,12 @@ export type RecordWriteOptions = {
    * actually written the file.
    */
   captureSnapshot?: boolean;
+  /**
+   * Paths discovered after the write whose mutation record proves they were
+   * created by this run. Native engines cannot call the pre-write hook, so
+   * this preserves create-sensitive HMR/full-reload semantics for them.
+   */
+  createdPaths?: Iterable<string>;
 };
 
 export type CancelResult = ApplyResult & {
@@ -140,11 +146,9 @@ export const deriveApplyTransitionRequirements = (
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  controller.signal.addEventListener(
-    "abort",
-    () => clearTimeout(timer),
-    { once: true },
-  );
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), {
+    once: true,
+  });
   return controller.signal;
 };
 
@@ -197,8 +201,7 @@ const postWithRetry = async (args: {
   path: string;
   maxWaitMs: number;
   body?: unknown;
-}): Promise<boolean> =>
-  (await postJsonWithRetry<unknown>(args)) !== null;
+}): Promise<boolean> => (await postJsonWithRetry<unknown>(args)) !== null;
 
 const partitionRestartPaths = (paths: string[]): string[] =>
   paths.filter(
@@ -296,9 +299,7 @@ const buildAppliedRuns = (
       files.filter((file) => file.deleted === true).map((file) => file.path),
     );
     const createdPaths = createdPathsByRun.get(run.runId);
-    const changeKindForPath = (
-      repoRelativePath: string,
-    ): SelfModChangeKind => {
+    const changeKindForPath = (repoRelativePath: string): SelfModChangeKind => {
       if (deletedPaths.has(repoRelativePath)) return "delete";
       if (createdPaths?.has(repoRelativePath)) return "create";
       return "modify";
@@ -430,10 +431,7 @@ export const createSelfModHmrController = (
 ): SelfModHmrController => {
   const tracker = createContentionTracker();
   const touchedPathsByRun = new Map<string, Set<string>>();
-  const finalizedSnapshotsByRun = new Map<
-    string,
-    Map<string, string | null>
-  >();
+  const finalizedSnapshotsByRun = new Map<string, Map<string, string | null>>();
   /**
    * Paths that did not exist on disk when this run first claimed them —
    * i.e. files the run is CREATING. Feeds the change-kind-aware full-reload
@@ -453,7 +451,10 @@ export const createSelfModHmrController = (
     created.add(repoRelativePath);
   };
 
-  const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
+  const snapshotPathForRun = (
+    runId: string,
+    repoRelativePath: string,
+  ): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
     if (!snapshot) {
       snapshot = new Map();
@@ -465,7 +466,7 @@ export const createSelfModHmrController = (
     );
     snapshot.set(
       repoRelativePath,
-      snapshotContent.deleted ? null : snapshotContent.content ?? "",
+      snapshotContent.deleted ? null : (snapshotContent.content ?? ""),
     );
   };
 
@@ -625,13 +626,13 @@ export const createSelfModHmrController = (
         const key = toSelfModRelevantKey(absPath, options.repoRoot);
         if (key) repoRelative.push(key);
       }
-      const {
-        paths: expandedRepoRelative,
-        deferSnapshotPaths,
-      } = expandGeneratedDependentPaths(
-        options.repoRoot,
-        repoRelative,
-      );
+      const explicitlyCreatedPaths = new Set<string>();
+      for (const createdPath of recordOptions?.createdPaths ?? []) {
+        const key = toSelfModRelevantKey(createdPath, options.repoRoot);
+        if (key) explicitlyCreatedPaths.add(key);
+      }
+      const { paths: expandedRepoRelative, deferSnapshotPaths } =
+        expandGeneratedDependentPaths(options.repoRoot, repoRelative);
       if (expandedRepoRelative.length === 0) {
         return;
       }
@@ -647,6 +648,11 @@ export const createSelfModHmrController = (
             .getOwners(repoRelativePath)
             .some((owner) => owner.runId === runId),
       );
+      for (const repoRelativePath of alreadyOwnedPaths) {
+        if (explicitlyCreatedPaths.has(repoRelativePath)) {
+          markCreatedPath(runId, repoRelativePath);
+        }
+      }
       if (captureSnapshot && touchedPaths) {
         for (const repoRelativePath of alreadyOwnedPaths) {
           touchedPaths.add(repoRelativePath);
@@ -663,7 +669,10 @@ export const createSelfModHmrController = (
       // the pre-write hook runs before the tool writes, so a missing file
       // here means this run is creating it.
       for (const repoRelativePath of newlyOwnedPaths) {
-        if (!existsSync(path.resolve(options.repoRoot, repoRelativePath))) {
+        if (
+          explicitlyCreatedPaths.has(repoRelativePath) ||
+          !existsSync(path.resolve(options.repoRoot, repoRelativePath))
+        ) {
           markCreatedPath(runId, repoRelativePath);
         }
       }
@@ -671,7 +680,8 @@ export const createSelfModHmrController = (
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
-          (repoRelativePath) => tracker.getOwners(repoRelativePath).length === 0,
+          (repoRelativePath) =>
+            tracker.getOwners(repoRelativePath).length === 0,
         );
         await untrackPaths(unownedPaths);
         return;
@@ -732,7 +742,9 @@ export const createSelfModHmrController = (
 
     async endShellMutationGuard() {
       if (!options.enabled) return { ok: true, changedPaths: [] };
-      const response = await postJsonWithRetry<Partial<ShellMutationGuardEndResult>>({
+      const response = await postJsonWithRetry<
+        Partial<ShellMutationGuardEndResult>
+      >({
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
         maxWaitMs: TRACK_MAX_WAIT_MS,
@@ -814,9 +826,7 @@ export const createSelfModHmrController = (
     isPathOwnedByAnotherActiveRun(repoRelativePath, runId) {
       return tracker
         .getOwners(repoRelativePath)
-        .some(
-          (owner) => owner.runId !== runId && owner.status === "active",
-        );
+        .some((owner) => owner.runId !== runId && owner.status === "active");
     },
 
     __tracker: tracker,

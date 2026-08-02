@@ -1585,8 +1585,11 @@ export const runCodexAgentTurn = async (request: {
     prompt: request.prompt,
     attachments: request.attachments,
   });
-  const snapshotBefore = request.cwd
-    ? await snapshotWorktree(request.cwd)
+  // General runs execute from the user's home directory, but Apply/HMR owns
+  // the Stella checkout. Snapshot that explicit mutation root when present.
+  const mutationRoot = request.stellaAppDir?.trim() || request.cwd;
+  const snapshotBefore = mutationRoot
+    ? await snapshotWorktree(mutationRoot)
     : null;
   const fileChanges: FileChangeRecord[] = [];
   let finalText = "";
@@ -2043,8 +2046,8 @@ export const runCodexAgentTurn = async (request: {
     await turnCompleted;
 
     const snapshotAfter =
-      request.cwd && snapshotBefore
-        ? await snapshotWorktree(request.cwd)
+      mutationRoot && snapshotBefore
+        ? await snapshotWorktree(mutationRoot)
         : null;
     if (snapshotBefore && snapshotAfter) {
       appendUniqueFileChanges(

@@ -145,6 +145,10 @@ export const deriveThreadAndOwnedPresentationStatus = (
   const recordById = new Map(records.map((record) => [record.threadId, record]));
   const childrenByParent = new Map<string, ThreadActivityRecord[]>();
   for (const record of records) {
+    // Claude Code owns the lifecycle of its native children. Those rows are
+    // passive observations for Activity/chat and must not hold a Stella-owned
+    // parent card open or change its completion/failure state.
+    if (record.source === "claude-native") continue;
     if (!record.parentAgentId || record.parentAgentId === record.threadId) {
       continue;
     }

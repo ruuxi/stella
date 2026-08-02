@@ -141,6 +141,87 @@ describe("LocalAgentManager Exec fs locking", () => {
     ]);
   });
 
+  it("repairs a pending completion boundary exactly once after restart", () => {
+    const completionEventId = "repair-task:3:agent-completed";
+    let persisted: PersistedAgentRecord = {
+      threadId: "repair-task",
+      conversationId: "repair-conversation",
+      agentType: AGENT_IDS.GENERAL,
+      description: "Repair interrupted completion",
+      agentDepth: 1,
+      status: "running",
+      attemptGeneration: 3,
+      startedAt: 100,
+      completedAt: null,
+      result: "Durable final result.",
+      descendantBoundaryState: {
+        consumedEventIds: [],
+        wakePending: false,
+        pendingCompletionEventId: completionEventId,
+      },
+      updatedAt: 200,
+    };
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
+    const createManager = () =>
+      new LocalAgentManager({
+        maxConcurrent: 1,
+        fetchAgentContext: async () => ({
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 3,
+        }),
+        runSubagent: async (args) => ({
+          runId: args.runId,
+          result: "unused",
+        }),
+        toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+        createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+        completeCloudAgentRecord: async () => undefined,
+        getCloudAgentRecord: async () => null,
+        cancelCloudAgentRecord: async () => ({ canceled: false }),
+        listAgentRecordsByStatus: (status) =>
+          status === "running" && persisted.status === "running"
+            ? [persisted]
+            : [],
+        getAgentRecord: (threadId) =>
+          threadId === persisted.threadId ? persisted : null,
+        saveAgentRecord: (record) => {
+          persisted = record;
+        },
+        onAgentEvent: (event) => {
+          lifecycleEvents.push(event);
+        },
+        hasAgentLifecycleEvent: () => false,
+      });
+
+    const first = createManager();
+    expect(persisted.status).toBe("running");
+    expect(lifecycleEvents).toEqual([]);
+
+    first.repairInterruptedDescendantBoundaries();
+    expect(lifecycleEvents).toEqual([
+      expect.objectContaining({
+        type: "agent-completed",
+        eventId: completionEventId,
+        agentId: "repair-task",
+        attemptGeneration: 3,
+        result: "Durable final result.",
+      }),
+    ]);
+    expect(persisted).toMatchObject({
+      status: "completed",
+      completedAt: expect.any(Number),
+    });
+    expect(
+      persisted.descendantBoundaryState?.pendingCompletionEventId,
+    ).toBeUndefined();
+
+    first.repairInterruptedDescendantBoundaries();
+    const second = createManager();
+    second.repairInterruptedDescendantBoundaries();
+    expect(lifecycleEvents).toHaveLength(1);
+  });
+
   it("emits completed terminal events with the agent result and file changes", async () => {
     const events: AgentLifecycleEvent[] = [];
     const manager = new LocalAgentManager({
@@ -299,6 +380,76 @@ describe("LocalAgentManager Exec fs locking", () => {
         }),
       ]),
     );
+  });
+
+  it("persists a spawn-time model snapshot before a queued agent begins", async () => {
+    let releaseBlocker!: () => void;
+    const blocker = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+    let runCount = 0;
+    const savedRecords = new Map<string, PersistedAgentRecord>();
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async (args) => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+        modelConfigSnapshot: args.modelConfigSnapshot,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) await blocker;
+        return { runId: args.runId, result: "done" };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+      saveAgentRecord: (record) => {
+        savedRecords.set(record.threadId, record);
+      },
+    });
+
+    const first = await manager.createAgent({
+      conversationId: "conv-queued-snapshot",
+      description: "slot blocker",
+      prompt: "hold the only slot",
+      agentType: "general",
+      storageMode: "local",
+    });
+    for (let index = 0; index < 100 && runCount === 0; index += 1) {
+      await sleep(1);
+    }
+    expect(runCount).toBe(1);
+
+    const snapshot = {
+      engine: "claude_code_local" as const,
+      subscriptionHarnessEnabled: true,
+      routeModel: "stella/openai/gpt-5.6-sol",
+      engineModel: "opus",
+      reasoningEffort: "high" as const,
+    };
+    const queued = await manager.createAgent({
+      conversationId: "conv-queued-snapshot",
+      description: "queued explicit Claude",
+      prompt: "wait for the slot",
+      agentType: "general",
+      spawnEngine: { engine: "claude_code_local", model: "opus" },
+      modelConfigSnapshot: snapshot,
+      storageMode: "local",
+    });
+
+    expect(runCount).toBe(1);
+    expect(savedRecords.get(queued.threadId)).toMatchObject({
+      status: "running",
+      modelConfigSnapshot: snapshot,
+    });
+
+    releaseBlocker();
+    await waitForAgentSettled(manager, first.threadId);
+    await waitForAgentSettled(manager, queued.threadId);
   });
 
   it("exposes active background agent root runs", async () => {

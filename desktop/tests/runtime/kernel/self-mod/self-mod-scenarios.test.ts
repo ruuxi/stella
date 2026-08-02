@@ -33,6 +33,7 @@ import {
 import {
   revertGitCommits,
   revertSelfModCommit,
+  revertSelfModCommits,
 } from "../../../../../runtime/kernel/self-mod/git/revert.js";
 import { readGitObjectsBatch } from "../../../../../runtime/kernel/self-mod/git/snapshots.js";
 import { parseStellaCommitTrailers } from "../../../../../runtime/kernel/self-mod/git/trailers.js";
@@ -556,6 +557,136 @@ describe("undo (revert)", () => {
     await expect(
       revertSelfModCommit({ repoRoot: h.repoRoot, steps: 2 }),
     ).rejects.toThrow(/steps=2/);
+  });
+
+  it("atomically reverts an exact set newest-first without reverting an interleaved user commit", async () => {
+    const first = await makeSelfModCommit(
+      "u-group-first",
+      "desktop/src/seed.tsx",
+      "export const seed = 2;\n",
+      "conv-group",
+      "thread-group-first",
+    );
+    await writeRepoFile(h.repoRoot, "unrelated.txt", "preserve me\n");
+    git(h.repoRoot, ["add", "unrelated.txt"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "Unrelated user commit"]);
+    const unrelatedCommit = (await getGitHead(h.repoRoot))!;
+    const second = await makeSelfModCommit(
+      "u-group-second",
+      "desktop/src/seed.tsx",
+      "export const seed = 3;\n",
+      "conv-group",
+      "thread-group-second",
+    );
+
+    const result = await revertSelfModCommits({
+      repoRoot: h.repoRoot,
+      // Deliberately shuffled: the kernel owns topology ordering and reversal.
+      commitHashes: [second.commitHash, first.commitHash],
+    });
+
+    expect(result.commitHashes).toEqual([first.commitHash, second.commitHash]);
+    expect(result.revertedCommitHashes).toEqual([
+      second.commitHash,
+      first.commitHash,
+    ]);
+    expect(result.contributions).toEqual([
+      {
+        commitHash: first.commitHash,
+        conversationId: "conv-group",
+        originThreadKey: "thread-group-first",
+        files: ["desktop/src/seed.tsx"],
+      },
+      {
+        commitHash: second.commitHash,
+        conversationId: "conv-group",
+        originThreadKey: "thread-group-second",
+        files: ["desktop/src/seed.tsx"],
+      },
+    ]);
+    expect(result.files).toEqual(["desktop/src/seed.tsx"]);
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/seed.tsx"), "utf8"),
+    ).toBe("export const seed = 1;\n");
+    expect(
+      await readFile(path.join(h.repoRoot, "unrelated.txt"), "utf8"),
+    ).toBe("preserve me\n");
+    expect(
+      git(h.repoRoot, ["merge-base", "--is-ancestor", unrelatedCommit, "HEAD"]),
+    ).toBe("");
+    expect(await listGitDirtyFiles(h.repoRoot)).toEqual([]);
+  });
+
+  it("refuses grouped revert on a dirty tree without discarding user work", async () => {
+    const change = await makeSelfModCommit(
+      "u-group-dirty",
+      "desktop/src/grouped.tsx",
+      "export const grouped = true;\n",
+      "conv-group-dirty",
+      "thread-group-dirty",
+    );
+    const head = await getGitHead(h.repoRoot);
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/user-wip.tsx",
+      "export const userWip = true;\n",
+    );
+
+    await expect(
+      revertSelfModCommits({
+        repoRoot: h.repoRoot,
+        commitHashes: [change.commitHash],
+      }),
+    ).rejects.toThrow(/working tree is not clean/);
+
+    expect(await getGitHead(h.repoRoot)).toBe(head);
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/user-wip.tsx"), "utf8"),
+    ).toBe("export const userWip = true;\n");
+  });
+
+  it("restores the pre-revert HEAD when a later exact-set revert conflicts", async () => {
+    const first = await makeSelfModCommit(
+      "u-group-conflict-first",
+      "desktop/src/seed.tsx",
+      "export const seed = 2;\n",
+      "conv-group-conflict",
+      "thread-group-conflict-first",
+    );
+    const second = await makeSelfModCommit(
+      "u-group-conflict-second",
+      "desktop/src/grouped-conflict.tsx",
+      "export const groupedConflict = true;\n",
+      "conv-group-conflict",
+      "thread-group-conflict-second",
+    );
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/seed.tsx",
+      "export const seed = 3;\n",
+    );
+    git(h.repoRoot, ["add", "."]);
+    git(h.repoRoot, ["commit", "-q", "-m", "Later overlapping user edit"]);
+    const preRevertHead = await getGitHead(h.repoRoot);
+
+    await expect(
+      revertSelfModCommits({
+        repoRoot: h.repoRoot,
+        commitHashes: [first.commitHash, second.commitHash],
+      }),
+    ).rejects.toThrow();
+
+    expect(await getGitHead(h.repoRoot)).toBe(preRevertHead);
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/seed.tsx"), "utf8"),
+    ).toBe("export const seed = 3;\n");
+    expect(
+      await readFile(
+        path.join(h.repoRoot, "desktop/src/grouped-conflict.tsx"),
+        "utf8",
+      ),
+    ).toBe("export const groupedConflict = true;\n");
+    expect(await listGitDirtyFiles(h.repoRoot)).toEqual([]);
   });
 });
 

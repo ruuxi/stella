@@ -1,10 +1,9 @@
 /**
  * Renderer-side client for the authoritative thread-activity IPC
- * (`localChat:listThreadActivity`). One row per background-agent thread,
- * projected straight from the runtime's `runtime_agents` table — the single
- * writer is the LocalAgentManager's `persistTask`, so a row's `status` and
- * `description` are always the runtime's current truth, never a fold over
- * event history.
+ * (`localChat:listThreadActivity`). Stella-managed rows come from
+ * `runtime_agents`; Claude-native rows are passive observations projected by
+ * the external-engine session. Both use the same refresh stream, while only
+ * Stella rows carry lifecycle authority.
  *
  * Mirrors `local-activity-store.ts` shape: one entry per conversation,
  * re-fetched on every `localChat:threadActivityUpdated` push with a
@@ -79,7 +78,7 @@ const recordsSignature = (records: ThreadActivityRecord[]): string =>
   records
     .map(
       (record) =>
-        `${record.threadId}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${JSON.stringify(record.modelConfigSnapshot ?? null)}\u0000${record.assistantMessagesUpdatedSequence ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
+        `${record.threadId}\u0000${record.source}\u0000${record.readOnly ? 1 : 0}\u0000${record.parentAgentId ?? ""}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${JSON.stringify(record.modelConfigSnapshot ?? null)}\u0000${record.assistantMessagesUpdatedSequence ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
     )
     .join("\n");
 

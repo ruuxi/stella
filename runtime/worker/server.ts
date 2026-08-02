@@ -83,6 +83,7 @@ import {
   type RuntimePromptMessage,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
+  type RuntimeSelfModRevertRequest,
   type RuntimeVoiceToolCallPayload,
   type StorePublishArgs,
   type StorePublishSelectedFeaturesArgs,
@@ -156,7 +157,7 @@ import {
 } from "./self-mod-coordinator.js";
 import {
   buildSelfModCardPayload,
-  selectUnattachedPendingCards,
+  claimPublishedSelfModChangeSet,
 } from "./self-mod-cards.js";
 import type { StellaSourcePack } from "../kernel/self-mod/stella-source-control.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
@@ -164,6 +165,7 @@ import { createDesktopDatabase } from "../kernel/storage/database.js";
 import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import { RunEventLog } from "../kernel/storage/run-event-log.js";
+import { SelfModPendingStore } from "../kernel/storage/self-mod-pending-store.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import {
   StellaSourceHistoryStore,
@@ -345,6 +347,7 @@ type WorkerState = {
   chatStore: ChatStore | null;
   runtimeStore: RuntimeStore | null;
   storeModStore: StoreModStore | null;
+  selfModPendingStore: SelfModPendingStore | null;
   sourceHistoryStore: StellaSourceHistoryStore | null;
   storeModService: StoreModService | null;
   socialSessionStore: SocialSessionStore | null;
@@ -358,12 +361,6 @@ type WorkerState = {
   selfModHmrController: SelfModHmrController | null;
   /** Keyed by `applyId` (the self-mod run id), in finalize order. */
   pendingSelfModApplies: Map<string, PendingSelfModApply>;
-  /**
-   * Latest persisted assistant reply per conversation. A self-mod run that
-   * finalizes after its turn already ended (background agents) has no live
-   * `onEnd` closure to read, so the card attaches against this instead.
-   */
-  lastAssistantEventIdByConversation: Map<string, string>;
   /**
    * Persistent ring buffer for streaming run events. Every event we emit
    * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
@@ -384,10 +381,12 @@ type WorkerState = {
 
 type StoredSelfModApplied = {
   applyId?: string;
+  changeSetId?: string;
   commitHash?: string;
+  commitHashes?: string[];
   files?: string[];
   batchIndex?: number;
-  status?: "pending" | "applied";
+  status?: "pending" | "applied" | "reverted";
 };
 
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
@@ -629,12 +628,12 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.chatStore = null;
   state.runtimeStore = null;
   state.storeModStore = null;
+  state.selfModPendingStore = null;
   state.sourceHistoryStore = null;
   state.storeModService = null;
   state.socialSessionStore = null;
   state.selfModHmrController = null;
   state.pendingSelfModApplies.clear();
-  state.lastAssistantEventIdByConversation.clear();
   state.runEventLog?.stop();
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
@@ -651,9 +650,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     | Promise<typeof import("../ai/model-runtime.js")>
     | undefined;
   const ensureModelRuntimeSubscription = async () => {
-    const loaded = await (modelRuntimeModule ??= import(
-      "../ai/model-runtime.js"
-    ));
+    const loaded = await (modelRuntimeModule ??=
+      import("../ai/model-runtime.js"));
     if (!shuttingDown) {
       unsubscribeFromModelCatalog ??= loaded.modelRuntime.onCatalogChanged(
         (snapshot) => {
@@ -669,6 +667,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     chatStore: null,
     runtimeStore: null,
     storeModStore: null,
+    selfModPendingStore: null,
     sourceHistoryStore: null,
     storeModService: null,
     socialSessionStore: null,
@@ -679,7 +678,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     deviceId: null,
     selfModHmrController: null,
     pendingSelfModApplies: new Map(),
-    lastAssistantEventIdByConversation: new Map(),
     runEventLog: null,
     cliBridgeServer: null,
   };
@@ -694,9 +692,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     typeof import("../kernel/agent-runtime/one-shot-completion.js")
   > | null = null;
   const loadOneShotCompletion = () =>
-    (oneShotCompletionModule ??= import(
-      "../kernel/agent-runtime/one-shot-completion.js"
-    ));
+    (oneShotCompletionModule ??=
+      import("../kernel/agent-runtime/one-shot-completion.js"));
   let chatPromptContextModule: Promise<
     typeof import("../kernel/chat-prompt-context.js")
   > | null = null;
@@ -753,11 +750,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = selfMod.hasPendingApplyBatches();
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-        requestPinned ||
-        pendingApplyPinned ||
-        socialPinned ||
-        voicePinned,
+      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+      requestPinned ||
+      pendingApplyPinned ||
+      socialPinned ||
+      voicePinned,
     );
   };
 
@@ -839,12 +836,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     eventId: string;
     selfModApplied: {
       applyId: string;
+      changeSetId?: string;
       commitHash?: string;
+      commitHashes?: string[];
       files: string[];
       batchIndex: number;
       status?: "pending" | "applied";
     };
-  }): void => {
+  }): boolean => {
     const updated = ensureChatStore().mergeEventPayload({
       conversationId: args.conversationId,
       eventId: args.eventId,
@@ -853,6 +852,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     if (updated) {
       notifyLocalChatUpdated(peer, args.conversationId, updated);
     }
+    return Boolean(updated);
   };
 
   /**
@@ -866,7 +866,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     eventId?: string;
     applyId?: string;
     commitHash?: string;
-    status: "pending" | "applied";
+    status: "pending" | "applied" | "reverted";
   }): void => {
     const matchesCard = (
       payload: StoredSelfModApplied | undefined,
@@ -877,17 +877,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
       return Boolean(args.commitHash) && payload.commitHash === args.commitHash;
     };
-    const current = state.chatStore
-      ?.listEvents(args.conversationId, 500)
-      .find((event) => {
-        if (args.eventId) {
-          return event._id === args.eventId;
-        }
-        const payload = event.payload as
-          | { selfModApplied?: StoredSelfModApplied }
-          | undefined;
-        return matchesCard(payload?.selfModApplied);
-      });
+    const current = args.eventId
+      ? state.chatStore?.getEvent(args.conversationId, args.eventId)
+      : state.chatStore?.listEvents(args.conversationId, 500).find((event) => {
+          const payload = event.payload as
+            | { selfModApplied?: StoredSelfModApplied }
+            | undefined;
+          return matchesCard(payload?.selfModApplied);
+        });
     const currentPayload = current?.payload as
       | { selfModApplied?: StoredSelfModApplied }
       | undefined;
@@ -914,36 +911,55 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
 
   /**
-   * Attach every not-yet-carded pending change for `conversationId` to that
-   * conversation's latest assistant reply.
-   *
-   * Called from `onEnd` for the ordinary case, and again whenever a change is
-   * staged, which is what makes a background agent that finalizes after the
-   * user's turn already ended still surface a card.
+   * Attach one already-published change set to this exact completed assistant
+   * reply. Publication is owned by `SelfModLifecycle.publishCompletion`;
+   * finalizing a child never makes its contribution eligible here.
    */
   const attachPendingSelfModCards = (
     conversationId: string,
     eventId?: string | null,
+    completionEventId?: string | null,
   ): void => {
     const trimmedConversationId = conversationId?.trim();
     if (!trimmedConversationId) return;
-    const targetEventId =
-      eventId?.trim() ||
-      state.lastAssistantEventIdByConversation.get(trimmedConversationId);
-    // No assistant reply to hang the card under yet. The change stays staged,
-    // so the next reply in this conversation picks it up.
-    if (!targetEventId) return;
-    const unattached = selectUnattachedPendingCards(
-      state.pendingSelfModApplies.values(),
-      trimmedConversationId,
-    );
-    for (const pending of unattached) {
-      pending.assistantMessageEventId = targetEventId;
-      attachSelfModToAssistantMessage({
-        conversationId: trimmedConversationId,
-        eventId: targetEventId,
-        selfModApplied: buildSelfModCardPayload(pending),
+    const targetEventId = eventId?.trim();
+    const targetCompletionEventId = completionEventId?.trim();
+    if (!targetEventId || !targetCompletionEventId) return;
+    const changeSet = claimPublishedSelfModChangeSet({
+      pending: state.pendingSelfModApplies.values(),
+      conversationId: trimmedConversationId,
+      assistantMessageEventId: targetEventId,
+      completionEventId: targetCompletionEventId,
+    });
+    if (!changeSet) return;
+    const attached = attachSelfModToAssistantMessage({
+      conversationId: trimmedConversationId,
+      eventId: targetEventId,
+      selfModApplied: buildSelfModCardPayload(changeSet),
+    });
+    if (!attached) {
+      // The assistant row disappeared or was never persisted. Return the
+      // published set to the unattached pool so a later reply can retry it.
+      for (const contribution of changeSet.contributions) {
+        contribution.assistantMessageEventId = undefined;
+      }
+      return;
+    }
+    try {
+      state.selfModPendingStore?.markAttached({
+        completionEventId: targetCompletionEventId,
+        assistantMessageEventId: targetEventId,
       });
+    } catch (error) {
+      // The chat merge is idempotent, so leave the durable set unattached and
+      // let terminal replay retry both the merge and ledger transition.
+      for (const contribution of changeSet.contributions) {
+        contribution.assistantMessageEventId = undefined;
+      }
+      console.warn(
+        "[self-mod] Failed to persist Apply-card attachment:",
+        (error as Error).message,
+      );
     }
   };
 
@@ -954,9 +970,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     getRuntimeStore: () => state.runtimeStore,
     getRepoRoot: () => state.init?.stellaAppDir ?? null,
     getPendingSelfModApplies: () => state.pendingSelfModApplies,
+    getPendingSelfModStore: () => state.selfModPendingStore,
     patchSelfModApplyStatus,
-    onPendingApplyStaged: (conversationId) =>
-      attachPendingSelfModCards(conversationId),
   });
 
   const ensureRunner = () => {
@@ -1102,6 +1117,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
     const db = createDesktopDatabase(init.stellaDataDirPath);
     const chatStore = new ChatStore(db, {
+      onThreadActivityUpdate: (payload) => {
+        peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
+      },
       onThreadAssistantUpdate: (payload) => {
         peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
       },
@@ -1109,8 +1127,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
       },
     });
+    chatStore.recoverInterruptedClaudeNativeChildren();
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
+    const selfModPendingStore = new SelfModPendingStore(db, init.stellaAppDir);
+    selfModPendingStore.recoverInterruptedApplies();
+    const rehydratedPendingSelfModApplies =
+      selfModPendingStore.listPendingContributions();
     const sourceHistoryStore = new StellaSourceHistoryStore(db);
     const socialSessionStore = new SocialSessionStore(db);
     const storeModService = new StoreModService(
@@ -1134,10 +1157,45 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.chatStore = chatStore;
     state.runtimeStore = runtimeStore;
     state.storeModStore = storeModStore;
+    state.selfModPendingStore = selfModPendingStore;
+    state.pendingSelfModApplies.clear();
+    for (const contribution of rehydratedPendingSelfModApplies) {
+      state.pendingSelfModApplies.set(contribution.applyId, contribution);
+    }
     state.sourceHistoryStore = sourceHistoryStore;
     state.storeModService = storeModService;
     state.socialSessionStore = socialSessionStore;
     state.runEventLog = runEventLog;
+
+    // Close the publication -> chat-attachment crash window. The assistant
+    // row durably carries the terminal completion id, so a restarted worker
+    // can idempotently re-run the card merge and then advance the ledger to
+    // `attached`. Already-attached sets are skipped by their persisted event
+    // id, while a crash after the merge but before `markAttached` safely
+    // repeats the same merge.
+    const recoveredCompletionIds = new Set<string>();
+    for (const contribution of rehydratedPendingSelfModApplies) {
+      const completionEventId = contribution.completionEventId?.trim();
+      if (
+        !completionEventId ||
+        contribution.assistantMessageEventId ||
+        recoveredCompletionIds.has(completionEventId)
+      ) {
+        continue;
+      }
+      recoveredCompletionIds.add(completionEventId);
+      const targetEvent = chatStore.findTerminalAssistantEvent(
+        contribution.conversationId,
+        completionEventId,
+      );
+      if (targetEvent) {
+        attachPendingSelfModCards(
+          contribution.conversationId,
+          targetEvent._id,
+          completionEventId,
+        );
+      }
+    }
     const bridgePaths = resolveRuntimePaths(init.stellaAppDir);
     const brokerAvailability = connectorActionBrokerAvailability(
       process.platform,
@@ -2101,18 +2159,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             });
             if (assistantEventId) {
               lastAssistantMessageEventId = assistantEventId;
-              // Also remembered per conversation, so a self-mod run that
-              // finalizes after this turn ends still finds a reply to card.
-              state.lastAssistantEventIdByConversation.set(
-                payload.conversationId,
-                assistantEventId,
-              );
-              // A change staged before this reply existed (background agent
-              // that finished mid-turn) can attach now that one does.
-              attachPendingSelfModCards(
-                payload.conversationId,
-                assistantEventId,
-              );
             }
             // Boundary marker on the same wire as `STREAM` chunks so the
             // renderer can reset its in-flight streaming buffer before
@@ -2458,16 +2504,15 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               // inline button for that turn — accepted trade-off
               // against the alternative of a floating-button-only
               // empty bubble.
-              // Card attach is driven by the deferred-apply stash, never by
-              // `ev.selfModApplied` (detectAppliedSince), which only sees
-              // commits inside this turn's baseline..HEAD window. The stash
-              // entry is written from the run's tracked writes when the run
-              // finalizes, so it is present here whether or not a commit
-              // landed; a run that finalizes after this turn ends attaches
-              // from `onPendingApplyStaged` instead.
+              // Only a set published by its owning General's root-facing
+              // terminal completion is eligible. Raw child finalization leaves
+              // an unpublished contribution and cannot mutate this row.
               attachPendingSelfModCards(
                 payload.conversationId,
                 lastAssistantMessageEventId,
+                ev.responseTarget?.type === "agent_terminal_notice"
+                  ? ev.responseTarget.completionEventId
+                  : undefined,
               );
             }
             if (isHiddenRun) {
@@ -3941,7 +3986,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
     async (params) => {
-      const payload = params as { commitHash?: string };
+      const payload = params as { applyId?: string; commitHash?: string };
       if (!state.init) {
         await state.selfModHmrController?.forceResumeAll().catch((error) => {
           console.warn(
@@ -3956,6 +4001,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         };
       }
       return await selfMod.applyPendingWithMorph({
+        applyId: payload.applyId,
         commitHash: payload.commitHash,
       });
     },
@@ -3967,11 +4013,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      const payload = params as { commitHash?: string; steps?: number };
-      return await selfMod.revertWithMorph({
-        commitHash: payload.commitHash,
-        steps: payload.steps,
-      });
+      const payload = params as RuntimeSelfModRevertRequest;
+      return await selfMod.revertWithMorph(payload);
     },
   );
 

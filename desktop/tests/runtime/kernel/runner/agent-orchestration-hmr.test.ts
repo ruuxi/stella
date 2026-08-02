@@ -44,6 +44,7 @@ type MockRuntimeState = {
     | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
+    | "mixed_tool_external"
     | "send_input_then_apply_patch"
     | "pause_resume_self_mod";
   patch: string;
@@ -68,6 +69,7 @@ const mockRuntime: MockRuntimeState = {
     | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
+    | "mixed_tool_external"
     | "send_input_then_apply_patch"
     | "pause_resume_self_mod",
   patch: "",
@@ -215,6 +217,7 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
 
       const result =
         runtime.mode === "apply_patch" ||
+        runtime.mode === "mixed_tool_external" ||
         runtime.mode === "send_input_then_apply_patch" ||
         runtime.mode === "pause_resume_self_mod"
           ? await opts.toolExecutor(
@@ -311,11 +314,26 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         fileChanges: result.fileChanges,
         producedFiles: result.producedFiles,
       });
+      if (runtime.mode === "mixed_tool_external") {
+        await writeFile(
+          path.join(runtime.root, "desktop/src/foo.tsx"),
+          "export const value = 'native-final';\n",
+        );
+      }
       return {
         runId: "subagent-run",
         result: result.error ? "" : "done",
         error: result.error,
-        fileChanges: result.fileChanges,
+        fileChanges:
+          runtime.mode === "mixed_tool_external"
+            ? [
+                ...(result.fileChanges ?? []),
+                {
+                  path: path.join(runtime.root, "desktop/src/external.ts"),
+                  kind: { type: "add" as const },
+                },
+              ]
+            : result.fileChanges,
         producedFiles: result.producedFiles,
       };
     },
@@ -519,6 +537,119 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(applyContent).toBe("export const value = 'after';\n");
   });
 
+  it("unions Stella tool writes with external-engine result mutations", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    const externalPath = path.join(root, "desktop/src/external.ts");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "mixed_tool_external";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${filePath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(async () => undefined),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => true),
+      hasRun: vi.fn(() => true),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "edit with mixed engines",
+      prompt: "edit both files",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(controller.recordWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      [filePath, externalPath],
+      { createdPaths: [externalPath] },
+    );
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the Apply snapshot when native work rewrites a Stella-tool path", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "mixed_tool_external";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${filePath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'tool-intermediate';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+    let applyContent = "";
+    const context = createTestContext(root, controller);
+    context.selfModLifecycle.finalizeRun = vi.fn(({ runId }) => {
+      const result = controller.finalize(runId);
+      applyContent =
+        result.appliedRuns[0]?.files.find(
+          (file) => file.path === "desktop/src/foo.tsx",
+        )?.content ?? "";
+    });
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "rewrite one path through both boundaries",
+      prompt: "edit the file twice",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await waitForAgentStatus(context.state.localAgentManager, threadId);
+
+    expect(applyContent).toBe("export const value = 'native-final';\n");
+  });
+
   it("does not start the shell mutation guard for known read-only exec commands", async () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
@@ -704,7 +835,12 @@ describe("agent orchestration self-mod HMR tracking", () => {
       undefined,
     );
     expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
-    expect(callOrder).toEqual(["guard-begin", "record-write", "guard-end"]);
+    expect(callOrder).toEqual([
+      "guard-begin",
+      "record-write",
+      "guard-end",
+      "record-write",
+    ]);
   });
 
   it("records suppressed Vite shell updates when producedFiles misses a generated file", async () => {

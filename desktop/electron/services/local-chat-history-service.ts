@@ -18,6 +18,7 @@ import type {
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
 import type {
+  AgentThreadMessagePage,
   AgentThreadMessageRecord,
   EventRecord,
   LocalChatUpdatedPayload,
@@ -299,6 +300,12 @@ export class LocalChatHistoryService {
     if (!threadId) throw new Error("threadId is required.");
     const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
     const store = this.getStore();
+    if (store.isClaudeNativeChildThread(threadId)) {
+      return store.listClaudeNativeChildMessagePage({
+        threadId,
+        limit,
+      }).messages;
+    }
     const messages = store.loadRawThreadMessagesWithEntryTypes(threadId, limit);
     const lifecycleById = new Map(
       store
@@ -378,6 +385,30 @@ export class LocalChatHistoryService {
     // Array.sort is stable: equal timestamps retain durable append order from
     // each source instead of being scrambled by opaque entry IDs.
     return projected.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  listAgentThreadMessagePage(args: {
+    threadId: string;
+    limit?: number;
+    beforeSequence?: number;
+  }): AgentThreadMessagePage {
+    const threadId = args.threadId.trim();
+    if (!threadId) throw new Error("threadId is required.");
+    const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
+    const store = this.getStore();
+    if (store.isClaudeNativeChildThread(threadId)) {
+      return store.listClaudeNativeChildMessagePage({
+        threadId,
+        limit,
+        ...(args.beforeSequence === undefined
+          ? {}
+          : { beforeSequence: args.beforeSequence }),
+      });
+    }
+    return {
+      messages: this.listAgentThreadMessages({ threadId, limit }),
+      hasMore: false,
+    };
   }
 
   listFiles(args: {

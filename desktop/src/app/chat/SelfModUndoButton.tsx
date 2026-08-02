@@ -17,20 +17,43 @@ type ButtonState =
 // How long the "Confirm" prompt stays armed before falling back to "Undo".
 const CONFIRM_TIMEOUT_MS = 4000;
 
+const getCompleteCommitSet = (
+  commitHashes: string[] | undefined,
+): string[] | null => {
+  if (!commitHashes || commitHashes.length === 0) return null;
+  const normalized = commitHashes.map((hash) => hash.trim());
+  if (
+    normalized.some((hash) => hash.length === 0) ||
+    new Set(normalized).size !== normalized.length
+  ) {
+    return null;
+  }
+  return normalized;
+};
+
 export function SelfModUndoButton({
   selfModApplied,
 }: {
   selfModApplied: SelfModApplied;
 }) {
-  const [state, setState] = useState<ButtonState>(() =>
-    (selfModApplied.status ?? "applied") === "pending" ? "pending" : "idle",
-  );
+  const [state, setState] = useState<ButtonState>(() => {
+    const status = selfModApplied.status ?? "applied";
+    return status === "pending"
+      ? "pending"
+      : status === "reverted"
+        ? "reverted"
+        : "idle";
+  });
 
-  // Undo reverts the run's commit, so it can only be offered once that commit
-  // exists. The card itself is staged from the run's tracked writes and can
-  // arrive first; when the commit lands the row is patched with its hash and
-  // the button appears. A run whose commit failed never gets one.
-  const canUndo = Boolean(selfModApplied.commitHash);
+  // New cards expose the complete grouped target through `commitHashes`.
+  // Presence of an invalid/empty grouped field must not fall back to one
+  // singular hash: that would turn an all-or-nothing Undo into a partial one.
+  const groupedCommitHashes = getCompleteCommitSet(selfModApplied.commitHashes);
+  const legacyCommitHash = selfModApplied.commitHash?.trim() || null;
+  const hasGroupedCommitField = selfModApplied.commitHashes !== undefined;
+  const canUndo = Boolean(
+    groupedCommitHashes || (!hasGroupedCommitField && legacyCommitHash),
+  );
 
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearConfirmTimer = useCallback(() => {
@@ -51,27 +74,37 @@ export function SelfModUndoButton({
       ) {
         return current;
       }
-      return (selfModApplied.status ?? "applied") === "pending"
+      const status = selfModApplied.status ?? "applied";
+      return status === "pending"
         ? "pending"
-        : "idle";
+        : status === "reverted"
+          ? "reverted"
+          : "idle";
     });
-  }, [selfModApplied.commitHash, selfModApplied.status]);
+  }, [
+    selfModApplied.commitHash,
+    selfModApplied.commitHashes,
+    selfModApplied.status,
+  ]);
 
   const handleApply = useCallback(async () => {
     if (state !== "pending") return;
     setState("applying");
     try {
-      await window.electronAPI?.agent.selfModApply(selfModApplied.commitHash);
+      await window.electronAPI?.agent.selfModApply(
+        selfModApplied.applyId,
+        selfModApplied.commitHash,
+      );
       setState("idle");
     } catch (err) {
       console.error("Self-mod apply failed:", err);
       showToast({ title: "Failed to update Stella", variant: "error" });
       setState("pending");
     }
-  }, [selfModApplied.commitHash, state]);
+  }, [selfModApplied.applyId, selfModApplied.commitHash, state]);
 
   const handleUndo = useCallback(async () => {
-    if (!selfModApplied.commitHash) return;
+    if (!canUndo) return;
     // First click arms the confirmation; auto-disarms after a few seconds.
     if (state === "idle") {
       setState("confirming");
@@ -87,9 +120,11 @@ export function SelfModUndoButton({
     clearConfirmTimer();
     setState("reverting");
     try {
+      const applyId = selfModApplied.changeSetId ?? selfModApplied.applyId;
       await window.electronAPI?.agent.selfModRevert(
-        selfModApplied.commitHash,
-        1,
+        groupedCommitHashes
+          ? { applyId, commitHashes: groupedCommitHashes }
+          : { applyId, commitHash: legacyCommitHash ?? undefined, steps: 1 },
       );
       setState("reverted");
     } catch (err) {
@@ -97,7 +132,15 @@ export function SelfModUndoButton({
       showToast({ title: "Failed to undo changes", variant: "error" });
       setState("idle");
     }
-  }, [selfModApplied.commitHash, state, clearConfirmTimer]);
+  }, [
+    canUndo,
+    clearConfirmTimer,
+    groupedCommitHashes,
+    legacyCommitHash,
+    selfModApplied.applyId,
+    selfModApplied.changeSetId,
+    state,
+  ]);
 
   const label =
     state === "pending"

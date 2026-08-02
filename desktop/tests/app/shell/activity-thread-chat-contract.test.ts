@@ -21,9 +21,13 @@ describe("Activity exact-thread chat UI contract", () => {
     expect(handler).toContain("threadId: task.id");
     expect(handler).not.toContain("setChatContext");
     expect(handler).not.toContain("requestFocus");
-    expect(source).toContain('aria-label="View activity"');
+    expect(source).toContain('"View activity"');
     expect(source).toContain("<Eye");
     expect(source).not.toContain("Open read-only chat for");
+    expect(handler).toContain("source: task.source");
+    expect(handler).toContain("readOnly: task.readOnly");
+    expect(source).toContain('"Claude · read-only"');
+    expect(source).toContain('"View Claude conversation"');
   });
 
   it("keeps the narrow last-row action and hover background inside the scroll boundary", () => {

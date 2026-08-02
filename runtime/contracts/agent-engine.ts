@@ -24,6 +24,12 @@ export type AgentModelReasoningEffort =
  */
 export type AgentModelConfigSnapshot = {
   engine: AgentRuntimeEngine;
+  /**
+   * True when this durable General/subagent tree uses Stella's managed
+   * subscription harness instead of the engine's native execution boundary.
+   * Absent is the backward-compatible native/default mode.
+   */
+  subscriptionHarnessEnabled?: boolean;
   /** Exact in-process route used for model metadata and native execution. */
   routeModel: string;
   /** Exact engine-native model when an external engine owns execution. */

@@ -106,6 +106,8 @@ export type StellaHostRunnerOptions = {
        * only.
        */
       threadKey?: string;
+      /** Top-level General thread whose final completion publishes this run. */
+      ownerThreadId?: string;
       succeeded: boolean;
       /**
        * Durable feature identity for this run's commits: the authoring
@@ -131,6 +133,11 @@ export type StellaHostRunnerOptions = {
         conversationId?: string;
       }) => Promise<string | null>;
     }) => Promise<void> | void;
+    publishCompletion?: (args: {
+      conversationId: string;
+      ownerThreadId: string;
+      completionEventId: string;
+    }) => Promise<unknown>;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
   selfModHmrController?:

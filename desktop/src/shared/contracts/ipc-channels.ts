@@ -392,6 +392,8 @@ export const IPC_LOCAL_CHAT_LIST_THREAD_ACTIVITY =
   "localChat:listThreadActivity" as const;
 export const IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGES =
   "localChat:listAgentThreadMessages" as const;
+export const IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE =
+  "localChat:listAgentThreadMessagePage" as const;
 export const IPC_LOCAL_CHAT_LIST_FILES = "localChat:listFiles" as const;
 export const IPC_LOCAL_CHAT_GET_EVENT_COUNT =
   "localChat:getEventCount" as const;

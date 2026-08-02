@@ -46,6 +46,16 @@ export {
 import type { ToolResult } from "./tools/types.js";
 import type { RuntimeRunCallbacks } from "./agent-runtime/types.js";
 import type { RuntimeVoiceHistoryItem } from "../protocol/index.js";
+import {
+  getAgentRuntimeEngine,
+  getReasoningEffort,
+  getSubscriptionHarnessEnabled,
+} from "./preferences/local-preferences.js";
+import {
+  resolveAgentEngineForRun,
+  resolveSubscriptionHarnessRouteModel,
+  sampleAgentEngineConfig,
+} from "./runner/agent-model-config.js";
 
 const VOICE_ORCHESTRATOR_HISTORY_LIMIT = 80;
 
@@ -59,7 +69,9 @@ const buildVoiceHistoryItems = (
       }>
     | undefined,
 ): RuntimeVoiceHistoryItem[] => {
-  const entries = (threadHistory ?? []).slice(-VOICE_ORCHESTRATOR_HISTORY_LIMIT);
+  const entries = (threadHistory ?? []).slice(
+    -VOICE_ORCHESTRATOR_HISTORY_LIMIT,
+  );
   const history: RuntimeVoiceHistoryItem[] = [];
   for (const entry of entries) {
     const content = entry.content.trim();
@@ -194,14 +206,63 @@ export const createStellaHostRunner = (
     if ("resolvedLlm" in args && args.resolvedLlm) {
       return await buildAgentContext(context, args);
     }
+    const configuredModel =
+      args.model ??
+      getConfiguredModel(
+        context,
+        args.agentType,
+        resolveAgent(context, args.agentType),
+      );
+    const configuredAgentEngine = getAgentRuntimeEngine(context.stellaDataDir);
+    const configuredReasoningEffort = getReasoningEffort(
+      context.stellaDataDir,
+      args.agentType,
+    );
+    const subscriptionHarnessEnabled = getSubscriptionHarnessEnabled(
+      context.stellaDataDir,
+    );
+    const selectedEngine =
+      args.modelConfigSnapshot?.engine ??
+      resolveAgentEngineForRun(configuredAgentEngine, args.spawnEngine);
+    const sampledEngineConfig = args.modelConfigSnapshot
+      ? undefined
+      : sampleAgentEngineConfig({
+          stellaDataDir: context.stellaDataDir,
+          engine: selectedEngine,
+          configuredModel,
+          engineModelOverride: args.spawnEngine?.model,
+          reasoningEffort:
+            args.spawnReasoningEffort ?? configuredReasoningEffort,
+        });
+    const sampledSpawnEngine =
+      selectedEngine === "default"
+        ? args.spawnEngine
+        : {
+            engine: selectedEngine,
+            ...(sampledEngineConfig?.engineModel
+              ? { model: sampledEngineConfig.engineModel }
+              : {}),
+          };
+    const subscriptionHarnessRouteModel = resolveSubscriptionHarnessRouteModel({
+      stellaDataDir: context.stellaDataDir,
+      agentType: args.agentType,
+      configuredEngine: configuredAgentEngine,
+      subscriptionHarnessEnabled,
+      configuredModel,
+      ...(sampledSpawnEngine ? { spawnEngine: sampledSpawnEngine } : {}),
+      ...(args.modelConfigSnapshot
+        ? { modelConfigSnapshot: args.modelConfigSnapshot }
+        : {}),
+    });
     const resolved = await resolveAgentModelRoute(
       context,
       args.agentType,
-      "modelConfigSnapshot" in args && args.modelConfigSnapshot
-        ? args.modelConfigSnapshot.routeModel
-        : "model" in args
-          ? args.model
-          : undefined,
+      subscriptionHarnessRouteModel ??
+        ("modelConfigSnapshot" in args && args.modelConfigSnapshot
+          ? args.modelConfigSnapshot.routeModel
+          : "model" in args
+            ? args.model
+            : undefined),
       "modelConfigSnapshot" in args && args.modelConfigSnapshot
         ? AGENT_IDS.ORCHESTRATOR
         : args.agentType,
@@ -209,6 +270,10 @@ export const createStellaHostRunner = (
     return await buildAgentContext(context, {
       ...args,
       ...resolved,
+      configuredAgentEngine,
+      configuredReasoningEffort,
+      ...(sampledEngineConfig ? { sampledEngineConfig } : {}),
+      subscriptionHarnessEnabled,
     });
   };
   const orchestratorController = createOrchestratorController(context, {
@@ -409,7 +474,8 @@ export const createStellaHostRunner = (
         callbacks: noopRuntimeCallbacks,
         toolExecutor: async () => ({ error: "Voice config has no executor." }),
         toolCatalog: context.toolHost.getToolCatalog(agentType, {
-          model: resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
+          model:
+            resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
           agentEngine: agentContext.agentEngine,
         }),
         deviceId: context.deviceId,
@@ -421,7 +487,8 @@ export const createStellaHostRunner = (
         hookEmitter: context.hookEmitter,
       });
       const toolCatalog = context.toolHost.getToolCatalog(agentType, {
-        model: resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
+        model:
+          resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
         agentEngine: agentContext.agentEngine,
       });
       const history = buildVoiceHistoryItems(agentContext.threadHistory);

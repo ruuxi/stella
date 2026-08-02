@@ -142,12 +142,47 @@ export function AgentThreadChatTab({
   threadId,
   conversationId,
   agentType,
+  source = "stella",
+  readOnly = true,
+  parentAgentId,
 }: {
   threadId: string;
   conversationId: string;
   agentType: string;
+  source?: "stella" | "claude-native";
+  readOnly?: boolean;
+  parentAgentId?: string;
 }) {
   const { records: threadActivity } = useThreadActivity(conversationId);
+  const activityRecord = useMemo(
+    () => threadActivity.find((record) => record.threadId === threadId),
+    [threadActivity, threadId],
+  );
+  const resolvedSource = activityRecord?.source ?? source;
+  const isClaudeNative = resolvedSource === "claude-native";
+  const resolvedReadOnly = activityRecord?.readOnly ?? readOnly;
+  const resolvedParentId = activityRecord?.parentAgentId ?? parentAgentId;
+  const parentRecord = useMemo(
+    () =>
+      resolvedParentId
+        ? threadActivity.find((record) => record.threadId === resolvedParentId)
+        : undefined,
+    [resolvedParentId, threadActivity],
+  );
+  const statusLabel = useMemo(() => {
+    switch (activityRecord?.status) {
+      case "running":
+        return "Working";
+      case "completed":
+        return "Completed";
+      case "error":
+        return "Failed";
+      case "canceled":
+        return "Stopped";
+      default:
+        return undefined;
+    }
+  }, [activityRecord?.status]);
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -184,6 +219,12 @@ export function AgentThreadChatTab({
     () =>
       messages.filter((message) => {
         if (message.role !== "lifecycle") return true;
+        if (
+          message.source === "claude-native" &&
+          message.content.trim().length > 0
+        ) {
+          return true;
+        }
         return Boolean(
           message.lifecycleEvent &&
             isAgentStartedEvent(message.lifecycleEvent) &&
@@ -331,15 +372,26 @@ export function AgentThreadChatTab({
   return (
     <section
       className="agent-thread-chat"
-      aria-label={`${agentType} read-only chat`}
+      aria-label={
+        isClaudeNative
+          ? "Claude subagent read-only conversation"
+          : `${agentType} read-only chat`
+      }
       data-thread-id={threadId}
+      data-source={resolvedSource}
+      data-read-only={resolvedReadOnly ? "true" : undefined}
       aria-busy={loading || refreshing}
     >
       <header className="agent-thread-chat__header">
         <span className="agent-thread-chat__eyebrow">
-          Read-only agent thread
+          {isClaudeNative
+            ? "Read-only Claude subagent"
+            : "Read-only agent thread"}
         </span>
-        <span className="agent-thread-chat__agent">{agentType}</span>
+        <span className="agent-thread-chat__agent">
+          {isClaudeNative ? "Claude Code" : agentType}
+          {statusLabel ? ` · ${statusLabel}` : ""}
+        </span>
       </header>
       {error && messages.length > 0 ? (
         <div
@@ -411,7 +463,9 @@ export function AgentThreadChatTab({
                     <span className="agent-thread-chat__role">
                       {roleLabel(message.role)}
                     </span>
-                    {message.role === "assistant" ? (
+                    {message.role === "assistant" ||
+                    (message.role === "lifecycle" &&
+                      message.source === "claude-native") ? (
                       <div className="event-item assistant">
                         <Markdown
                           text={message.content}
@@ -442,6 +496,16 @@ export function AgentThreadChatTab({
           </button>
         ) : null}
       </div>
+      {isClaudeNative ? (
+        <footer className="agent-thread-chat__ownership-note">
+          Changes from this conversation are included with the parent General
+          agent’s update
+          {parentRecord?.description.trim()
+            ? `: ${parentRecord.description.trim()}`
+            : ""}
+          .
+        </footer>
+      ) : null}
       <p
         className="agent-thread-chat__announcement"
         role="status"

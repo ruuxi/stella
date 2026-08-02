@@ -19,6 +19,7 @@ export type AgentResponseTarget =
       type: "agent_terminal_notice";
       agentId: string;
       terminalState: "completed" | "failed" | "canceled";
+      completionEventId?: string;
     };
 
 export type AgentStreamEvent = {

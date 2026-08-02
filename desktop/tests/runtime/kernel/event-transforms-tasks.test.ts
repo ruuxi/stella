@@ -41,11 +41,27 @@ const event = (
 
 describe("internal helper agent exclusion", () => {
   it("keeps only delegated General agents in the activity feed", () => {
-    expect(isActivityFeedTask({ agentType: "general" })).toBe(true);
-    expect(isActivityFeedTask({ agentType: "schedule" })).toBe(false);
-    expect(isActivityFeedTask({ agentType: "dream" })).toBe(false);
-    expect(isActivityFeedTask({ agentType: "explore" })).toBe(false);
-    expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
+    expect(isActivityFeedTask({ agentType: "general", source: "stella" })).toBe(
+      true,
+    );
+    expect(
+      isActivityFeedTask({
+        agentType: "claude-native",
+        source: "claude-native",
+      }),
+    ).toBe(true);
+    expect(
+      isActivityFeedTask({ agentType: "schedule", source: "stella" }),
+    ).toBe(false);
+    expect(isActivityFeedTask({ agentType: "dream", source: "stella" })).toBe(
+      false,
+    );
+    expect(isActivityFeedTask({ agentType: "explore", source: "stella" })).toBe(
+      false,
+    );
+    expect(
+      isActivityFeedTask({ agentType: "orchestrator", source: "stella" }),
+    ).toBe(false);
   });
 });
 
@@ -89,6 +105,8 @@ describe("parent agent ownership hierarchy", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
     description: "Task",
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     startedAtMs: 100,
     lastUpdatedAtMs: 100,
@@ -228,6 +246,8 @@ describe("top-level Activity work-unit counts", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
     description: overrides.id,
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     startedAtMs: 100,
     lastUpdatedAtMs: 100,
@@ -402,6 +422,8 @@ describe("compact activity summary", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
     description: overrides.id,
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     startedAtMs: 100,
     lastUpdatedAtMs: 100,
@@ -711,6 +733,8 @@ describe("seen-running expansion stickiness", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
     description: "Task",
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     startedAtMs: 100,
     lastUpdatedAtMs: 100,
@@ -764,6 +788,7 @@ describe("buildActivityTasks", () => {
   const record = (
     overrides: Partial<ThreadActivityRecord> = {},
   ): ThreadActivityRecord => ({
+    source: "stella",
     threadId: "research-flights",
     conversationId: "conv-1",
     agentType: "general",
@@ -1004,6 +1029,46 @@ describe("buildActivityTasks", () => {
     });
   });
 
+  it("nests Claude-native observations without granting them lifecycle authority", () => {
+    const tasks = buildActivityTasks([
+      record({
+        threadId: "general-parent",
+        description: "Coordinate the implementation",
+        status: "completed",
+        completedAt: 3_000,
+        updatedAt: 3_000,
+      }),
+      record({
+        source: "claude-native",
+        readOnly: true,
+        threadId: "claude-child",
+        agentType: "claude-native",
+        description: "Review the renderer",
+        parentAgentId: "general-parent",
+        status: "running",
+        startedAt: 2_000,
+        updatedAt: 3_100,
+      }),
+    ]);
+
+    expect(tasks).toMatchObject([
+      { id: "general-parent", source: "stella", readOnly: false },
+      {
+        id: "claude-child",
+        source: "claude-native",
+        readOnly: true,
+        parentAgentId: "general-parent",
+      },
+    ]);
+    const [row] = groupActivityTasks(tasks);
+    expect(row?.kind).toBe("hierarchy");
+    expect(row && getActivityRowStatus(row)).toBe("completed");
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(0);
+    expect(
+      selectFreshActivityTasks(tasks, 3_100).map((task) => task.id),
+    ).toEqual(["general-parent"]);
+  });
+
   it("surfaces the error text as the preview for failed rows", () => {
     const tasks = buildActivityTasks([
       record({
@@ -1038,6 +1103,8 @@ describe("buildActivityTasks", () => {
     ): TaskItem => ({
       description: "Task",
       agentType: "general",
+      source: "stella",
+      readOnly: false,
       status: "running",
       startedAtMs: 100,
       lastUpdatedAtMs: 100,
@@ -1085,6 +1152,8 @@ describe("selectFreshActivityTasks", () => {
     id: "t",
     description: "Task",
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     startedAtMs: 0,
     lastUpdatedAtMs: 0,

@@ -44,6 +44,7 @@ export function selectActivityNotificationTasks(
     if (!isWellFormedThreadId(task.id) || duplicateIds.has(task.id)) {
       return false;
     }
+    if (task.source !== "stella") return false;
     if (task.agentType !== AGENT_IDS.GENERAL) return false;
     return task.parentAgentId === undefined;
   });

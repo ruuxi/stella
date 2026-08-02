@@ -287,6 +287,62 @@ describe("AgentThreadChatTab", () => {
     );
   });
 
+  it("labels a Claude-native child as observational and keeps changes with its parent", async () => {
+    listAgentThreadMessages.mockResolvedValueOnce([
+      {
+        entryId: "claude-child-message",
+        sequence: 4,
+        source: "claude-native",
+        timestamp: 8,
+        role: "assistant",
+        content: "The renderer boundary is sound.",
+      },
+      {
+        entryId: "claude-child-status",
+        sequence: 5,
+        source: "claude-native",
+        timestamp: 9,
+        role: "lifecycle",
+        content: "Review completed successfully.",
+      },
+    ]);
+    await act(async () => {
+      root.render(
+        <AgentThreadChatTab
+          threadId="claude-native:session:child"
+          conversationId="conversation-a"
+          agentType="claude-native"
+          source="claude-native"
+          readOnly
+          parentAgentId="general-parent"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const section = container.querySelector<HTMLElement>(
+      'section[data-source="claude-native"]',
+    );
+    expect(section?.getAttribute("data-read-only")).toBe("true");
+    expect(section?.getAttribute("aria-label")).toBe(
+      "Claude subagent read-only conversation",
+    );
+    expect(container.textContent).toContain("Read-only Claude subagent");
+    expect(container.textContent).toContain("Claude Code");
+    expect(container.textContent).toContain("The renderer boundary is sound.");
+    expect(container.textContent).toContain("Review completed successfully.");
+    expect(container.textContent).toContain(
+      "included with the parent General agent’s update",
+    );
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelector('button[aria-label*="pause" i]')).toBeNull();
+    expect(
+      container.querySelector('button[aria-label*="cancel" i]'),
+    ).toBeNull();
+    expect(container.querySelector('button[aria-label*="retry" i]')).toBeNull();
+  });
+
   it("opens at the newest message, follows while pinned, and preserves manual reading", async () => {
     await renderThread();
     const scroll = container.querySelector<HTMLDivElement>(

@@ -235,6 +235,9 @@ const compactTaskTooltip = (task: TaskItem): string => {
   return `${label} · ${compactTaskState(task)}${clipped ? ` — ${clipped}` : ""}`;
 };
 
+const taskSourceLabel = (task: TaskItem): string | undefined =>
+  task.source === "claude-native" ? "Claude · read-only" : undefined;
+
 const CompactChildState = memo(function CompactChildState({
   summary,
   prioritizeFailure,
@@ -363,6 +366,7 @@ const TaskRow = memo(function TaskRow({
   // intentionally reserved for the inline chat card, so it cannot replace
   // the stable description here or leak into activity search.
   const label = task.description.trim();
+  const sourceLabel = taskSourceLabel(task);
   // Agent-authored assistant messages replace generated/tool-status summary
   // text. Only a still-running agent surfaces them (capped to the single
   // most recent line); finished rows keep just title, status, and files.
@@ -407,6 +411,8 @@ const TaskRow = memo(function TaskRow({
       className="chat-workspace-strip__task-row"
       ref={rowRef}
       data-status={task.status}
+      data-source={task.source}
+      data-read-only={task.readOnly ? "true" : undefined}
       data-expanded={expanded ? "true" : undefined}
       title={label}
       data-continuous-animation={compactMotionActive ? "true" : undefined}
@@ -438,6 +444,11 @@ const TaskRow = memo(function TaskRow({
                     isTopLevel={isTopLevel}
                   />
                 </span>
+                {sourceLabel ? (
+                  <span className="chat-workspace-strip__task-source">
+                    {sourceLabel}
+                  </span>
+                ) : null}
               </span>
               <CompactChildState
                 summary={compactSummary}
@@ -459,6 +470,11 @@ const TaskRow = memo(function TaskRow({
                   isTopLevel={isTopLevel}
                 />
               </span>
+              {sourceLabel ? (
+                <span className="chat-workspace-strip__task-source">
+                  {sourceLabel}
+                </span>
+              ) : null}
               {metaText ? (
                 <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
                   {metaText}
@@ -471,8 +487,16 @@ const TaskRow = memo(function TaskRow({
           type="button"
           className="chat-workspace-strip__task-attach"
           onClick={() => onSelect(task)}
-          aria-label="View activity"
-          title="View activity"
+          aria-label={
+            task.source === "claude-native"
+              ? "View Claude conversation"
+              : "View activity"
+          }
+          title={
+            task.source === "claude-native"
+              ? "View Claude conversation"
+              : "View activity"
+          }
         >
           <Eye size={14} strokeWidth={2} aria-hidden="true" />
         </button>
@@ -1074,6 +1098,9 @@ export const WorkspaceSections = memo(function WorkspaceSections({
         conversationId,
         agentType: task.agentType,
         title: task.description.trim() || task.agentType || "Agent thread",
+        source: task.source,
+        readOnly: task.readOnly,
+        parentAgentId: task.parentAgentId,
       });
       onNavigate?.();
     },

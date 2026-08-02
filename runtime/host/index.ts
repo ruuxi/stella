@@ -60,6 +60,7 @@ import {
   type RuntimeHealthSnapshot,
   type RuntimeSocialSessionStatus,
   type RuntimeSelfModApplyResult,
+  type RuntimeSelfModRevertRequest,
   type RuntimeSelfModRevertResult,
   type RuntimeLocalAgentRequest,
   type RuntimeLocalAgentSnapshot,
@@ -3019,7 +3020,7 @@ export class StellaRuntimeHost {
     return health?.socialSessions ?? createEmptySocialSessionServiceSnapshot();
   }
 
-  async revertSelfModCommit(payload: { commitHash?: string; steps?: number }) {
+  async revertSelfModCommit(payload: RuntimeSelfModRevertRequest) {
     return await this.requestWorker<RuntimeSelfModRevertResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
       payload,
@@ -3030,7 +3031,7 @@ export class StellaRuntimeHost {
     );
   }
 
-  async applySelfModCommit(payload: { commitHash?: string }) {
+  async applySelfModCommit(payload: { applyId?: string; commitHash?: string }) {
     return await this.requestWorker<RuntimeSelfModApplyResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
       payload,

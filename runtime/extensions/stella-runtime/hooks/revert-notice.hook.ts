@@ -59,7 +59,7 @@ const buildReminderText = (pending: SelfModRevertRecord[]): string => {
       ? `The user clicked Undo. Stella reverted the change (files: ${filesSummary}).`
       : "The user clicked Undo. Stella reverted the change.";
   }
-  return `The user clicked Undo ${pending.length} times. Stella reverted those changes.`;
+  return `The user clicked Undo. Stella reverted ${pending.length} changes.`;
 };
 
 const createReminderMessage = (text: string): RuntimePromptMessage => ({

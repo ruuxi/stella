@@ -549,6 +549,15 @@
   white-space: nowrap;
 }
 
+.chat-workspace-strip__task-source {
+  flex: 0 0 auto;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
 .chat-workspace-strip__group-status {
   flex-shrink: 1;
   max-width: 45%;

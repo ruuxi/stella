@@ -111,6 +111,7 @@ type LocalModelPreferences = {
   codexServiceTier: CodexServiceTier;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
+  subscriptionHarnessEnabled: boolean;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -130,6 +131,7 @@ type SavingKind =
   | "codex-model"
   | "codex-service-tier"
   | "claude-code-model"
+  | "subscription-harness"
   | "overrides"
   | "image"
   | "voice"
@@ -302,6 +304,7 @@ export function EngineTabContent() {
         claudeCodeModel: saved.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL,
         claudeCodeReasoningEffort:
           saved.claudeCodeReasoningEffort || DEFAULT_CLAUDE_CODE_REASONING,
+        subscriptionHarnessEnabled: saved.subscriptionHarnessEnabled === true,
       };
       cachedPreferences = next;
       setPreferences(next);
@@ -675,6 +678,22 @@ export function EngineTabContent() {
           codexCatalog={codexCatalog}
           onExplicitCodexAction={resetMigrationLatch}
         />
+        <footer className="engine-tab__subscription-footer">
+          <label className="engine-tab__subscription-option">
+            <input
+              type="checkbox"
+              checked={preferences?.subscriptionHarnessEnabled === true}
+              disabled={!preferences || inputsDisabled}
+              onChange={(event) =>
+                void writePreferences(
+                  { subscriptionHarnessEnabled: event.target.checked },
+                  "subscription-harness",
+                )
+              }
+            />
+            <span>Use subscriptions through Stella harness</span>
+          </label>
+        </footer>
       </section>
     </div>
   );
@@ -1311,6 +1330,7 @@ function ModelsSection({
                 ariaLabel="Provider and model picker"
                 selectedHeaderKicker="Tap a model"
                 hideSelectedTitle
+                hideSearch
                 hideSelectionCheck
                 favoriteScope="engine:stella"
                 reasoningEffort={selectedReasoningEffort}

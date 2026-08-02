@@ -16,4 +16,10 @@ this same set MINUS the orchestration tools (spawn_agent, send_input,
 pause_agent), so it cannot open a third level or steer a sibling thread. That
 second tier is applied at run time from the thread's ownership, in
 `AGENT_ORCHESTRATION_TOOL_NAMES` / `getToolCatalog({ parentOwned })`.
+
+For Stella and Claude Code, a natural final produced while descendants are
+still active is an internal yield, not an orchestrator completion. Descendant
+terminal reports wake this same thread; once all descendants are terminal, the
+General's next natural final is delivered to the orchestrator automatically.
+Codex/ChatGPT keeps its native parent/child completion protocol.
 -->

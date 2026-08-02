@@ -156,6 +156,15 @@
   background: var(--card);
 }
 
+.agent-thread-chat__ownership-note {
+  flex: 0 0 auto;
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--border);
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
 .agent-thread-chat__announcement {
   position: absolute;
   width: 1px;

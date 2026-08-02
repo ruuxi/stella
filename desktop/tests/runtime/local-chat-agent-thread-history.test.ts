@@ -51,6 +51,165 @@ describe("local agent thread history boundary", () => {
     service.close();
   });
 
+  it("routes Claude-native child ids to their durable paginated transcript", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
+    roots.push(root);
+    const service = new LocalChatHistoryService({ stellaAppDir: root });
+    const store = (
+      service as unknown as { getStore: () => SessionStore }
+    ).getStore();
+    const observation = {
+      conversationId: "conversation-native",
+      ownerThreadId: "general-parent",
+      claudeSessionId: "claude-session-1",
+    } as const;
+    store.observeClaudeNativeChild({
+      ...observation,
+      atMs: 1,
+      event: {
+        type: "launch",
+        toolUseId: "tool-child-1",
+        description: "Review the UI",
+      },
+    });
+    for (let index = 1; index <= 5; index += 1) {
+      store.observeClaudeNativeChild({
+        ...observation,
+        atMs: 1 + index,
+        event: {
+          type: "message",
+          parentToolUseId: "tool-child-1",
+          entryId: `native-message-${index}`,
+          role: "assistant",
+          content: `Native authored message ${index}`,
+        },
+      });
+    }
+    const nativeThread = store
+      .listThreadActivity("conversation-native")
+      .find((record) => record.source === "claude-native");
+    expect(nativeThread).toMatchObject({
+      source: "claude-native",
+      readOnly: true,
+      parentAgentId: "general-parent",
+    });
+
+    expect(
+      service
+        .listAgentThreadMessages({ threadId: nativeThread!.threadId })
+        .map((message) => [message.source, message.content]),
+    ).toEqual(
+      Array.from({ length: 5 }, (_, index) => [
+        "claude-native",
+        `Native authored message ${index + 1}`,
+      ]),
+    );
+
+    const newest = service.listAgentThreadMessagePage({
+      threadId: nativeThread!.threadId,
+      limit: 2,
+    });
+    expect(newest).toMatchObject({
+      hasMore: true,
+      messages: [
+        { content: "Native authored message 4" },
+        { content: "Native authored message 5" },
+      ],
+    });
+    const older = service.listAgentThreadMessagePage({
+      threadId: nativeThread!.threadId,
+      limit: 2,
+      beforeSequence: newest.nextBeforeSequence,
+    });
+    expect(older.messages.map((message) => message.content)).toEqual([
+      "Native authored message 2",
+      "Native authored message 3",
+    ]);
+    service.close();
+  });
+
+  it("serves an exact read-only Claude-native child transcript through the existing chat boundary", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
+    roots.push(root);
+    const service = new LocalChatHistoryService({ stellaAppDir: root });
+    const store = (
+      service as unknown as { getStore: () => SessionStore }
+    ).getStore();
+    const base = {
+      conversationId: "conversation-native-viewer",
+      ownerThreadId: "general-owner",
+      claudeSessionId: "claude-session",
+    } as const;
+    store.observeClaudeNativeChild({
+      ...base,
+      atMs: 10,
+      event: {
+        type: "launch",
+        toolUseId: "agent-tool",
+        description: "Inspect exact child history",
+        prompt: "Inspect exact child history",
+      },
+    });
+    store.observeClaudeNativeChild({
+      ...base,
+      atMs: 11,
+      event: {
+        type: "message",
+        parentToolUseId: "agent-tool",
+        entryId: "native-authored-1",
+        role: "assistant",
+        content: "This is the child’s authored finding.",
+      },
+    });
+    store.observeClaudeNativeChild({
+      ...base,
+      atMs: 12,
+      event: {
+        type: "task-status",
+        toolUseId: "agent-tool",
+        entryId: "native-status-1",
+        status: "completed",
+        content: "Native child completed.",
+      },
+    });
+    const child = service
+      .listThreadActivity({ conversationId: base.conversationId })
+      .find((record) => record.source === "claude-native");
+    expect(child).toMatchObject({
+      readOnly: true,
+      parentAgentId: "general-owner",
+      status: "completed",
+    });
+
+    const messages = service.listAgentThreadMessages({
+      threadId: child!.threadId,
+      limit: 200,
+    });
+    expect(messages).toEqual([
+      expect.objectContaining({
+        source: "claude-native",
+        role: "user",
+        content: "Inspect exact child history",
+      }),
+      expect.objectContaining({
+        entryId: "native-authored-1",
+        source: "claude-native",
+        role: "assistant",
+        content: "This is the child’s authored finding.",
+      }),
+      expect.objectContaining({
+        entryId: "native-status-1",
+        source: "claude-native",
+        role: "lifecycle",
+        content: "Native child completed.",
+      }),
+    ]);
+    expect(JSON.stringify(messages)).not.toMatch(
+      /\[Tool call\]|\[Tool result\]|system_reminder/,
+    );
+    service.close();
+  });
+
   it("keeps authored prose while projecting real Claude transport and lifecycle shapes structurally", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
     roots.push(root);
@@ -191,7 +350,9 @@ describe("local agent thread history boundary", () => {
         role: "toolResult",
         toolCallId: "claude-native-spawn",
         toolName: "spawn_agent",
-        content: [{ type: "text", text: '{"thread_id":"private-claude-child"}' }],
+        content: [
+          { type: "text", text: '{"thread_id":"private-claude-child"}' },
+        ],
         isError: false,
         timestamp: 112,
       } as never,

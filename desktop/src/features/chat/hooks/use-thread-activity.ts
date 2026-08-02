@@ -1,8 +1,8 @@
 /**
- * Hook over the authoritative thread-activity rows for a conversation
- * (`localChat:listThreadActivity`, backed by the runtime's `runtime_agents`
- * table). One row per background-agent thread — status, description, and
- * timestamps are the runtime's current truth, refreshed on every
+ * Hook over the thread-activity rows for a conversation
+ * (`localChat:listThreadActivity`). Stella-managed rows are authoritative
+ * runtime agent state; Claude-native rows are passive read-only projections.
+ * Status, description, and timestamps refresh on every
  * `localChat:threadActivityUpdated` push. No paging: the list is bounded by
  * thread count, not event history. Not storage-mode gated: `persistTask`
  * writes `runtime_agents` rows regardless of the task's storage mode, so the

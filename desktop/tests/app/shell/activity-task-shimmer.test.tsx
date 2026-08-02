@@ -18,6 +18,8 @@ const task = (overrides: Partial<TaskItem> = {}): TaskItem => ({
   id: "activity-agent",
   description: "Inspect the active work",
   agentType: "general",
+  source: "stella",
+  readOnly: false,
   status: "running",
   startedAtMs: Date.now() - 60_000,
   lastUpdatedAtMs: Date.now(),

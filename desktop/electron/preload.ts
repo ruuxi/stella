@@ -9,6 +9,7 @@ import type {
   LocalChatUpdatedPayload,
   ThreadActivityUpdatedPayload,
 } from "../../runtime/contracts/local-chat.js";
+import type { RuntimeSelfModRevertRequest } from "../../runtime/protocol/index.js";
 import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
@@ -20,6 +21,7 @@ import {
   IPC_HOME_CAPTURE_APP_WINDOW,
   IPC_HOME_GET_ACTIVE_BROWSER_TAB,
   IPC_HOME_LIST_RECENT_APPS,
+  IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE,
   IPC_MEDIA_COPY_IMAGE,
   IPC_MEDIA_GET_DIR,
   IPC_MEDIA_SAVE_OUTPUT,
@@ -906,10 +908,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       reason?: string;
       pendingRuntimeRestart?: boolean;
     }>("runtime:availability"),
-    selfModApply: (commitHash?: string) =>
-      ipcRenderer.invoke("selfmod:apply", { commitHash }),
-    selfModRevert: (commitHash?: string, steps?: number) =>
-      ipcRenderer.invoke("selfmod:revert", { commitHash, steps }),
+    selfModApply: (applyId?: string, commitHash?: string) =>
+      ipcRenderer.invoke("selfmod:apply", { applyId, commitHash }),
+    selfModRevert: (payload: RuntimeSelfModRevertRequest) =>
+      ipcRenderer.invoke("selfmod:revert", {
+        applyId: payload.applyId,
+        commitHashes: payload.commitHashes,
+        commitHash: payload.commitHash,
+        steps: payload.steps,
+      }),
     getCrashRecoveryStatus: () =>
       ipcRenderer.invoke("selfmod:crashRecoveryStatus"),
     discardUnfinishedSelfModChanges: (conversationId?: string) =>
@@ -1194,6 +1201,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
+        subscriptionHarnessEnabled: boolean;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1233,6 +1241,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "medium"
         | "high"
         | "xhigh";
+      subscriptionHarnessEnabled?: boolean;
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1272,6 +1281,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
+        subscriptionHarnessEnabled: boolean;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -2081,6 +2091,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("localChat:listThreadActivity", payload),
     listAgentThreadMessages: (payload: { threadId: string; limit?: number }) =>
       ipcRenderer.invoke("localChat:listAgentThreadMessages", payload),
+    listAgentThreadMessagePage: (payload: {
+      threadId: string;
+      limit?: number;
+      beforeSequence?: number;
+    }) =>
+      ipcRenderer.invoke(
+        IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE,
+        payload,
+      ),
     listFiles: (payload: {
       conversationId: string;
       limit?: number;

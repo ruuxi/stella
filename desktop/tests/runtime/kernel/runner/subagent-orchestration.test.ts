@@ -254,6 +254,7 @@ const productionEventHandlerOf = (
 const createHarness = (options?: {
   rootPath?: string;
   attemptTeardownTimeoutMs?: number;
+  seedStore?: (store: SessionStore) => void;
 }): Harness => {
   const rootPath =
     options?.rootPath ??
@@ -266,6 +267,7 @@ const createHarness = (options?: {
   }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
   const store = new SessionStore(db);
+  options?.seedStore?.(store);
   const appendedEvents: LocalChatAppendEventArgs[] = [];
   const sentMessages: SentMessage[] = [];
   const streamedAgentEvents: AgentLifecycleEvent[] = [];
@@ -455,6 +457,730 @@ describe("subagent orchestration production routing", () => {
     );
   });
 
+  it("keeps a no-child General agent's ordinary final as its automatic orchestrator completion", async () => {
+    const { manager, appendedEvents, sentMessages } = createHarness();
+    const ordinaryFinal = "The standalone delegated task is complete.";
+    runMock.handler = async () => ({
+      runId: "no-child-general",
+      result: ordinaryFinal,
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conversation-no-child-final",
+      rootRunId: "root-filter-run",
+      description: "Standalone General task",
+      prompt: "Complete this task without spawning children.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(task.threadId))?.status === "completed",
+    );
+
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string }).agentId === task.threadId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({ result: ordinaryFinal }),
+      }),
+    ]);
+    expect(
+      sentMessages.filter((message) => message.text.includes(ordinaryFinal)),
+    ).toHaveLength(1);
+  });
+
+  it("does not park a Codex General final while its child is still active", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    const childGate = new Promise<void>(() => {});
+    const codexFinal = "Codex delivered its native parent completion.";
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("codex-parent")) {
+        await parentGate;
+        return { runId: "codex-parent-final", result: codexFinal };
+      }
+      await childGate;
+      return { runId: "codex-child-final", result: "unreachable" };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-codex-native-final",
+      rootRunId: "root-filter-run",
+      description: "Codex parent native final",
+      prompt: "Use Codex's native child coordination.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      modelConfigSnapshot: {
+        engine: "codex_cli",
+        routeModel: "openai/gpt-5.6-sol",
+        engineModel: "gpt-5.6-sol",
+      },
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-codex-native-final",
+      rootRunId: "root-filter-run",
+      description: "Sub Codex child holder",
+      prompt: "Remain active while the Codex parent finishes.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parentTask.threadId,
+      storageMode: "local",
+    });
+
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(childTask.threadId))?.status === "running",
+    );
+    releaseParent();
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+    );
+
+    expect(await manager.getAgent(childTask.threadId)).toMatchObject({
+      status: "running",
+      completedAt: null,
+    });
+    expect(store.getAgentRecord(parentTask.threadId)).toMatchObject({
+      status: "completed",
+      result: codexFinal,
+    });
+    expect(
+      store.getAgentRecord(parentTask.threadId)?.descendantBoundaryState
+        ?.finalParked,
+    ).toBeUndefined();
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string; result?: string }).agentId ===
+            parentTask.threadId &&
+          (event.payload as { result?: string }).result === codexFinal,
+      ),
+    ).toHaveLength(1);
+    expect(
+      sentMessages.filter((message) => message.text.includes(codexFinal)),
+    ).toHaveLength(1);
+  });
+
+  it("parks a harnessed Codex General final until its child finishes", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const earlyFinal = "PRIVATE harnessed Codex parent final.";
+    const finalReport = "Harnessed Codex incorporated the child report.";
+    let parentRuns = 0;
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("harnessed-codex-parent")) {
+        parentRuns += 1;
+        if (parentRuns === 1) {
+          await parentGate;
+          return { runId: "harnessed-codex-early", result: earlyFinal };
+        }
+        return { runId: "harnessed-codex-final", result: finalReport };
+      }
+      await childGate;
+      return { runId: "harnessed-codex-child", result: "Child report." };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-codex-harness-final",
+      rootRunId: "root-filter-run",
+      description: "Harnessed Codex parent",
+      prompt: "Coordinate a child through the Stella harness.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      modelConfigSnapshot: {
+        engine: "codex_cli",
+        routeModel: "openai-codex/gpt-5.6-sol",
+        engineModel: "gpt-5.6-sol",
+        subscriptionHarnessEnabled: true,
+      },
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-codex-harness-final",
+      rootRunId: "root-filter-run",
+      description: "Sub harnessed Codex child",
+      prompt: "Finish after the parent emits its early final.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parentTask.threadId,
+      storageMode: "local",
+    });
+
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(childTask.threadId))?.status === "running",
+    );
+    releaseParent();
+    await waitUntil(() => !hasInFlightAttempt(manager, parentTask.threadId));
+
+    expect(await manager.getAgent(parentTask.threadId)).toMatchObject({
+      status: "running",
+      completedAt: null,
+    });
+    expect(
+      store.getAgentRecord(parentTask.threadId)?.descendantBoundaryState,
+    ).toMatchObject({ finalParked: true });
+    expect(JSON.stringify(appendedEvents)).not.toContain(earlyFinal);
+    expect(JSON.stringify(sentMessages)).not.toContain(earlyFinal);
+
+    releaseChild();
+    await waitUntil(
+      async () =>
+        parentRuns >= 2 &&
+        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+    );
+
+    expect(store.getAgentRecord(parentTask.threadId)).toMatchObject({
+      status: "completed",
+      result: finalReport,
+    });
+    expect(
+      sentMessages.filter((message) => message.text.includes(finalReport)),
+    ).toHaveLength(1);
+  });
+
+  it("replays only explicitly pending child wakes on restart and durably marks delivery", async () => {
+    const conversationId = "conversation-restart-child-wake";
+    const parentThreadId = "restart-parent-owner";
+    const pendingChildId = "restart-pending-child";
+    const markedChildId = "restart-marked-child";
+    const legacyChildId = "restart-legacy-child";
+    const pendingEventId = `${pendingChildId}:1:agent-completed`;
+    const markedEventId = `${markedChildId}:1:agent-completed`;
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      parentRuns.push(args);
+      return {
+        runId: "restart-parent-final",
+        result: "Parent repaired the missed child wake.",
+      };
+    };
+
+    const first = createHarness({
+      seedStore: (store) => {
+        const now = Date.now();
+        store.resolveOrCreateActiveThread({
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          threadId: parentThreadId,
+          nameHint: "Restart parent owner",
+        });
+        store.saveAgentRecord({
+          threadId: parentThreadId,
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          description: "Restart parent owner",
+          agentDepth: 1,
+          status: "completed",
+          attemptGeneration: 1,
+          startedAt: now - 100,
+          completedAt: now - 50,
+          result: "Old parent result.",
+          updatedAt: now - 50,
+        });
+        store.saveAgentRecord({
+          threadId: pendingChildId,
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          description: "Pending child",
+          agentDepth: 2,
+          parentAgentId: parentThreadId,
+          descendantBoundaryState: {
+            consumedEventIds: [],
+            wakePending: false,
+            parentWakePendingEventId: pendingEventId,
+          },
+          status: "completed",
+          attemptGeneration: 1,
+          startedAt: now - 90,
+          completedAt: now - 40,
+          result: "Pending child result.",
+          updatedAt: now - 40,
+        });
+        store.saveAgentRecord({
+          threadId: markedChildId,
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          description: "Already delivered child",
+          agentDepth: 2,
+          parentAgentId: parentThreadId,
+          descendantBoundaryState: {
+            consumedEventIds: [],
+            wakePending: false,
+            parentWakeDeliveredEventId: markedEventId,
+          },
+          status: "completed",
+          attemptGeneration: 1,
+          startedAt: now - 80,
+          completedAt: now - 30,
+          result: "Already delivered child result.",
+          updatedAt: now - 30,
+        });
+        store.saveAgentRecord({
+          threadId: legacyChildId,
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          description: "Legacy child without handshake state",
+          agentDepth: 2,
+          parentAgentId: parentThreadId,
+          status: "completed",
+          attemptGeneration: 1,
+          startedAt: now - 70,
+          completedAt: now - 20,
+          result: "Legacy child result must not replay.",
+          updatedAt: now - 20,
+        });
+      },
+    });
+
+    await waitUntil(
+      () =>
+        parentRuns.length === 1 &&
+        first.store.getAgentRecord(pendingChildId)?.descendantBoundaryState
+          ?.parentWakeDeliveredEventId === pendingEventId,
+    );
+    expect(threadHistoryText(first.store, parentThreadId)).toContain(
+      "Pending child result.",
+    );
+    expect(threadHistoryText(first.store, parentThreadId)).not.toContain(
+      "Already delivered child result.",
+    );
+    expect(threadHistoryText(first.store, parentThreadId)).not.toContain(
+      "Legacy child result must not replay.",
+    );
+
+    const rootPath = first.rootPath;
+    await closeHarness(first, { removeRoot: false });
+    const second = createHarness({ rootPath });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(parentRuns).toHaveLength(1);
+    expect(
+      second.store.getAgentRecord(pendingChildId)?.descendantBoundaryState
+        ?.parentWakeDeliveredEventId,
+    ).toBe(pendingEventId);
+  });
+
+  it("preserves a parked parent across restart and resumes it from the orphaned child's terminal report", async () => {
+    const conversationId = "conversation-restart-parked-parent";
+    const parentThreadId = "restart-parked-parent";
+    const childThreadId = "restart-running-child";
+    const childEventId = `${childThreadId}:1:agent-canceled`;
+    const parkedFinal = "PRIVATE final produced before the worker restart.";
+    const repairedFinal =
+      "Parent handled the restarted child's terminal report.";
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      parentRuns.push(args);
+      return { runId: "parked-restart-final", result: repairedFinal };
+    };
+
+    const { manager, store, appendedEvents, sentMessages } = createHarness({
+      seedStore: (seededStore) => {
+        const now = Date.now();
+        seededStore.resolveOrCreateActiveThread({
+          conversationId,
+          agentType: AGENT_IDS.GENERAL,
+          threadId: parentThreadId,
+          nameHint: "Restart parked parent",
+        });
+        seededStore.saveAgentRecord({
+          threadId: parentThreadId,
+          conversationId,
+          rootRunId: "root-filter-run",
+          agentType: AGENT_IDS.GENERAL,
+          description: "Restart parked parent",
+          agentDepth: 1,
+          descendantBoundaryState: {
+            consumedEventIds: [],
+            wakePending: false,
+            finalParked: true,
+          },
+          status: "running",
+          attemptGeneration: 1,
+          startedAt: now - 100,
+          completedAt: null,
+          result: parkedFinal,
+          updatedAt: now - 40,
+        });
+        seededStore.saveAgentRecord({
+          threadId: childThreadId,
+          conversationId,
+          rootRunId: "root-filter-run",
+          agentType: AGENT_IDS.GENERAL,
+          description: "Restart running child",
+          agentDepth: 2,
+          parentAgentId: parentThreadId,
+          status: "running",
+          attemptGeneration: 1,
+          startedAt: now - 80,
+          completedAt: null,
+          updatedAt: now - 30,
+        });
+      },
+    });
+
+    await waitUntil(
+      async () =>
+        parentRuns.length === 1 &&
+        (await manager.getAgent(parentThreadId))?.status === "completed" &&
+        store.getAgentRecord(childThreadId)?.descendantBoundaryState
+          ?.parentWakeDeliveredEventId === childEventId,
+    );
+    expect(JSON.stringify(appendedEvents)).not.toContain(childThreadId);
+    expect(JSON.stringify(appendedEvents)).not.toContain(parkedFinal);
+    expect(JSON.stringify(sentMessages)).not.toContain(parkedFinal);
+    expect(JSON.stringify(sentMessages)).toContain(repairedFinal);
+    expect(threadHistoryText(store, parentThreadId)).toContain(
+      "Restart running child",
+    );
+    expect(store.getAgentRecord(parentThreadId)).toMatchObject({
+      status: "completed",
+      result: repairedFinal,
+      descendantBoundaryState: {
+        consumedEventIds: [childEventId],
+        wakePending: false,
+      },
+    });
+    expect(
+      store.getAgentRecord(parentThreadId)?.descendantBoundaryState
+        ?.finalParked,
+    ).toBeUndefined();
+  });
+
+  it("parks an early General final and automatically delivers the post-descendant final", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const earlyFinal = "PRIVATE parent final while the child still runs.";
+    const finalReport = "Parent incorporated the finished child report.";
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("parent")) {
+        parentRuns.push(args);
+        if (parentRuns.length === 1) {
+          await parentGate;
+          return { runId: "parent-early", result: earlyFinal };
+        }
+        return { runId: "parent-after-child", result: finalReport };
+      }
+      await childGate;
+      return { runId: "child-report", result: "Child report arrived." };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-ordered-updates",
+      rootRunId: "root-filter-run",
+      description: "Parent waits for child",
+      prompt: "Coordinate one child and report after it finishes.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-ordered-updates",
+      rootRunId: "root-filter-run",
+      description: "Sub ordered updates",
+      prompt: "Finish after the parent has sent its updates.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parentTask.threadId,
+      storageMode: "local",
+    });
+
+    releaseParent();
+    await waitUntil(() => !hasInFlightAttempt(manager, parentTask.threadId));
+    expect(await manager.getAgent(parentTask.threadId)).toMatchObject({
+      status: "running",
+      completedAt: null,
+    });
+    expect(JSON.stringify(appendedEvents)).not.toContain(earlyFinal);
+    expect(JSON.stringify(sentMessages)).not.toContain(earlyFinal);
+
+    releaseChild();
+    await waitUntil(
+      async () =>
+        parentRuns.length >= 2 &&
+        (await manager.getAgent(childTask.threadId))?.status === "completed" &&
+        sentMessages.some((message) => message.text.includes(finalReport)),
+    );
+
+    expect(
+      sentMessages.filter((message) => message.text.includes(finalReport)),
+    ).toHaveLength(1);
+    expect((await manager.getAgent(parentTask.threadId))?.status).toBe(
+      "completed",
+    );
+    expect(
+      store.getAgentRecord(childTask.threadId)?.descendantBoundaryState,
+    ).toMatchObject({
+      parentWakeDeliveredEventId: `${childTask.threadId}:1:agent-completed`,
+    });
+    expect(
+      store.getAgentRecord(childTask.threadId)?.descendantBoundaryState
+        ?.parentWakePendingEventId,
+    ).toBeUndefined();
+  });
+
+  it("keeps parking intermediate finals until the last descendant report is available", async () => {
+    const { manager, sentMessages } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    const childReleases: Array<() => void> = [];
+    const childGates = [0, 1].map(
+      () =>
+        new Promise<void>((resolve) => {
+          childReleases.push(resolve);
+        }),
+    );
+    const privateFinals = [
+      "PRIVATE before children.",
+      "PRIVATE after one child.",
+    ];
+    const consolidatedFinal = "Both descendant reports are now incorporated.";
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("parent")) {
+        parentRuns.push(args);
+        if (parentRuns.length === 1) {
+          await parentGate;
+          return { runId: "parent-wait", result: privateFinals[0]! };
+        }
+        return {
+          runId: `parent-follow-up-${parentRuns.length}`,
+          result:
+            parentRuns.length === 2 ? privateFinals[1]! : consolidatedFinal,
+        };
+      }
+      const childIndex = args.agentId?.includes("first") ? 0 : 1;
+      await childGates[childIndex];
+      return {
+        runId: `child-${args.agentId}`,
+        result: `Terminal report for ${args.agentId}.`,
+      };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-coalesced-reminder",
+      rootRunId: "root-filter-run",
+      description: "Parent coalesced reminder",
+      prompt: "Wait for two children, then report upward.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const children = await Promise.all(
+      ["first", "second"].map((suffix) =>
+        manager.createAgent({
+          conversationId: "conversation-coalesced-reminder",
+          rootRunId: "root-filter-run",
+          description: `Sub simultaneous ${suffix}`,
+          prompt: `Complete the ${suffix} check.`,
+          agentType: AGENT_IDS.GENERAL,
+          agentDepth: 2,
+          maxAgentDepth: 2,
+          parentAgentId: parentTask.threadId,
+          storageMode: "local",
+        }),
+      ),
+    );
+
+    releaseParent();
+    await waitUntil(() => !hasInFlightAttempt(manager, parentTask.threadId));
+    childReleases[0]!();
+    await waitUntil(async () => {
+      return (
+        (await manager.getAgent(children[0]!.threadId))?.status ===
+          "completed" &&
+        parentRuns.length >= 2 &&
+        !hasInFlightAttempt(manager, parentTask.threadId)
+      );
+    });
+    expect((await manager.getAgent(parentTask.threadId))?.status).toBe(
+      "running",
+    );
+    expect(JSON.stringify(sentMessages)).not.toContain(privateFinals[0]);
+    expect(JSON.stringify(sentMessages)).not.toContain(privateFinals[1]);
+
+    childReleases[1]!();
+    await waitUntil(() =>
+      sentMessages.some((message) => message.text.includes(consolidatedFinal)),
+    );
+    expect(
+      sentMessages.filter((message) =>
+        message.text.includes(consolidatedFinal),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("counts parked parents as active and shuts them down before child cancellation can wake them", async () => {
+    const { manager } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("shutdown-parent")) {
+        parentRuns.push(args);
+        await parentGate;
+        return {
+          runId: "shutdown-parent-early",
+          result: "Private early final.",
+        };
+      }
+      await waitForAbort(args.abortSignal);
+      return {
+        runId: "shutdown-child-canceled",
+        result: "",
+        interrupted: true,
+      };
+    };
+
+    const parent = await manager.createAgent({
+      conversationId: "conversation-shutdown-parked",
+      rootRunId: "shutdown-root-run",
+      description: "Shutdown parent",
+      prompt: "Wait for the child.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const child = await manager.createAgent({
+      conversationId: "conversation-shutdown-parked",
+      rootRunId: "shutdown-root-run",
+      description: "Shutdown child",
+      prompt: "Keep running until shutdown.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parent.threadId,
+      storageMode: "local",
+    });
+
+    releaseParent();
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(parent.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parent.threadId),
+    );
+    expect(manager.getActiveAgentCount()).toBe(2);
+    expect(manager.listActiveAgentRuns()).toEqual([
+      {
+        runId: "shutdown-root-run",
+        conversationId: "conversation-shutdown-parked",
+      },
+    ]);
+
+    manager.shutdown("Shutdown parked-state regression.");
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(parent.threadId))?.status === "canceled" &&
+        (await manager.getAgent(child.threadId))?.status === "canceled",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(parentRuns).toHaveLength(1);
+    expect(manager.getActiveAgentCount()).toBe(0);
+  });
+
+  it("surfaces a coordinated parent's engine failure and never turns a late child terminal into a reminder resurrection", async () => {
+    const { manager, sentMessages } = createHarness();
+    let releaseParent!: () => void;
+    const parentGate = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const parentRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentId?.startsWith("parent")) {
+        parentRuns.push(args);
+        await parentGate;
+        return {
+          runId: "parent-engine-failure",
+          result: "",
+          error: "parent engine transport failed",
+        };
+      }
+      await childGate;
+      return { runId: "late-child", result: "Late child result." };
+    };
+
+    const parentTask = await manager.createAgent({
+      conversationId: "conversation-coordinated-parent-failure",
+      rootRunId: "root-filter-run",
+      description: "Parent coordinated failure",
+      prompt: "Coordinate a child, but the engine will fail.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-coordinated-parent-failure",
+      rootRunId: "root-filter-run",
+      description: "Sub late after parent failure",
+      prompt: "Finish after the parent fails.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: parentTask.threadId,
+      storageMode: "local",
+    });
+
+    releaseParent();
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(parentTask.threadId))?.status === "error",
+    );
+    expect(
+      sentMessages.filter((message) =>
+        message.text.includes("parent engine transport failed"),
+      ),
+    ).toHaveLength(1);
+
+    releaseChild();
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(childTask.threadId))?.status === "completed",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(parentRuns).toHaveLength(1);
+    expect((await manager.getAgent(parentTask.threadId))?.status).toBe("error");
+    expect(JSON.stringify(sentMessages)).not.toContain("have now finished");
+    expect(JSON.stringify(sentMessages)).not.toContain("Late child result.");
+  });
+
   it("delivers a subagent's full final report into the woken parent's next turn, with no root card and no notification", async () => {
     const {
       manager,
@@ -524,7 +1250,8 @@ describe("subagent orchestration production routing", () => {
     releaseParentFirst();
     await waitUntil(
       async () =>
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
     const rootEventsBeforeChild = appendedEvents.length;
     const streamedBeforeChild = streamedAgentEvents.length;
@@ -610,7 +1337,8 @@ describe("subagent orchestration production routing", () => {
         .map((event) => event.agentId),
     ).toEqual([parentTask.threadId]);
 
-    // The parent's own completions still reach root, once per finished turn.
+    // Intermediate natural finals remain private while a descendant is active;
+    // only the post-descendant final reaches root.
     expect(
       appendedEvents
         .filter(
@@ -620,10 +1348,7 @@ describe("subagent orchestration production routing", () => {
               parentTask.threadId,
         )
         .map((event) => (event.payload as { result?: string }).result),
-    ).toEqual([
-      "Parent turn one; the subagent is still working.",
-      "Parent consolidated the subagent report.",
-    ]);
+    ).toEqual(["Parent consolidated the subagent report."]);
   });
 
   it.each([
@@ -742,7 +1467,8 @@ describe("subagent orchestration production routing", () => {
       releaseParentFirst();
       await waitUntil(
         async () =>
-          (await manager.getAgent(parentTask.threadId))?.status === "completed",
+          (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+          !hasInFlightAttempt(manager, parentTask.threadId),
       );
       releaseChild();
       await waitUntil(
@@ -888,14 +1614,16 @@ describe("subagent orchestration production routing", () => {
     await waitUntil(
       async () =>
         parentRuns.length === 1 &&
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
 
     releaseFirstChild();
     await waitUntil(
       async () =>
         parentRuns.length === 2 &&
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
 
     // A parent steering its own subagent: an explicit send_input follow-up on
@@ -924,7 +1652,8 @@ describe("subagent orchestration production routing", () => {
     await waitUntil(
       async () =>
         parentRuns.length === 3 &&
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
 
     releaseSecondChild();
@@ -942,11 +1671,9 @@ describe("subagent orchestration production routing", () => {
         "agent-canceled",
       ].includes(event.type),
     );
-    // Only the parent is ever projected into root — never a subagent. Its own
-    // turns are paired: one start and one completion each, including the turns
-    // a child report woke, which behave like any other input rather than as a
-    // hidden coordination boundary. Pairing is the point: a completion without
-    // a matching start is what the card lifecycle cannot bind.
+    // Only the parent is ever projected into root — never a subagent. Every
+    // child report wake produces a parent start, but intermediate natural
+    // finals stay private until no descendants remain.
     expect(
       rootLifecycle.every(
         (event) =>
@@ -957,14 +1684,18 @@ describe("subagent orchestration production routing", () => {
     expect(
       rootLifecycle.filter((event) => event.type === "agent-started"),
     ).toHaveLength(parentRuns.length);
-    expect(rootLifecycle.map((event) => event.type)).toEqual(
-      parentRuns.flatMap(() => ["agent-started", "agent-completed"]),
-    );
+    expect(rootLifecycle.map((event) => event.type)).toEqual([
+      "agent-started",
+      "agent-started",
+      "agent-started",
+      "agent-started",
+      "agent-completed",
+    ]);
     expect(
       rootLifecycle
         .filter((event) => event.type === "agent-completed")
         .map((event) => (event.payload as { result?: string }).result),
-    ).toEqual(parentResults);
+    ).toEqual([parentResults.at(-1)]);
     const lastCompletion = rootLifecycle[rootLifecycle.length - 1]!;
     expect(
       store.hasEvent(
@@ -1212,7 +1943,8 @@ describe("subagent orchestration production routing", () => {
     releaseParentFirst();
     await waitUntil(
       async () =>
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
     releaseFailingChild();
     await waitUntil(
@@ -1292,6 +2024,15 @@ describe("subagent orchestration production routing", () => {
     expect(JSON.stringify(sentMessages)).not.toContain(
       "Canceled for private lifecycle regression.",
     );
+    for (const [childId, type] of [
+      [failedChild.threadId, "agent-failed"],
+      [canceledChild.threadId, "agent-canceled"],
+    ] as const) {
+      const boundary =
+        harness.store.getAgentRecord(childId)?.descendantBoundaryState;
+      expect(boundary?.parentWakePendingEventId).toBeUndefined();
+      expect(boundary?.parentWakeDeliveredEventId).toBe(`${childId}:1:${type}`);
+    }
   });
 
   it("routes a grandchild report to its direct parent, never to root or the grandparent", async () => {
@@ -1393,14 +2134,15 @@ describe("subagent orchestration production routing", () => {
     await waitUntil(
       async () =>
         parentRuns.length === 1 &&
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(parentTask.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, parentTask.threadId),
     );
     releaseMid();
     await waitUntil(
       async () =>
-        (await manager.getAgent(child.threadId))?.status === "completed" &&
-        parentRuns.length === 2 &&
-        (await manager.getAgent(parentTask.threadId))?.status === "completed",
+        (await manager.getAgent(child.threadId))?.status === "running" &&
+        !hasInFlightAttempt(manager, child.threadId) &&
+        parentRuns.length === 1,
     );
     releaseLeaf();
     await waitUntil(
@@ -1738,7 +2480,10 @@ describe("subagent orchestration production routing", () => {
           await waitForAbort(args.abortSignal);
           return { runId: "parent-paused", result: "", interrupted: true };
         }
-        return { runId: "parent-resume", result: "Resumed safely." };
+        return {
+          runId: "parent-resume",
+          result: "PRIVATE natural final after pause resume.",
+        };
       }
       await waitForAbort(args.abortSignal);
       return { runId: "child-paused", result: "", interrupted: true };
@@ -1822,7 +2567,12 @@ describe("subagent orchestration production routing", () => {
       historyText(parentRuns[1]!).match(/Late child completion\./g),
     ).toHaveLength(1);
     await waitUntil(() =>
-      sentMessages.some((message) => message.text.includes("Resumed safely.")),
+      sentMessages.some((message) =>
+        message.text.includes("PRIVATE natural final after pause resume."),
+      ),
+    );
+    expect(JSON.stringify(sentMessages)).toContain(
+      "PRIVATE natural final after pause resume.",
     );
     expect((await manager.getAgent(childTask.threadId))?.status).toBe(
       "canceled",
@@ -2068,7 +2818,7 @@ describe("subagent orchestration production routing", () => {
     await waitUntil(
       async () =>
         (await firstManager.getAgent(parentTask.threadId))?.status ===
-        "completed",
+          "running" && !hasInFlightAttempt(firstManager, parentTask.threadId),
     );
     releaseChild();
     await waitUntil(

@@ -60,6 +60,23 @@ export const adaptLegacyMobileArgs = (
     return args;
   }
 
+  // These two APIs gained grouped-card fields ahead of their legacy scalar
+  // selectors. Old App Store builds still call `(commitHash)` and
+  // `(commitHash, steps)` positionally, so generic field-order packing would
+  // misread the hash as `applyId`. Current phones send an object and return
+  // through the branch above.
+  if (channel === "selfmod:apply") {
+    return [{ ...(first !== undefined ? { commitHash: first } : {}) }];
+  }
+  if (channel === "selfmod:revert") {
+    return [
+      {
+        ...(first !== undefined ? { commitHash: first } : {}),
+        ...(args[1] !== undefined ? { steps: args[1] } : {}),
+      },
+    ];
+  }
+
   const payload: Record<string, unknown> = {};
   contract.fields.forEach((field, index) => {
     if (index < args.length && args[index] !== undefined) {

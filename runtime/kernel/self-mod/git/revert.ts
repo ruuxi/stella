@@ -17,6 +17,7 @@ import {
   getGitHead,
   getLastSelfModCommitHash,
   listGitDirtyFiles,
+  orderCommitHashesChronologically,
 } from "./log.js";
 
 export type SelfModRevertResult = {
@@ -41,6 +42,25 @@ export type SelfModRevertResult = {
   originThreadKey?: string | null;
   /** Files touched by the reverted commit(s). Used for the hidden reminder text. */
   files?: string[];
+};
+
+export type SelfModRevertContribution = {
+  commitHash: string;
+  conversationId: string | null;
+  originThreadKey: string | null;
+  files: string[];
+};
+
+export type SelfModCommitSetRevertResult = {
+  /** Exact requested commits, normalized into oldest-to-newest topology order. */
+  commitHashes: string[];
+  /** The order passed to `git revert` (newest first). */
+  revertedCommitHashes: string[];
+  /** Original trailers and files for every commit, in topology order. */
+  contributions: SelfModRevertContribution[];
+  /** Stable union of every contribution's files. */
+  files: string[];
+  message: string;
 };
 
 export type GitRollbackSinceResult =
@@ -193,17 +213,137 @@ const revertGitCommitsUnlocked = async (args: {
       } catch {
         // Best effort only.
       }
-      if (preRevertHead && reverted.length > 0) {
-        await runGit(args.repoRoot, [
-          "reset",
-          "--hard",
-          preRevertHead,
-        ]).catch(() => undefined);
+      if (preRevertHead) {
+        await runGit(args.repoRoot, ["reset", "--hard", preRevertHead]).catch(
+          () => undefined,
+        );
       }
       throw error;
     }
   }
   return reverted;
+};
+
+const readSelfModRevertContribution = async (
+  repoRoot: string,
+  commitHash: string,
+): Promise<SelfModRevertContribution> => {
+  const message = await runGit(repoRoot, [
+    "show",
+    "-s",
+    "--format=%B",
+    commitHash,
+  ]);
+  if (!isStellaSelfModCommitMessage(message)) {
+    throw new Error(
+      `Refusing to revert non-Stella self-mod commit "${commitHash}".`,
+    );
+  }
+  const trailers = parseStellaCommitTrailers(message);
+  const nameOnly = await runGit(repoRoot, [
+    "show",
+    "--name-only",
+    "--no-renames",
+    "--pretty=format:",
+    commitHash,
+  ]);
+  const files = [
+    ...new Set(
+      nameOnly
+        .split("\n")
+        .map((line) => normalizeGitPath(line.trim()))
+        .filter(Boolean),
+    ),
+  ];
+  return {
+    commitHash,
+    conversationId: trailers.conversationId ?? null,
+    originThreadKey: trailers.threadKey ?? null,
+    files,
+  };
+};
+
+/**
+ * Atomically revert one exact self-mod change set.
+ *
+ * Callers provide the commits represented by the card; this function never
+ * expands that selection into a history range. The set is topology-sorted so
+ * dependent commits are always reverted newest-first, even if a stale client
+ * sends the hashes out of order. A clean tree is required because failure
+ * recovery hard-resets to the pre-revert HEAD after aborting the in-flight
+ * revert.
+ */
+export const revertSelfModCommits = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+}): Promise<SelfModCommitSetRevertResult> => {
+  const requestedCommitHashes = args.commitHashes.map((hash) => hash.trim());
+  if (
+    requestedCommitHashes.length === 0 ||
+    requestedCommitHashes.some((hash) => hash.length === 0)
+  ) {
+    throw new Error(
+      "At least one exact self-mod commit is required to revert.",
+    );
+  }
+  if (new Set(requestedCommitHashes).size !== requestedCommitHashes.length) {
+    throw new Error(
+      "Refusing to revert a self-mod commit set with duplicates.",
+    );
+  }
+
+  await assertGitRepository(args.repoRoot);
+  return await withRepoCommitLock(args.repoRoot, async () => {
+    const commitHashes = await orderCommitHashesChronologically({
+      repoRoot: args.repoRoot,
+      commitHashes: requestedCommitHashes,
+    });
+
+    const contributions: SelfModRevertContribution[] = [];
+    for (const commitHash of commitHashes) {
+      const ancestor = await runGitStatus(args.repoRoot, [
+        "merge-base",
+        "--is-ancestor",
+        commitHash,
+        "HEAD",
+      ]);
+      if (ancestor.exitCode !== 0) {
+        throw new Error(
+          `Refusing to revert self-mod commit "${commitHash}" because it is not reachable from HEAD.`,
+        );
+      }
+      contributions.push(
+        await readSelfModRevertContribution(args.repoRoot, commitHash),
+      );
+    }
+
+    const dirtyFiles = await listGitDirtyFiles(args.repoRoot);
+    if (dirtyFiles.length > 0) {
+      throw new Error(
+        "Refusing to revert grouped self-mod changes while the working tree is not clean.",
+      );
+    }
+
+    const revertOrder = [...commitHashes].reverse();
+    const revertedCommitHashes = await revertGitCommitsUnlocked({
+      repoRoot: args.repoRoot,
+      commitHashes: revertOrder,
+      resetToPreRevertHeadOnFailure: true,
+    });
+    const files = [
+      ...new Set(contributions.flatMap((contribution) => contribution.files)),
+    ];
+    return {
+      commitHashes,
+      revertedCommitHashes,
+      contributions,
+      files,
+      message:
+        revertedCommitHashes.length === 1
+          ? `Reverted 1 commit (${revertedCommitHashes[0]?.slice(0, 7)}).`
+          : `Reverted ${revertedCommitHashes.length} commits.`,
+    };
+  });
 };
 
 /**
@@ -226,9 +366,7 @@ export const revertSelfModCommit = async (args: {
   await assertGitRepository(repoRoot);
 
   const startCommit =
-    args.commitHash?.trim() ||
-    (await getLastSelfModCommitHash(repoRoot)) ||
-    "";
+    args.commitHash?.trim() || (await getLastSelfModCommitHash(repoRoot)) || "";
   if (!startCommit) {
     throw new Error("No commit found to revert.");
   }

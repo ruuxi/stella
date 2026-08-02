@@ -85,6 +85,12 @@ export type LocalPreferences = {
   stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
+  /**
+   * Run subscription-backed General agents through Stella's managed harness.
+   * Off preserves each engine's native integration (Codex app-server and
+   * vanilla Claude Code). The value is sampled into a durable run snapshot.
+   */
+  subscriptionHarnessEnabled: boolean;
   /** Codex model id used when the Codex engine is selected. */
   codexModel: string;
   /**
@@ -168,6 +174,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "stellaConversationModelOverrides"
   | "stellaConversationReasoningEfforts"
   | "agentRuntimeEngine"
+  | "subscriptionHarnessEnabled"
   | "codexModel"
   | "codexModelExplicit"
   | "codexReasoningEffort"
@@ -193,6 +200,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   stellaConversationModelOverrides: {},
   stellaConversationReasoningEfforts: {},
   agentRuntimeEngine: "default",
+  subscriptionHarnessEnabled: false,
   codexModel: DEFAULT_CODEX_MODEL,
   codexModelExplicit: false,
   codexReasoningEffort: "default",
@@ -258,6 +266,7 @@ export const loadLocalPreferences = (
         parsed.stellaConversationReasoningEfforts,
       ),
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
+      subscriptionHarnessEnabled: parsed.subscriptionHarnessEnabled === true,
       codexModel: normalizeCodexModel(parsed.codexModel),
       codexModelExplicit: parsed.codexModelExplicit === true,
       codexReasoningEffort: normalizeReasoningEffort(
@@ -355,6 +364,9 @@ export const getAgentRuntimeEngine = (stellaDataDir: string): AgentEngine => {
   return loadLocalPreferences(stellaDataDir).agentRuntimeEngine;
 };
 
+export const getSubscriptionHarnessEnabled = (stellaDataDir: string): boolean =>
+  loadLocalPreferences(stellaDataDir).subscriptionHarnessEnabled;
+
 export const getMaxAgentConcurrency = (stellaDataDir: string): number => {
   return loadLocalPreferences(stellaDataDir).maxAgentConcurrency;
 };
@@ -391,6 +403,7 @@ export const getLocalModelPreferences = (
       ...prefs.stellaConversationReasoningEfforts,
     },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
+    subscriptionHarnessEnabled: prefs.subscriptionHarnessEnabled,
     codexModel: prefs.codexModel,
     codexModelExplicit: prefs.codexModelExplicit,
     codexReasoningEffort: prefs.codexReasoningEffort,
@@ -438,6 +451,10 @@ export const updateLocalModelPreferences = (
       patch.agentRuntimeEngine === undefined
         ? prefs.agentRuntimeEngine
         : normalizeEngine(patch.agentRuntimeEngine),
+    subscriptionHarnessEnabled:
+      patch.subscriptionHarnessEnabled === undefined
+        ? prefs.subscriptionHarnessEnabled
+        : patch.subscriptionHarnessEnabled === true,
     codexModel:
       patch.codexModel === undefined
         ? prefs.codexModel

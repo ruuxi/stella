@@ -77,10 +77,7 @@ export type ProviderTab = {
 };
 
 export const providerUsesRuntimeManagedAuth = (
-  tab: Pick<
-    ProviderTab,
-    "runtimeManagedAuth" | "runtimeCredentialless"
-  >,
+  tab: Pick<ProviderTab, "runtimeManagedAuth" | "runtimeCredentialless">,
 ): boolean => tab.runtimeManagedAuth || tab.runtimeCredentialless;
 
 interface ProviderModelPanelProps {
@@ -129,6 +126,8 @@ interface ProviderModelPanelProps {
   selectedHeaderKicker?: string;
   /** When true, the "Selected …" title is hidden. */
   hideSelectedTitle?: boolean;
+  /** Hide model search when the embedder wants an unfiltered provider list. */
+  hideSearch?: boolean;
   /** When true, selected model rows omit the trailing checkmark. */
   hideSelectionCheck?: boolean;
   /** When true, only the Stella provider can be picked; other provider sections stay visible but disabled. */
@@ -183,6 +182,7 @@ export function ProviderModelPanel({
   hideDefaultRow = false,
   selectedHeaderKicker,
   hideSelectedTitle = false,
+  hideSearch = false,
   hideSelectionCheck = false,
   disableNonStellaProviders = false,
   disabledProviderReason,
@@ -716,19 +716,21 @@ export function ProviderModelPanel({
           </header>
         )}
 
-        <div className="model-picker-search">
-          <Search size={13} strokeWidth={1.75} aria-hidden />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search models…"
-            spellCheck={false}
-            autoComplete="off"
-            aria-label="Search models"
-            disabled={disabled}
-          />
-        </div>
+        {hideSearch ? null : (
+          <div className="model-picker-search">
+            <Search size={13} strokeWidth={1.75} aria-hidden />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search models…"
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="Search models"
+              disabled={disabled}
+            />
+          </div>
+        )}
 
         <div className="model-picker-groups" role="listbox" aria-live="polite">
           {sections.length === 0 ? (

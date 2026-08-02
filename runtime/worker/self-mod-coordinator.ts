@@ -27,6 +27,7 @@ import path from "node:path";
 import {
   METHOD_NAMES,
   type RuntimeSelfModApplyResult,
+  type RuntimeSelfModRevertRequest,
   type RuntimeSelfModRevertResult,
 } from "../protocol/index.js";
 import {
@@ -45,24 +46,18 @@ import {
   listFilesForCommit,
   listGitCommitsBySelector,
 } from "../kernel/self-mod/git/log.js";
-import { revertSelfModCommit } from "../kernel/self-mod/git/revert.js";
+import {
+  revertSelfModCommit,
+  revertSelfModCommits,
+} from "../kernel/self-mod/git/revert.js";
 import type { RuntimeStore } from "../kernel/storage/runtime-store.js";
+import type {
+  PersistedPendingSelfModApply,
+  SelfModPendingStore,
+} from "../kernel/storage/self-mod-pending-store.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
 
-export type PendingSelfModApply = {
-  /**
-   * Stable identity for this pending change: the self-mod run id. The entry is
-   * created from the run's tracked writes, which exist whether or not the
-   * commit landed, so the card never has to wait on git.
-   */
-  applyId: string;
-  /** Filled in when the run's commit lands; gates the Undo affordance only. */
-  commitHash?: string;
-  applyResult: ApplyResult;
-  conversationId: string;
-  files: string[];
-  assistantMessageEventId?: string;
-};
+export type PendingSelfModApply = PersistedPendingSelfModApply;
 
 /**
  * Per-transition state for an apply batch that the worker has handed to the
@@ -77,6 +72,20 @@ type PendingApplyBatch = {
   requiresFullReload: boolean;
   requiresRuntimeRestart: boolean;
   requiresProcessRestart: boolean;
+  settleApplied: () => void;
+  settleFailed: () => void;
+};
+
+type ApplyBatchSettlement = {
+  onApplied?: () => void;
+  onFailed?: () => void;
+};
+
+type FinalizedAuthorContribution = {
+  commitHash?: string;
+  conversationId: string;
+  files: string[];
+  ownerThreadId?: string;
 };
 
 export type ResumeTransitionResult =
@@ -108,11 +117,21 @@ export type SelfModLifecycle = {
     taskPrompt: string;
     conversationId: string;
     threadKey?: string;
+    /** Top-level General thread whose terminal final publishes this contribution. */
+    ownerThreadId?: string;
     featureId?: string;
     featureTitle?: string;
     succeeded: boolean;
     commitMessageProvider?: CommitMessageProvider;
   }) => Promise<void>;
+  publishCompletion: (args: {
+    conversationId: string;
+    ownerThreadId: string;
+    completionEventId: string;
+  }) => Promise<{
+    changeSetId?: string;
+    contributionCount: number;
+  }>;
   cancelRun: (runId: string) => Promise<void>;
 };
 
@@ -130,11 +149,11 @@ export type ExternalSelfModLifecycle = {
 export type SelfModCoordinator = {
   lifecycle: SelfModLifecycle;
   externalLifecycle: ExternalSelfModLifecycle;
-  revertWithMorph: (args: {
-    commitHash?: string;
-    steps?: number;
-  }) => Promise<RuntimeSelfModRevertResult>;
+  revertWithMorph: (
+    args: RuntimeSelfModRevertRequest,
+  ) => Promise<RuntimeSelfModRevertResult>;
   applyPendingWithMorph: (args: {
+    applyId?: string;
     commitHash?: string;
   }) => Promise<RuntimeSelfModApplyResult>;
   resumeTransition: (payload: {
@@ -155,19 +174,15 @@ export type SelfModCoordinatorDeps = {
   getRepoRoot: () => string | null;
   /** Keyed by `applyId` (the self-mod run id), in finalize order. */
   getPendingSelfModApplies: () => Map<string, PendingSelfModApply>;
+  /** Durable source of truth; omitted only by isolated unit-test fixtures. */
+  getPendingSelfModStore?: () => SelfModPendingStore | null;
   patchSelfModApplyStatus: (args: {
     conversationId: string;
     eventId?: string;
     applyId?: string;
     commitHash?: string;
-    status: "pending" | "applied";
+    status: "pending" | "applied" | "reverted";
   }) => void;
-  /**
-   * A pending card was just staged. Lets the server attach it to the
-   * conversation's latest assistant reply when the run finalized after that
-   * turn already ended (the background-agent case), which `onEnd` cannot see.
-   */
-  onPendingApplyStaged?: (conversationId: string) => void;
 };
 
 // Combine several deferred apply batches into a single transition so a
@@ -193,13 +208,28 @@ const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
   ),
 });
 
-/**
- * Repo-relative paths the run actually wrote, straight from the contention
- * tracker. Used for the card's file list when no commit landed to supply one.
- */
-const collectDecisionPaths = (decision: ApplyResult): string[] => [
-  ...new Set(decision.appliedRuns.flatMap((run) => run.paths)),
-];
+const selectAppliedRuns = (
+  result: ApplyResult,
+  runIds: ReadonlySet<string>,
+): ApplyResult => {
+  const appliedRuns = result.appliedRuns.filter((run) => runIds.has(run.runId));
+  return {
+    appliedRuns,
+    restartRelevantRunIds: appliedRuns.map((run) => run.runId),
+    hasRestartRelevantPaths: appliedRuns.some(
+      (run) => run.restartRelevantPaths.length > 0,
+    ),
+    hasRuntimeRestartRelevantPaths: appliedRuns.some(
+      (run) => run.runtimeRestartRelevantPaths.length > 0,
+    ),
+    hasProcessRestartRelevantPaths: appliedRuns.some(
+      (run) => run.processRestartRelevantPaths.length > 0,
+    ),
+    hasFullReloadRelevantPaths: appliedRuns.some(
+      (run) => run.fullReloadRelevantPaths.length > 0,
+    ),
+  };
+};
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -239,13 +269,17 @@ export const createSelfModCoordinator = (
     getRuntimeStore,
     getRepoRoot,
     getPendingSelfModApplies,
+    getPendingSelfModStore,
     patchSelfModApplyStatus,
-    onPendingApplyStaged,
   } = deps;
 
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
   const selfModRunApplyModes = new Map<string, string | undefined>();
+  const finalizedAuthorContributions = new Map<
+    string,
+    FinalizedAuthorContribution
+  >();
   const externalSelfModPathsByRun = new Map<string, string[]>();
   const transitionedRunIds = new Set<string>();
 
@@ -294,6 +328,7 @@ export const createSelfModCoordinator = (
     pendingApplyBatches.clear();
     selfModRunRootIds.clear();
     selfModRunApplyModes.clear();
+    finalizedAuthorContributions.clear();
     if (runIds.length === 0) return;
     console.warn(
       `[self-mod-hmr] Releasing runtime reload pauses for pending apply batches: ${reason}.`,
@@ -335,7 +370,49 @@ export const createSelfModCoordinator = (
     for (const runId of runIds) {
       selfModRunRootIds.delete(runId);
       selfModRunApplyModes.delete(runId);
+      finalizedAuthorContributions.delete(runId);
     }
+  };
+
+  /**
+   * A contention drain may contain several runs that finalized at different
+   * times. Restore each author run to its own contribution before publication
+   * instead of assigning the whole batch to whichever run happened to unblock
+   * it. Non-author runs stay in the automatic apply batch.
+   */
+  const stageAuthorContributions = (decision: ApplyResult): ApplyResult => {
+    const automaticRunIds = new Set<string>();
+    for (const appliedRun of decision.appliedRuns) {
+      const finalized = finalizedAuthorContributions.get(appliedRun.runId);
+      if (!finalized) {
+        automaticRunIds.add(appliedRun.runId);
+        continue;
+      }
+      const applyResult = selectAppliedRuns(
+        decision,
+        new Set([appliedRun.runId]),
+      );
+      const contribution: PendingSelfModApply = {
+        applyId: appliedRun.runId,
+        ...(finalized.commitHash ? { commitHash: finalized.commitHash } : {}),
+        applyResult,
+        conversationId: finalized.conversationId,
+        files:
+          finalized.files.length > 0 ? finalized.files : [...appliedRun.paths],
+        ...(finalized.ownerThreadId
+          ? { ownerThreadId: finalized.ownerThreadId }
+          : {}),
+      };
+      // Persist before exposing the contribution in memory. A crash can leave
+      // a durable row without a cache entry (rehydration fixes that), but never
+      // an apparently publishable cache entry that restart silently loses.
+      const persistedContribution =
+        getPendingSelfModStore?.()?.stageContribution(contribution) ??
+        contribution;
+      getPendingSelfModApplies().set(appliedRun.runId, persistedContribution);
+      finalizedAuthorContributions.delete(appliedRun.runId);
+    }
+    return selectAppliedRuns(decision, automaticRunIds);
   };
 
   // The worker server owns morph orchestration: each finalize/cancel that
@@ -344,9 +421,13 @@ export const createSelfModCoordinator = (
   // waits for the host's INTERNAL_WORKER_RESUME_HMR callback before
   // running the actual `selfModHmrController.apply` and releasing the
   // per-runId runtime-reload pauses.
-  const dispatchApplyBatch = async (applyResult: ApplyResult) => {
+  const dispatchApplyBatch = async (
+    applyResult: ApplyResult,
+    settlement?: ApplyBatchSettlement,
+  ): Promise<boolean> => {
     if (applyResult.appliedRuns.length === 0) {
-      return;
+      settlement?.onApplied?.();
+      return true;
     }
     const transitionId = crypto.randomUUID();
     const stateRunIds = [
@@ -361,13 +442,30 @@ export const createSelfModCoordinator = (
       requiresRuntimeRestart,
       requiresProcessRestart,
     } = deriveApplyTransitionRequirements(applyResult);
+    let settlementState: "applied" | "failed" | null = null;
+    const settleApplied = () => {
+      if (settlementState) return;
+      settlement?.onApplied?.();
+      settlementState = "applied";
+    };
+    const settleFailed = () => {
+      if (settlementState) return;
+      settlement?.onFailed?.();
+      settlementState = "failed";
+    };
     pendingApplyBatches.set(transitionId, {
       applyResult,
       requiresFullReload,
       requiresRuntimeRestart,
       requiresProcessRestart,
+      settleApplied,
+      settleFailed,
     });
     try {
+      // The host request is a completion barrier, not an acceptance ACK: its
+      // handler awaits the morph transition and the applyBatch callback. The
+      // callback durably settles the change set before releasing the runtime
+      // pause, so a deferred worker restart cannot race ahead of persistence.
       await peer.request(
         METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
         {
@@ -380,7 +478,16 @@ export const createSelfModCoordinator = (
         },
         { retryOnDisconnect: true },
       );
+      // Production host handlers cannot reach this point with the batch still
+      // pending: they await resumeTransition. Lightweight test/CLI peers may
+      // acknowledge the request directly, so preserve their historical
+      // behavior while keeping the production durability barrier in the
+      // resume callback.
+      if (pendingApplyBatches.has(transitionId)) {
+        settleApplied();
+      }
       rememberTransitionedRuns(applyResult.restartRelevantRunIds);
+      return true;
     } catch (error) {
       console.warn(
         "[self-mod-hmr] HOST_HMR_RUN_TRANSITION failed; applying without morph cover:",
@@ -403,13 +510,18 @@ export const createSelfModCoordinator = (
             "[self-mod-hmr] Direct apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
           );
           await discardFailedApplyState(applyResult, "direct apply failure");
+          settleFailed();
+        } else {
+          settleApplied();
         }
         pendingApplyBatches.delete(transitionId);
         await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
           allowDeferredReload: requiresRuntimeRestart,
         });
         dropRunBookkeeping(applyResult.restartRelevantRunIds);
+        return applyResponse.ok;
       }
+      return settlementState === "applied";
     }
   };
 
@@ -464,6 +576,7 @@ export const createSelfModCoordinator = (
       succeeded,
       conversationId,
       threadKey,
+      ownerThreadId,
       featureId,
       featureTitle,
       commitMessageProvider,
@@ -503,30 +616,6 @@ export const createSelfModCoordinator = (
         return;
       }
 
-      const decision = controller.finalize(runId);
-      if (decision.appliedRuns.length === 0) {
-        if (!controller.hasRun(runId)) {
-          // The run finalized with no tracked source writes. There is
-          // no renderer batch to apply, but beginRun still installed a
-          // runtime-reload pause that must be released.
-          await releaseRunCompletely(runId, "self-mod-hmr");
-          return;
-        }
-        // Run is held — another active run still owns at least one
-        // touched path. Reload pause stays in place; it'll be
-        // released once the held batch finally drains and applies.
-        return;
-      }
-      // Author runs defer the apply: the user applies by clicking
-      // "Update" on the pending card. The card describes the run's tracked
-      // writes, so it is staged here whether or not the commit produced a
-      // hash — applying is an HMR swap of content already on disk, and the
-      // in-memory snapshots the swap replays were captured at write time.
-      // A change that never gets clicked stays on disk and goes live on the
-      // next restart. Every other mode (install/update/uninstall/
-      // desktop-update) has no chat surface to host a card — their
-      // conversations are background threads — so they auto-apply under the
-      // morph cover instead.
       const applyMode = selfModRunApplyModes.get(runId);
       if (applyMode === "author") {
         if (!finalized?.commitHash) {
@@ -536,22 +625,116 @@ export const createSelfModCoordinator = (
             `[self-mod] Run ${runId} produced no commit; its update card will not offer Undo.`,
           );
         }
-        getPendingSelfModApplies().set(runId, {
-          applyId: runId,
+        finalizedAuthorContributions.set(runId, {
           ...(finalized?.commitHash
             ? { commitHash: finalized.commitHash }
             : {}),
-          applyResult: decision,
           conversationId: conversationId ?? "",
-          files: finalized?.files ?? collectDecisionPaths(decision),
+          files: finalized?.files ?? [],
+          ...(ownerThreadId?.trim()
+            ? { ownerThreadId: ownerThreadId.trim() }
+            : {}),
         });
-        // A background agent commonly finalizes after the user turn already
-        // ended, so `onEnd` has no card to attach. Nudge the server to attach
-        // any now-stageable card to the conversation's latest reply.
-        onPendingApplyStaged?.(conversationId ?? "");
+      }
+
+      const decision = controller.finalize(runId);
+      if (decision.appliedRuns.length === 0) {
+        if (!controller.hasRun(runId)) {
+          // The run finalized with no tracked source writes. There is
+          // no renderer batch to apply, but beginRun still installed a
+          // runtime-reload pause that must be released.
+          finalizedAuthorContributions.delete(runId);
+          await releaseRunCompletely(runId, "self-mod-hmr");
+          return;
+        }
+        // Run is held — another active run still owns at least one
+        // touched path. Reload pause stays in place; it'll be
+        // released once the held batch finally drains and applies.
         return;
       }
-      await dispatchApplyBatch(decision);
+      // Author runs defer their own part of the drained batch: the user applies
+      // it from the grouped card. A contention drain can include older held
+      // runs, so restore each one from its original finalization metadata.
+      const automaticDecision = stageAuthorContributions(decision);
+      // Publication is deliberately separate from finalization. A child run
+      // finishing must never reach back and mutate whichever root assistant
+      // row happened to be latest. Only the owning General's automatic
+      // terminal final claims the ready contributions into one stable change
+      // set; the matching orchestrator reply may then attach that set.
+      // Install/update/uninstall/desktop-update runs have no chat surface and
+      // therefore retain automatic HMR behavior even when they drain beside an
+      // author contribution.
+      await dispatchApplyBatch(automaticDecision);
+    },
+
+    publishCompletion: async ({
+      conversationId,
+      ownerThreadId,
+      completionEventId,
+    }) => {
+      const normalizedConversationId = conversationId.trim();
+      const normalizedOwnerThreadId = ownerThreadId.trim();
+      const normalizedCompletionEventId = completionEventId.trim();
+      if (
+        !normalizedConversationId ||
+        !normalizedOwnerThreadId ||
+        !normalizedCompletionEventId
+      ) {
+        return { contributionCount: 0 };
+      }
+      const pendingStore = getPendingSelfModStore?.();
+      if (pendingStore) {
+        const published = pendingStore.publishCompletion({
+          conversationId: normalizedConversationId,
+          ownerThreadId: normalizedOwnerThreadId,
+          completionEventId: normalizedCompletionEventId,
+        });
+        const pendingMap = getPendingSelfModApplies();
+        for (const contribution of published.contributions) {
+          const cached = pendingMap.get(contribution.applyId);
+          if (cached) {
+            Object.assign(cached, contribution);
+          } else {
+            pendingMap.set(contribution.applyId, contribution);
+          }
+        }
+        return {
+          changeSetId: published.changeSet.changeSetId,
+          contributionCount: published.contributions.length,
+        };
+      }
+      const pending = [...getPendingSelfModApplies().values()];
+      const alreadyPublished = pending.filter(
+        (entry) =>
+          entry.conversationId === normalizedConversationId &&
+          entry.ownerThreadId === normalizedOwnerThreadId &&
+          entry.completionEventId === normalizedCompletionEventId &&
+          Boolean(entry.changeSetId),
+      );
+      if (alreadyPublished.length > 0) {
+        return {
+          changeSetId: alreadyPublished[0]!.changeSetId,
+          contributionCount: alreadyPublished.length,
+        };
+      }
+      const contributions = pending.filter(
+        (entry) =>
+          entry.conversationId === normalizedConversationId &&
+          entry.ownerThreadId === normalizedOwnerThreadId &&
+          !entry.changeSetId,
+      );
+      if (contributions.length === 0) {
+        return { contributionCount: 0 };
+      }
+      // The terminal lifecycle event is already a durable, attempt-scoped id.
+      // Prefixing it gives the card/apply identity exact replay stability
+      // without another random id that could fork a retried delivery.
+      const changeSetId = `self-mod-change-set:${normalizedCompletionEventId}`;
+      for (const contribution of contributions) {
+        contribution.changeSetId = changeSetId;
+        contribution.completionEventId = normalizedCompletionEventId;
+      }
+      return { changeSetId, contributionCount: contributions.length };
     },
 
     cancelRun: async (runId) => {
@@ -559,6 +742,7 @@ export const createSelfModCoordinator = (
 
       const controller = getController();
       if (!controller || !controller.hasRun(runId)) {
+        finalizedAuthorContributions.delete(runId);
         await releaseRunCompletely(runId, "self-mod-hmr");
         return;
       }
@@ -568,9 +752,10 @@ export const createSelfModCoordinator = (
       // this run's pause separately (cancel is not part of the apply
       // batch — it discards its writes rather than apply them).
       const cancelResult = await controller.cancel(runId);
+      finalizedAuthorContributions.delete(runId);
       await releaseRuntimeReloadFor([runId]);
       dropRunBookkeeping([runId]);
-      await dispatchApplyBatch(cancelResult);
+      await dispatchApplyBatch(stageAuthorContributions(cancelResult));
     },
   };
 
@@ -659,24 +844,95 @@ export const createSelfModCoordinator = (
     },
   };
 
-  const revertWithMorph = async (payload: {
-    commitHash?: string;
-    steps?: number;
-  }): Promise<RuntimeSelfModRevertResult> => {
+  const revertWithMorph = async (
+    payload: RuntimeSelfModRevertRequest,
+  ): Promise<RuntimeSelfModRevertResult> => {
     const repoRoot = getRepoRoot();
     if (!repoRoot) {
       throw new Error("Worker has not been initialized.");
     }
-    const controller = getController();
-    if (!controller) {
-      // Worker initialized without HMR wiring (test fixtures, e.g.).
-      // Fall back to the raw revert with no morph cover — better than
-      // refusing the user's undo entirely.
-      const result = await revertSelfModCommit({
+    const requestedApplyId = payload.applyId?.trim();
+    const persistedChangeSet = requestedApplyId
+      ? getPendingSelfModStore?.()?.getChangeSet(requestedApplyId)
+      : null;
+    const hasGroupedSelection = payload.commitHashes !== undefined;
+    if (
+      hasGroupedSelection &&
+      (payload.commitHash !== undefined || payload.steps !== undefined)
+    ) {
+      throw new Error(
+        "Grouped self-mod Undo cannot be combined with legacy commit selectors.",
+      );
+    }
+    const clientCommitHashes = hasGroupedSelection
+      ? (payload.commitHashes ?? []).map((hash) => hash.trim())
+      : [];
+    if (hasGroupedSelection) {
+      const exactCommitHashes = persistedChangeSet?.commitHashes;
+      const clientCommitSet = new Set(clientCommitHashes);
+      if (
+        !requestedApplyId ||
+        !exactCommitHashes ||
+        exactCommitHashes.length === 0 ||
+        exactCommitHashes.length !== clientCommitHashes.length ||
+        clientCommitSet.size !== clientCommitHashes.length ||
+        exactCommitHashes.some((hash) => !clientCommitSet.has(hash))
+      ) {
+        throw new Error(
+          "Grouped self-mod Undo does not match the card's durable commit set.",
+        );
+      }
+    }
+    const requestedCommitHashes = hasGroupedSelection
+      ? (persistedChangeSet?.commitHashes ?? [])
+      : [];
+    const resolvedCommitHash = hasGroupedSelection
+      ? undefined
+      : payload.commitHash?.trim() ||
+        (await getLastSelfModCommitHash(repoRoot).catch(() => null)) ||
+        undefined;
+
+    const executeRevert = async (): Promise<RuntimeSelfModRevertResult> => {
+      if (!hasGroupedSelection) {
+        return await revertSelfModCommit({
+          repoRoot,
+          commitHash: resolvedCommitHash,
+          steps: payload.steps,
+        });
+      }
+      const grouped = await revertSelfModCommits({
         repoRoot,
-        commitHash: payload.commitHash,
-        steps: payload.steps,
+        commitHashes: requestedCommitHashes,
       });
+      const representativeCommitHash =
+        grouped.commitHashes[grouped.commitHashes.length - 1]!;
+      return {
+        commitHash: representativeCommitHash,
+        commitHashes: grouped.commitHashes,
+        revertedCommitHashes: grouped.revertedCommitHashes,
+        contributions: grouped.contributions,
+        files: grouped.files,
+        conversationId: grouped.contributions[0]?.conversationId ?? null,
+        originThreadKey: grouped.contributions[0]?.originThreadKey ?? null,
+        message: grouped.message,
+      };
+    };
+
+    const recordRevertNotices = (result: RuntimeSelfModRevertResult): void => {
+      const contributions = result.contributions;
+      if (contributions && contributions.length > 0) {
+        for (const contribution of contributions) {
+          recordSelfModRevertNotice({
+            runtimeStore: getRuntimeStore(),
+            conversationId: contribution.conversationId,
+            originThreadKey: contribution.originThreadKey,
+            commitHash: contribution.commitHash,
+            files: contribution.files,
+            logScope: "self-mod-revert",
+          });
+        }
+        return;
+      }
       recordSelfModRevertNotice({
         runtimeStore: getRuntimeStore(),
         conversationId: result.conversationId,
@@ -685,25 +941,50 @@ export const createSelfModCoordinator = (
         files: result.files,
         logScope: "self-mod-revert",
       });
+    };
+
+    const patchRevertedCard = (result: RuntimeSelfModRevertResult): void => {
+      const applyId = requestedApplyId;
+      if (!applyId) return;
+      if (persistedChangeSet) {
+        patchSelfModApplyStatus({
+          conversationId: persistedChangeSet.conversationId,
+          eventId: persistedChangeSet.assistantMessageEventId,
+          applyId,
+          status: "reverted",
+        });
+        return;
+      }
+      const conversationIds = new Set(
+        (result.contributions ?? [])
+          .map((entry) => entry.conversationId?.trim())
+          .filter((value): value is string => Boolean(value)),
+      );
+      const legacyConversationId = result.conversationId?.trim();
+      if (legacyConversationId) conversationIds.add(legacyConversationId);
+      for (const conversationId of conversationIds) {
+        patchSelfModApplyStatus({
+          conversationId,
+          applyId,
+          status: "reverted",
+        });
+      }
+    };
+
+    const controller = getController();
+    if (!controller) {
+      // Worker initialized without HMR wiring (test fixtures, e.g.).
+      // Fall back to the raw revert with no morph cover — better than
+      // refusing the user's undo entirely.
+      const result = await executeRevert();
+      recordRevertNotices(result);
+      patchRevertedCard(result);
       return result;
     }
 
     const syntheticRunId = `self-mod-revert:${crypto.randomUUID()}`;
     let runRegisteredWithHmr = false;
     let runtimeReloadPaused = false;
-
-    // Resolve the target commit hash ONCE up front. Both
-    // `listFilesForCommit` (snapshot) and `revertSelfModCommit` (the
-    // actual revert) fall back to the latest self-mod commit when no
-    // hash is supplied; resolving here pins both calls to the same
-    // commit in the common case. Edge case: when no self-mod commit
-    // exists yet, `resolvedCommitHash` collapses back to `undefined`
-    // and `revertSelfModCommit` throws cleanly with "No commit found
-    // to revert".
-    const resolvedCommitHash =
-      payload.commitHash?.trim() ||
-      (await getLastSelfModCommitHash(repoRoot).catch(() => null)) ||
-      undefined;
 
     try {
       selfModRunRootIds.set(syntheticRunId, syntheticRunId);
@@ -729,10 +1010,20 @@ export const createSelfModCoordinator = (
       // morph cover.
       let preRevertFiles: string[] = [];
       try {
-        preRevertFiles = await listFilesForCommit(
-          repoRoot,
-          resolvedCommitHash ?? null,
-        );
+        const snapshotHashes = hasGroupedSelection
+          ? requestedCommitHashes
+          : [resolvedCommitHash ?? null];
+        preRevertFiles = [
+          ...new Set(
+            (
+              await Promise.all(
+                snapshotHashes.map((commitHash) =>
+                  listFilesForCommit(repoRoot, commitHash),
+                ),
+              )
+            ).flat(),
+          ),
+        ];
       } catch {
         // Best-effort — without it Vite still reacts via its watcher
         // post-revert, just without a morph cover.
@@ -744,24 +1035,14 @@ export const createSelfModCoordinator = (
         await controller.recordWrite(syntheticRunId, absolutePaths);
       }
 
-      const result = await revertSelfModCommit({
-        repoRoot,
-        commitHash: resolvedCommitHash,
-        steps: payload.steps,
-      });
+      const result = await executeRevert();
 
       // Ledger the revert so the revert-notice hook can inject on
-      // the next user turn for orchestrator + originating subagent.
-      // Skipped when the commit had no `Stella-Conversation`
-      // trailer — without it, we have no conversation to route to.
-      recordSelfModRevertNotice({
-        runtimeStore: getRuntimeStore(),
-        conversationId: result.conversationId,
-        originThreadKey: result.originThreadKey,
-        commitHash: result.commitHash,
-        files: result.files,
-        logScope: "self-mod-revert",
-      });
+      // the next user turn for every originating contribution. Skipped for
+      // commits without a `Stella-Conversation` trailer because there is no
+      // safe conversation target.
+      recordRevertNotices(result);
+      patchRevertedCard(result);
 
       // Finalize through the shared apply pipeline — same code path
       // an agent self-mod run takes. Handles HMR vs full reload vs
@@ -801,7 +1082,16 @@ export const createSelfModCoordinator = (
       return result;
     } catch (err) {
       if (runRegisteredWithHmr) {
-        await controller.releaseRuns([syntheticRunId]).catch(() => undefined);
+        const cancelResult = await controller
+          .cancel(syntheticRunId)
+          .catch(() => null);
+        // Cancel removes the synthetic run's contention ownership. If doing so
+        // unblocks an older held run, keep that real work moving through the
+        // ordinary transition pipeline instead of stranding it behind the
+        // failed Undo.
+        if (cancelResult?.appliedRuns.length) {
+          await dispatchApplyBatch(cancelResult).catch(() => undefined);
+        }
       }
       if (runtimeReloadPaused) {
         await releaseRuntimeReloadFor([syntheticRunId]).catch(() => undefined);
@@ -812,39 +1102,50 @@ export const createSelfModCoordinator = (
   };
 
   const applyPendingWithMorph = async ({
+    applyId,
     commitHash,
   }: {
+    applyId?: string;
     commitHash?: string;
   }): Promise<RuntimeSelfModApplyResult> => {
-    // Applying drains every staged change rather than just the clicked one, so
-    // the incoming hash only matters for the lost-stash fallback below and for
-    // the reported result. A card staged before its commit landed has no hash
-    // to send, which is fine — it is still in the stash.
+    // `applyId` is the published change-set identity. `commitHash` remains as a
+    // compatibility lookup for cards written before grouped change sets were
+    // introduced; it is never permission to drain unrelated pending entries.
+    const requestedApplyId = applyId?.trim();
     const resolvedCommitHash = commitHash?.trim();
     const repoRoot = getRepoRoot();
     if (!repoRoot) {
       throw new Error("Worker has not been initialized.");
     }
-    const controller = getController();
-    // Clicking "Update" brings Stella fully up to date: the disk already holds
-    // the combined state, so drain every pending change in finalize order,
-    // merge them into a single transition (one morph cover, one worker restart,
-    // all reload pauses released together), and flip every pending card to
-    // "applied". `Map` preserves insertion order, which is finalize order.
+    // `Map` preserves finalize order, which is also the order the merged HMR
+    // runs must apply in when one published card contains several contributions.
     const pendingSelfModApplies = getPendingSelfModApplies();
-    const entries = [...pendingSelfModApplies.values()];
+    const allEntries = [...pendingSelfModApplies.values()];
+    const compatibilityMatch = resolvedCommitHash
+      ? allEntries.find((entry) => entry.commitHash === resolvedCommitHash)
+      : undefined;
+    const resolvedApplyId =
+      requestedApplyId ??
+      compatibilityMatch?.changeSetId ??
+      compatibilityMatch?.applyId;
+    const pendingStore = getPendingSelfModStore?.();
+    const durableClaim = pendingStore?.beginApply({
+      ...(requestedApplyId ? { applyId: requestedApplyId } : {}),
+      ...(resolvedCommitHash ? { commitHash: resolvedCommitHash } : {}),
+    });
+    const entries = pendingStore
+      ? (durableClaim?.contributions ?? [])
+      : resolvedApplyId
+        ? allEntries.filter((entry) =>
+            entry.changeSetId
+              ? entry.changeSetId === resolvedApplyId
+              : entry.applyId === resolvedApplyId,
+          )
+        : [];
 
     if (entries.length === 0) {
-      // Stash lost (e.g. the worker restarted since staging). The change is
-      // already on disk; adopt it with a clean reload and a best-effort status
-      // patch. Without a commit there is nothing to look the conversation up
-      // by, so the card just stays as it is.
-      await controller?.forceResumeAll().catch((error) => {
-        console.warn(
-          "[self-mod-hmr] Failed to resume deferred self-mod state after apply miss:",
-          (error as Error).message,
-        );
-      });
+      // Never use forceResumeAll here: that would release and surface other
+      // cards' unpublished work just because one requested set was missing.
       if (resolvedCommitHash) {
         const [summary] = await listGitCommitsBySelector(
           repoRoot,
@@ -866,26 +1167,55 @@ export const createSelfModCoordinator = (
       };
     }
 
-    for (const entry of entries) {
-      pendingSelfModApplies.delete(entry.applyId);
-    }
-    await dispatchApplyBatch(
+    const durableChangeSetId = durableClaim?.changeSet.changeSetId;
+    const latestCommittedEntry = [...entries]
+      .reverse()
+      .find((entry) => entry.commitHash);
+    const cardApplyId = entries[0]?.changeSetId ?? entries[0]?.applyId;
+    const cardConversationId = entries[0]?.conversationId;
+    const applied = await dispatchApplyBatch(
       mergePendingApplyResults(entries.map((entry) => entry.applyResult)),
+      {
+        onApplied: () => {
+          if (durableChangeSetId) {
+            pendingStore?.completeApply(durableChangeSetId);
+          }
+          for (const entry of entries) {
+            pendingSelfModApplies.delete(entry.applyId);
+          }
+          if (cardApplyId && cardConversationId) {
+            patchSelfModApplyStatus({
+              conversationId: cardConversationId,
+              eventId: entries[0]?.assistantMessageEventId,
+              applyId: cardApplyId,
+              // Multi-commit cards intentionally omit the legacy singular
+              // hash. The grouped payload carries `commitHashes`; exposing one
+              // hash here would let an old UI partially undo the update.
+              ...(entries.length === 1 && latestCommittedEntry?.commitHash
+                ? { commitHash: latestCommittedEntry.commitHash }
+                : {}),
+              status: "applied",
+            });
+          }
+        },
+        onFailed: () => {
+          if (durableChangeSetId) {
+            pendingStore?.failApply(durableChangeSetId);
+          }
+        },
+      },
     );
-    for (const entry of entries) {
-      patchSelfModApplyStatus({
-        conversationId: entry.conversationId,
-        eventId: entry.assistantMessageEventId,
-        applyId: entry.applyId,
-        ...(entry.commitHash ? { commitHash: entry.commitHash } : {}),
-        status: "applied",
-      });
+    if (!applied) {
+      return {
+        ...(resolvedCommitHash ? { commitHash: resolvedCommitHash } : {}),
+        applied: false,
+        message: "Self-mod HMR apply failed.",
+      };
     }
     // Report the clicked change's commit when the caller named one, else the
     // newest committed change in the batch we just applied.
     const reportedCommitHash =
-      resolvedCommitHash ??
-      [...entries].reverse().find((entry) => entry.commitHash)?.commitHash;
+      resolvedCommitHash ?? latestCommittedEntry?.commitHash;
     return {
       ...(reportedCommitHash ? { commitHash: reportedCommitHash } : {}),
       applied: true,
@@ -917,6 +1247,26 @@ export const createSelfModCoordinator = (
       return { ok: false, reason: "unknown-transition" };
     }
     const controller = getController();
+    const settlePending = (outcome: "applied" | "failed"): boolean => {
+      try {
+        if (outcome === "applied") pending.settleApplied();
+        else pending.settleFailed();
+        return true;
+      } catch (error) {
+        console.warn(
+          `[self-mod-hmr] Failed to persist ${outcome} transition state:`,
+          (error as Error).message,
+        );
+        if (outcome === "applied") {
+          try {
+            pending.settleFailed();
+          } catch {
+            // Startup recovery resets a surviving `applying` claim.
+          }
+        }
+        return false;
+      }
+    };
     if (pending.requiresProcessRestart) {
       const discarded = controller
         ? await controller.discard(pending.applyResult.appliedRuns)
@@ -926,12 +1276,15 @@ export const createSelfModCoordinator = (
           "[self-mod-hmr] Failed to discard Vite state before process restart.",
         );
       }
+      const settled = settlePending("applied");
       pendingApplyBatches.delete(transitionId);
       await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
         allowDeferredReload: false,
       });
       dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
-      return { ok: true, requiresClientFullReload: false };
+      return settled
+        ? { ok: true, requiresClientFullReload: false }
+        : { ok: false, reason: "apply-failed" };
     }
 
     let applyResponse: HmrApplyResponse = controller
@@ -961,6 +1314,7 @@ export const createSelfModCoordinator = (
         "[self-mod-hmr] Apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
       );
       await discardFailedApplyState(pending.applyResult, "apply failure");
+      settlePending("failed");
       pendingApplyBatches.delete(transitionId);
       await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
         allowDeferredReload: pending.requiresRuntimeRestart,
@@ -968,15 +1322,19 @@ export const createSelfModCoordinator = (
       dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
       return { ok: false, reason: "apply-failed" };
     }
+    const settled = settlePending("applied");
     pendingApplyBatches.delete(transitionId);
     await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
       allowDeferredReload: pending.requiresRuntimeRestart,
     });
     dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
-    return {
-      ok: true,
-      requiresClientFullReload: applyResponse.requiresClientFullReload === true,
-    };
+    return settled
+      ? {
+          ok: true,
+          requiresClientFullReload:
+            applyResponse.requiresClientFullReload === true,
+        }
+      : { ok: false, reason: "apply-failed" };
   };
 
   return {

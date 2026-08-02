@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +47,9 @@ describe("self-mod HMR controller", () => {
           {
             runId: "run-a",
             paths: ["desktop/src/foo.tsx"],
-            files: [{ path: "desktop/src/foo.tsx", content: "export const a = 1" }],
+            files: [
+              { path: "desktop/src/foo.tsx", content: "export const a = 1" },
+            ],
             runtimeRestartRelevantPaths: [],
             processRestartRelevantPaths: [],
             restartRelevantPaths: [],
@@ -300,6 +308,31 @@ describe("self-mod HMR controller", () => {
       "desktop/src/app/launch-checklist/metadata.ts",
     ]);
     expect(result.hasFullReloadRelevantPaths).toBe(true);
+  });
+
+  it("preserves create semantics for post-write native mutation records", async () => {
+    const root = makeTempRoot();
+    const localePath = path.join(
+      root,
+      "desktop/src/shared/i18n/locales/pirate.json",
+    );
+    mkdirSync(path.dirname(localePath), { recursive: true });
+    writeFileSync(localePath, '{"hello":"ahoy"}\n');
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    await controller.beginRun("run-native-create");
+    await controller.recordWrite("run-native-create", [localePath], {
+      createdPaths: [localePath],
+    });
+    const result = controller.finalize("run-native-create");
+
+    expect(result.appliedRuns[0]?.fullReloadRelevantPaths).toEqual([
+      "desktop/src/shared/i18n/locales/pirate.json",
+    ]);
   });
 
   it("captures the generated route tree at finalize time", async () => {

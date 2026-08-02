@@ -33,6 +33,11 @@ import {
   type ClaudeCodeToolMcpActiveTurn,
   type ClaudeCodeToolMcpHost,
 } from "./claude-code-tool-mcp-host.js";
+import {
+  captureWorktreeMutationSnapshot,
+  diffWorktreeMutationSnapshots,
+  restoreSnapshotHeadForSelfMod,
+} from "./worktree-mutation-scope.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 /**
@@ -135,6 +140,7 @@ const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_STEP_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
+const claudeWithoutForwardedSubagentText = new Set<string>();
 /**
  * Loop breaker for Claude Code's own auto-compaction. A healthy turn compacts
  * at most once; repeated compactions within one Stella turn mean the session
@@ -200,18 +206,22 @@ export class ClaudeCodeProcessEndedError extends Error {
    */
   readonly fileChanges: FileChangeRecord[];
   readonly mcpCalls: ClaudeCodeMcpCallRecord[];
+  /** A native Bash/Agent/ambient-MCP tool started; its outcome is unknown. */
+  readonly possibleSideEffects: boolean;
 
   constructor(
     message: string,
     exitCode: number | null = null,
     fileChanges: FileChangeRecord[] = [],
     mcpCalls: ClaudeCodeMcpCallRecord[] = [],
+    possibleSideEffects = false,
   ) {
     super(message);
     this.name = "ClaudeCodeProcessEndedError";
     this.exitCode = exitCode;
     this.fileChanges = fileChanges;
     this.mcpCalls = mcpCalls;
+    this.possibleSideEffects = possibleSideEffects;
   }
 }
 
@@ -223,18 +233,21 @@ export class ClaudeCodeMalformedResultError extends Error {
   /** Native-tool file writes observed on the failed step (vanilla mode). */
   readonly fileChanges: FileChangeRecord[];
   readonly mcpCalls: ClaudeCodeMcpCallRecord[];
+  possibleSideEffects: boolean;
 
   constructor(
     message: string,
     kind: "empty_result" | "result_error",
     fileChanges: FileChangeRecord[] = [],
     mcpCalls: ClaudeCodeMcpCallRecord[] = [],
+    possibleSideEffects = false,
   ) {
     super(message);
     this.name = "ClaudeCodeMalformedResultError";
     this.kind = kind;
     this.fileChanges = fileChanges;
     this.mcpCalls = mcpCalls;
+    this.possibleSideEffects = possibleSideEffects;
   }
 }
 
@@ -248,17 +261,62 @@ export class ClaudeCodeMalformedResultError extends Error {
 export class ClaudeCodeCompactionLoopError extends Error {
   readonly fileChanges: FileChangeRecord[];
   readonly mcpCalls: ClaudeCodeMcpCallRecord[];
+  readonly possibleSideEffects: boolean;
 
   constructor(
     fileChanges: FileChangeRecord[] = [],
     mcpCalls: ClaudeCodeMcpCallRecord[] = [],
+    possibleSideEffects = false,
   ) {
     super(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
     this.name = "ClaudeCodeCompactionLoopError";
     this.fileChanges = fileChanges;
     this.mcpCalls = mcpCalls;
+    this.possibleSideEffects = possibleSideEffects;
   }
 }
+
+const genericClaudeCodeErrorFileChanges = new WeakMap<
+  object,
+  FileChangeRecord[]
+>();
+
+const errorOwnedFileChanges = (
+  error: unknown,
+): FileChangeRecord[] | undefined => {
+  if (
+    error instanceof ClaudeCodeProcessEndedError ||
+    error instanceof ClaudeCodeMalformedResultError ||
+    error instanceof ClaudeCodeCompactionLoopError
+  ) {
+    return error.fileChanges;
+  }
+  return error && typeof error === "object"
+    ? genericClaudeCodeErrorFileChanges.get(error)
+    : undefined;
+};
+
+const attachClaudeCodeErrorFileChanges = (
+  error: unknown,
+  records: ReadonlyArray<FileChangeRecord> | undefined,
+): void => {
+  if (!error || typeof error !== "object" || !records?.length) return;
+  const target = errorOwnedFileChanges(error) ?? [];
+  const keys = new Set(target.map(fileChangeDedupeKey));
+  mergeFileChanges(target, keys, records);
+  if (
+    !(error instanceof ClaudeCodeProcessEndedError) &&
+    !(error instanceof ClaudeCodeMalformedResultError) &&
+    !(error instanceof ClaudeCodeCompactionLoopError)
+  ) {
+    genericClaudeCodeErrorFileChanges.set(error, target);
+  }
+};
+
+/** Net vanilla filesystem writes observed before a failed/aborted turn. */
+export const getClaudeCodeErrorFileChanges = (
+  error: unknown,
+): FileChangeRecord[] => [...(errorOwnedFileChanges(error) ?? [])];
 
 const asRecoverableStepError = (
   error: unknown,
@@ -330,10 +388,13 @@ const buildSideEffectReconciliationPrompt = (
 const buildResultRetryPrompt = (): string =>
   "Your previous reply produced no result text. Provide your complete final answer to the pending request now.";
 
-const withStepRecoveryExhausted = (error: unknown): Error =>
-  new Error(
+const withStepRecoveryExhausted = (error: unknown): Error => {
+  const wrapped = new Error(
     `${normalizeErrorMessage(error)} Stella retried ${MAX_STEP_RECOVERIES_PER_TURN} time(s) but Claude Code kept ending the step without a usable result. Check the \`claude\` CLI health (\`claude --version\`, login status), then retry the request.`,
   );
+  attachClaudeCodeErrorFileChanges(wrapped, errorOwnedFileChanges(error));
+  return wrapped;
+};
 
 const buildClaudeCodeHookSettings = (): string => {
   const command = `"${process.execPath}" -e ""`;
@@ -360,6 +421,49 @@ type ClaudeCodeStatusChange = {
   state: "running" | "compacting" | "model-fallback";
   text: string;
 };
+
+export type ClaudeCodeNativeChildEvent =
+  | {
+      type: "launch";
+      claudeSessionId: string;
+      toolUseId: string;
+      parentToolUseId?: string;
+      taskId?: string;
+      description?: string;
+      prompt?: string;
+      subagentType?: string;
+    }
+  | {
+      type: "message";
+      claudeSessionId: string;
+      parentToolUseId: string;
+      entryId: string;
+      role: "user" | "assistant";
+      content: string;
+    }
+  | {
+      type: "tool-result";
+      claudeSessionId: string;
+      toolUseId: string;
+      entryId: string;
+      content?: string;
+      isError?: boolean;
+    }
+  | {
+      type: "task-status";
+      claudeSessionId: string;
+      taskId?: string;
+      toolUseId?: string;
+      entryId: string;
+      status: "running" | "completed" | "error" | "canceled";
+      description?: string;
+      content?: string;
+    }
+  | {
+      type: "run-ended";
+      claudeSessionId: string;
+      error: string;
+    };
 
 export type ClaudeCodeTurnResult = {
   text: string;
@@ -404,17 +508,24 @@ type ClaudeCodeTurnRequest = {
    */
   autoCompactTriggerPct?: number;
   /**
-   * Vanilla pass-through mode (per-spawn `model: claude-code` selection):
+   * Vanilla pass-through mode (all General agents, plus explicit per-spawn
+   * `model: claude-code` selection):
    * Claude Code keeps its own tool suite, MCP config, and system prompt — no
    * Stella tool bridge, no built-in-tool strip, no MCP override, no Stella
    * system prompt, and no Stella tool host. `tools`/`executeTool` are
    * ignored; the turn's natural result text is the final answer. It is not
    * a bare CLI invocation: the headless plumbing stays (stream-json I/O,
    * `--dangerously-skip-permissions`, compaction-status hook settings). The
-   * global claude-code engine takeover (preferences) never sets this.
+   * Root orchestrator takeover never sets this.
    */
   vanilla?: boolean;
   cwd?: string;
+  /**
+   * Git checkout whose net mutations belong to this vanilla turn. This is
+   * intentionally separate from `cwd`: General runs execute from the user's
+   * home directory while Stella Apply/HMR owns the Stella checkout.
+   */
+  mutationRoot?: string;
   /**
    * Stella data dir. When set, the CLI-reported resolved model from the
    * stream-json init event is persisted so pickers can show the real model
@@ -454,6 +565,9 @@ type ClaudeCodeTurnRequest = {
     toolName: string;
     toolArgs: Record<string, unknown>;
   }) => void;
+  /** Passive projection stream for Claude-native Agent/Task descendants.
+   * Only emitted in vanilla mode; Stella never controls these children. */
+  onNativeChildEvent?: (event: ClaudeCodeNativeChildEvent) => void;
   onStream?: (chunk: string) => void;
   /** Diagnostic boundary: one finalized Claude assistant message is one model round. */
   onModelRound?: (args: { messageId?: string; toolCallCount: number }) => void;
@@ -495,6 +609,16 @@ type PendingClaudeCodePrompt = {
   idleTimer?: ReturnType<typeof setTimeout>;
   hasOutput?: boolean;
   activeNativeToolUseIds: Set<string>;
+  /** Sticky evidence that any vanilla native tool began during this step. */
+  sawNativeToolUse: boolean;
+  /** A run_in_background tool_use requires a level-event acknowledgement. */
+  awaitingBackgroundTaskLevel: boolean;
+  /** Natural result held until Claude's native background task set is empty. */
+  bufferedResult?: Record<string, unknown>;
+  /** The last currently-known background child emitted a terminal notice. */
+  sawLastBackgroundCompletion: boolean;
+  /** Whether bufferedResult was emitted after that terminal notice. */
+  bufferedResultIsPostBackground: boolean;
 };
 
 type ClaudeCodeStreamingProcess = {
@@ -514,6 +638,12 @@ type ClaudeCodeStreamingProcess = {
   compacting: boolean;
   /** Discrete compactions observed in the current Stella turn (reset per turn). */
   compactionCount: number;
+  /**
+   * Full level-triggered set from `system/background_tasks_changed`. Reset on
+   * every CLI spawn because the event is process-local and has no startup
+   * snapshot.
+   */
+  nativeBackgroundTaskIds: Set<string>;
   /**
    * Fingerprint of the spawn-time configuration (model, effort, vanilla
    * mode, system prompt, auto-compact env). A later request with a
@@ -936,10 +1066,24 @@ const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
 const processIsDead = (child: ChildProcessWithoutNullStreams): boolean =>
   child.exitCode !== null || child.signalCode !== null;
 
+const signalProcessTree = (
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void => {
+  if (process.platform !== "win32" && child.pid) {
+    // Claude-native Bash/Agent descendants share the detached CLI process
+    // group. Signal the group so cancellation cannot release the mutation
+    // epoch while a native descendant keeps writing in the checkout.
+    process.kill(-child.pid, signal);
+    return;
+  }
+  child.kill(signal);
+};
+
 const killProcess = (child: ChildProcessWithoutNullStreams) => {
   if (processIsDead(child)) return;
   try {
-    child.kill("SIGTERM");
+    signalProcessTree(child, "SIGTERM");
   } catch {
     // Process may have already exited.
   }
@@ -947,7 +1091,7 @@ const killProcess = (child: ChildProcessWithoutNullStreams) => {
   const sigkillTimer = setTimeout(() => {
     if (processIsDead(child)) return;
     try {
-      child.kill("SIGKILL");
+      signalProcessTree(child, "SIGKILL");
     } catch {
       // Process may have already exited.
     }
@@ -959,7 +1103,7 @@ const killProcess = (child: ChildProcessWithoutNullStreams) => {
 const abortProcess = (child: ChildProcessWithoutNullStreams) => {
   if (processIsDead(child)) return;
   try {
-    child.kill("SIGINT");
+    signalProcessTree(child, "SIGINT");
   } catch {
     // Ignore and fall through to SIGTERM/SIGKILL.
   }
@@ -1092,6 +1236,365 @@ const parseStreamJsonLine = (line: string): Record<string, unknown> | null => {
   }
 };
 
+const claudeNativeText = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) {
+    if (value == null) return "";
+    try {
+      return JSON.stringify(sanitizeSensitiveData(value));
+    } catch {
+      return "[unserializable]";
+    }
+  }
+  return value
+    .flatMap((raw) => {
+      const block = asObject(raw);
+      if (!block) return [];
+      if (block.type === "text" && typeof block.text === "string") {
+        return block.text.trim() ? [block.text.trim()] : [];
+      }
+      if (block.type === "thinking" && typeof block.thinking === "string") {
+        return block.thinking.trim() ? [block.thinking.trim()] : [];
+      }
+      if (block.type === "tool_use") {
+        const name =
+          typeof block.name === "string" ? block.name.trim() : "tool";
+        return [
+          `[Tool call] ${name}\nargs: ${JSON.stringify(
+            sanitizeSensitiveData(asObject(block.input) ?? {}),
+          )}`,
+        ];
+      }
+      if (block.type === "tool_result") {
+        const content = claudeNativeText(block.content);
+        return content ? [`[Tool result]\n${content}`] : ["[Tool result]"];
+      }
+      return [];
+    })
+    .join("\n\n")
+    .trim();
+};
+
+const claudeNativeAuthoredText = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+  return value
+    .flatMap((raw) => {
+      const block = asObject(raw);
+      return block?.type === "text" &&
+        typeof block.text === "string" &&
+        block.text.trim()
+        ? [block.text.trim()]
+        : [];
+    })
+    .join("\n\n")
+    .trim();
+};
+
+const nativeEventEntryId = (
+  event: Record<string, unknown>,
+  suffix: string,
+): string => {
+  const message = asObject(event.message);
+  const messageId =
+    typeof message?.id === "string" && message.id.trim()
+      ? message.id
+          .trim()
+          .replace(/[^A-Za-z0-9._-]+/g, "_")
+          .slice(0, 80)
+      : "";
+  const digest = crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify(
+        sanitizeSensitiveData({
+          type: event.type,
+          subtype: event.subtype,
+          parentToolUseId: event.parent_tool_use_id,
+          message: event.message,
+          taskId: event.task_id,
+          status: event.status,
+          suffix,
+        }),
+      ),
+    )
+    .digest("base64url")
+    .slice(0, 24);
+  return `claude-native:${messageId ? `${messageId}:` : ""}${digest}:${suffix}`;
+};
+
+const normalizeClaudeNativeTaskStatus = (
+  value: unknown,
+): "running" | "completed" | "error" | "canceled" => {
+  const status = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (new Set(["completed", "success", "succeeded", "done"]).has(status)) {
+    return "completed";
+  }
+  if (new Set(["failed", "error"]).has(status)) return "error";
+  if (new Set(["canceled", "cancelled", "stopped", "killed"]).has(status)) {
+    return "canceled";
+  }
+  return "running";
+};
+
+/** Normalize the documented `--forward-subagent-text` messages and native
+ * task lifecycle events before parent stream handling sees them. */
+export const collectClaudeCodeNativeChildEvents = (
+  event: Record<string, unknown>,
+  fallbackSessionId = "",
+): { events: ClaudeCodeNativeChildEvent[]; forwardedChildMessage: boolean } => {
+  const sessionId =
+    typeof event.session_id === "string" && event.session_id.trim()
+      ? event.session_id.trim()
+      : fallbackSessionId.trim();
+  if (!sessionId) return { events: [], forwardedChildMessage: false };
+  const parentToolUseId =
+    typeof event.parent_tool_use_id === "string" &&
+    event.parent_tool_use_id.trim()
+      ? event.parent_tool_use_id.trim()
+      : undefined;
+  const message = asObject(event.message);
+  const content = Array.isArray(message?.content) ? message.content : [];
+  const events: ClaudeCodeNativeChildEvent[] = [];
+
+  if (event.type === "assistant") {
+    for (const raw of content) {
+      const block = asObject(raw);
+      if (
+        block?.type !== "tool_use" ||
+        typeof block.id !== "string" ||
+        typeof block.name !== "string" ||
+        !new Set(["agent", "task"]).has(block.name.trim().toLowerCase())
+      ) {
+        continue;
+      }
+      const input = asObject(block.input) ?? {};
+      events.push({
+        type: "launch",
+        claudeSessionId: sessionId,
+        toolUseId: block.id.trim(),
+        ...(parentToolUseId ? { parentToolUseId } : {}),
+        ...(typeof input.task_id === "string" && input.task_id.trim()
+          ? { taskId: input.task_id.trim() }
+          : {}),
+        ...(typeof input.description === "string" && input.description.trim()
+          ? { description: input.description.trim() }
+          : {}),
+        ...(typeof input.prompt === "string" && input.prompt.trim()
+          ? { prompt: input.prompt.trim() }
+          : {}),
+        ...(typeof input.subagent_type === "string" &&
+        input.subagent_type.trim()
+          ? { subagentType: input.subagent_type.trim() }
+          : {}),
+      });
+    }
+  }
+
+  // Partial `stream_event` rows also carry parent_tool_use_id. They are child
+  // owned even though only finalized assistant/user envelopes are durable
+  // transcript entries; suppress all tagged rows from parent stream handling.
+  const forwardedChildMessage = Boolean(parentToolUseId);
+  if (
+    forwardedChildMessage &&
+    parentToolUseId &&
+    (event.type === "assistant" || event.type === "user")
+  ) {
+    const role = event.type === "assistant" ? "assistant" : "user";
+    const text = claudeNativeAuthoredText(content);
+    if (text) {
+      events.push({
+        type: "message",
+        claudeSessionId: sessionId,
+        parentToolUseId,
+        entryId: nativeEventEntryId(event, role),
+        role,
+        content: text,
+      });
+    }
+  }
+
+  if (event.type === "user") {
+    const agentOutput = asObject(event.tool_use_result);
+    const agentOutputStatus =
+      typeof agentOutput?.status === "string"
+        ? agentOutput.status.trim().toLowerCase()
+        : "";
+    for (const raw of content) {
+      const block = asObject(raw);
+      if (
+        block?.type !== "tool_result" ||
+        typeof block.tool_use_id !== "string"
+      ) {
+        continue;
+      }
+      if (agentOutputStatus === "async_launched") {
+        const taskId =
+          typeof agentOutput?.agentId === "string"
+            ? agentOutput.agentId.trim()
+            : typeof agentOutput?.agent_id === "string"
+              ? agentOutput.agent_id.trim()
+              : "";
+        const description =
+          typeof agentOutput?.description === "string"
+            ? agentOutput.description.trim()
+            : "";
+        events.push({
+          type: "task-status",
+          claudeSessionId: sessionId,
+          ...(taskId ? { taskId } : {}),
+          toolUseId: block.tool_use_id.trim(),
+          entryId: nativeEventEntryId(
+            event,
+            `async-launched:${block.tool_use_id}`,
+          ),
+          status: "running",
+          ...(description ? { description } : {}),
+        });
+        continue;
+      }
+      events.push({
+        type: "tool-result",
+        claudeSessionId: sessionId,
+        toolUseId: block.tool_use_id.trim(),
+        entryId: nativeEventEntryId(event, `tool-result:${block.tool_use_id}`),
+        content: claudeNativeText(agentOutput?.content ?? block.content),
+        isError:
+          block.is_error === true ||
+          new Set(["failed", "error", "stopped", "killed"]).has(
+            agentOutputStatus,
+          ),
+      });
+    }
+  }
+
+  const eventKind =
+    typeof event.subtype === "string" && event.subtype.trim()
+      ? event.subtype.trim()
+      : typeof event.type === "string"
+        ? event.type.trim()
+        : "";
+  if (
+    new Set([
+      "task_started",
+      "task_updated",
+      "task_progress",
+      "task_notification",
+    ]).has(eventKind)
+  ) {
+    const task = asObject(event.task);
+    const updates = asObject(event.updates);
+    const taskId =
+      typeof event.task_id === "string"
+        ? event.task_id.trim()
+        : typeof task?.task_id === "string"
+          ? task.task_id.trim()
+          : typeof task?.id === "string"
+            ? task.id.trim()
+            : "";
+    const toolUseId =
+      typeof event.tool_use_id === "string"
+        ? event.tool_use_id.trim()
+        : typeof task?.tool_use_id === "string"
+          ? task.tool_use_id.trim()
+          : typeof event.parent_tool_use_id === "string"
+            ? event.parent_tool_use_id.trim()
+            : "";
+    const description =
+      typeof event.description === "string"
+        ? event.description.trim()
+        : typeof task?.description === "string"
+          ? task.description.trim()
+          : "";
+    const detail =
+      claudeNativeText(
+        event.summary ??
+          event.result ??
+          event.error ??
+          event.message ??
+          updates?.summary ??
+          updates?.error ??
+          task?.summary ??
+          task?.result ??
+          task?.error,
+      ) || (eventKind === "task_started" ? description : "");
+    events.push({
+      type: "task-status",
+      claudeSessionId: sessionId,
+      ...(taskId ? { taskId } : {}),
+      ...(toolUseId ? { toolUseId } : {}),
+      entryId: nativeEventEntryId(event, eventKind),
+      status:
+        eventKind === "task_started" || eventKind === "task_progress"
+          ? "running"
+          : normalizeClaudeNativeTaskStatus(
+              event.status ?? updates?.status ?? task?.status,
+            ),
+      ...(description ? { description } : {}),
+      ...(detail ? { content: detail } : {}),
+    });
+  }
+
+  return { events, forwardedChildMessage };
+};
+
+/**
+ * Claude Code 2.1.x emits a level-triggered system event whenever native
+ * background Bash/Agent/MCP membership changes. `tasks` is documented as the
+ * complete current set (replace semantics), not an edge to pair with start
+ * and notification events.
+ */
+export const getClaudeCodeBackgroundTaskIdsFromStreamEvent = (
+  event: Record<string, unknown>,
+): string[] | null => {
+  if (
+    event.type !== "system" ||
+    event.subtype !== "background_tasks_changed" ||
+    !Array.isArray(event.tasks)
+  ) {
+    return null;
+  }
+  const ids = new Set<string>();
+  for (const raw of event.tasks) {
+    const direct = typeof raw === "string" ? raw.trim() : "";
+    if (direct) {
+      ids.add(direct);
+      continue;
+    }
+    const task = asObject(raw);
+    const nested =
+      typeof task?.task_id === "string"
+        ? task.task_id.trim()
+        : typeof task?.id === "string"
+          ? task.id.trim()
+          : "";
+    if (nested) ids.add(nested);
+  }
+  return [...ids];
+};
+
+const getClaudeCodeCompletedBackgroundTaskId = (
+  event: Record<string, unknown>,
+): string | null => {
+  if (event.type !== "task_notification") return null;
+  const status =
+    typeof event.status === "string" ? event.status.trim().toLowerCase() : "";
+  if (
+    !new Set(["completed", "failed", "canceled", "cancelled", "stopped"]).has(
+      status,
+    )
+  ) {
+    return null;
+  }
+  const id =
+    typeof event.task_id === "string"
+      ? event.task_id.trim()
+      : typeof event.id === "string"
+        ? event.id.trim()
+        : "";
+  return id || null;
+};
+
 export const getClaudeCodeTextDeltaFromStreamEvent = (
   event: Record<string, unknown>,
 ): string | null => {
@@ -1169,8 +1672,9 @@ const updateClaudeCodeNativeToolActivity = (
   event: Record<string, unknown>,
   activeToolUseIds: Set<string>,
   onNativeToolStart?: ClaudeCodeTurnRequest["onNativeToolStart"],
-): boolean => {
+): { activityChanged: boolean; started: boolean } => {
   const before = activeToolUseIds.size;
+  let started = false;
   const startToolUse = (block: Record<string, unknown> | null) => {
     if (block?.type !== "tool_use" || typeof block.id !== "string") {
       return;
@@ -1180,6 +1684,7 @@ const updateClaudeCodeNativeToolActivity = (
     if (alreadyActive) {
       return;
     }
+    started = true;
     onNativeToolStart?.({
       toolCallId: block.id,
       toolName:
@@ -1214,7 +1719,21 @@ const updateClaudeCodeNativeToolActivity = (
       startToolUse(block);
     }
   }
-  return before !== activeToolUseIds.size;
+  return { activityChanged: before !== activeToolUseIds.size, started };
+};
+
+const startsClaudeCodeBackgroundTask = (
+  event: Record<string, unknown>,
+): boolean => {
+  if (event.type !== "assistant") return false;
+  const content = asObject(event.message)?.content;
+  if (!Array.isArray(content)) return false;
+  return content.some((raw) => {
+    const block = asObject(raw);
+    if (block?.type !== "tool_use") return false;
+    const input = asObject(block.input);
+    return input?.run_in_background === true;
+  });
 };
 
 const observeFinalizedClaudeToolUses = (
@@ -1827,6 +2346,7 @@ class ClaudeCodeSessionRuntime {
     const failedAttemptFileChanges: FileChangeRecord[] = [];
     const failedAttemptFileChangeKeys = new Set<string>();
     const failedAttemptMcpCalls: ClaudeCodeMcpCallRecord[] = [];
+    let failedAttemptHadPossibleSideEffects = false;
     for (;;) {
       try {
         const result = await this.executeStep(
@@ -1837,6 +2357,7 @@ class ClaudeCodeSessionRuntime {
           currentPromptImages,
           failedAttemptFileChanges,
           failedAttemptMcpCalls,
+          failedAttemptHadPossibleSideEffects,
         );
         if (failedAttemptFileChanges.length === 0) {
           return result;
@@ -1861,8 +2382,9 @@ class ClaudeCodeSessionRuntime {
         const recoverable = asRecoverableStepError(error);
         const hasPossibleSideEffects = Boolean(
           recoverable &&
-            (recoverable.fileChanges.length > 0 ||
-              recoverable.mcpCalls.length > 0),
+          (recoverable.fileChanges.length > 0 ||
+            recoverable.mcpCalls.length > 0 ||
+            recoverable.possibleSideEffects),
         );
         // A normal refusal/overload can retry the configured model and then
         // fall back. Once any tool call started, the same prompt is never
@@ -1882,6 +2404,7 @@ class ClaudeCodeSessionRuntime {
           recoverable.fileChanges,
         );
         mergeMcpCalls(failedAttemptMcpCalls, recoverable.mcpCalls);
+        failedAttemptHadPossibleSideEffects ||= recoverable.possibleSideEffects;
         if (recoveryBudget.remaining <= 0) {
           throw withStepRecoveryExhausted(error);
         }
@@ -1894,7 +2417,8 @@ class ClaudeCodeSessionRuntime {
           // paths.)
           if (
             failedAttemptFileChanges.length > 0 ||
-            failedAttemptMcpCalls.length > 0
+            failedAttemptMcpCalls.length > 0 ||
+            failedAttemptHadPossibleSideEffects
           ) {
             currentPrompt = buildSideEffectReconciliationPrompt(
               failedAttemptFileChanges,
@@ -1974,6 +2498,7 @@ class ClaudeCodeSessionRuntime {
     promptImages: readonly ClaudeCodePromptImage[],
     observedMutations: readonly FileChangeRecord[] = [],
     observedMcpCalls: readonly ClaudeCodeMcpCallRecord[] = [],
+    observedPossibleSideEffects = false,
   ): Promise<ClaudeCodeStepResult> {
     return await this.executeStepWithMode(
       session,
@@ -1985,6 +2510,7 @@ class ClaudeCodeSessionRuntime {
       promptImages,
       observedMutations,
       observedMcpCalls,
+      observedPossibleSideEffects,
     );
   }
 
@@ -2005,20 +2531,49 @@ class ClaudeCodeSessionRuntime {
     promptImages: readonly ClaudeCodePromptImage[] = [],
     observedMutations: readonly FileChangeRecord[] = [],
     observedMcpCalls: readonly ClaudeCodeMcpCallRecord[] = [],
+    observedPossibleSideEffects = false,
   ): Promise<ClaudeCodeStepResult> {
     // Reseeded sessions have no transcript, so a mutation-guarded reseed
     // embeds the would-be seed prompt as reference-only context.
     const buildReseedPrompt = (
       mutations: readonly FileChangeRecord[],
       mcpCalls: readonly ClaudeCodeMcpCallRecord[],
+      possibleSideEffects = observedPossibleSideEffects,
     ): string =>
-      mutations.length > 0 || mcpCalls.length > 0
+      mutations.length > 0 || mcpCalls.length > 0 || possibleSideEffects
         ? buildSideEffectReconciliationPrompt(
             mutations,
             mcpCalls,
             request.resumeFallbackPrompt ?? prompt,
           )
         : (request.resumeFallbackPrompt ?? prompt);
+    const mutationBefore =
+      request.vanilla && request.mutationRoot
+        ? await captureWorktreeMutationSnapshot(request.mutationRoot)
+        : null;
+    const collectAttemptMutations = async (): Promise<FileChangeRecord[]> => {
+      if (!mutationBefore) return [];
+      const adoptedNativeCommit =
+        await restoreSnapshotHeadForSelfMod(mutationBefore);
+      const mutationAfter = await captureWorktreeMutationSnapshot(
+        request.mutationRoot,
+      );
+      const mutationDiff = diffWorktreeMutationSnapshots(
+        mutationBefore,
+        mutationAfter,
+      );
+      if (mutationDiff.headChanged) {
+        throw new Error(
+          `Claude Code changed Git HEAD in ${mutationBefore.repoRoot} after Stella restored the self-mod baseline. Refusing to finalize an unattributed native commit.`,
+        );
+      }
+      if (adoptedNativeCommit) {
+        console.info(
+          `[claude-code] adopted native Git changes in ${mutationBefore.repoRoot} into Stella Apply/Undo.`,
+        );
+      }
+      return mutationDiff.fileChanges;
+    };
     try {
       const processState = await this.ensureStreamingProcess(
         session,
@@ -2026,15 +2581,45 @@ class ClaudeCodeSessionRuntime {
         effectiveSystemPrompt,
         useResume,
       );
-      return await this.sendStreamingPrompt(
+      const result = await this.sendStreamingPrompt(
         session,
         processState,
         request,
         prompt,
         promptImages,
       );
+      const attemptMutations = await collectAttemptMutations();
+      if (attemptMutations.length === 0) return result;
+      const combined = [...(result.fileChanges ?? [])];
+      const combinedKeys = new Set(combined.map(fileChangeDedupeKey));
+      mergeFileChanges(combined, combinedKeys, attemptMutations);
+      return { ...result, fileChanges: combined };
     } catch (error) {
+      const attemptMutations = await collectAttemptMutations();
+      attachClaudeCodeErrorFileChanges(error, attemptMutations);
       const message = normalizeErrorMessage(error);
+      const mutationsAfterError = [...observedMutations];
+      const mutationsAfterErrorKeys = new Set(
+        mutationsAfterError.map(fileChangeDedupeKey),
+      );
+      const possibleSideEffectsAfterError = Boolean(
+        observedPossibleSideEffects ||
+        ((error instanceof ClaudeCodeProcessEndedError ||
+          error instanceof ClaudeCodeMalformedResultError ||
+          error instanceof ClaudeCodeCompactionLoopError) &&
+          error.possibleSideEffects),
+      );
+      if (
+        error instanceof ClaudeCodeProcessEndedError ||
+        error instanceof ClaudeCodeMalformedResultError ||
+        error instanceof ClaudeCodeCompactionLoopError
+      ) {
+        mergeFileChanges(
+          mutationsAfterError,
+          mutationsAfterErrorKeys,
+          error.fileChanges,
+        );
+      }
       if (!useResume && isSessionAlreadyInUseError(message)) {
         this.resetStreamingProcess(request.sessionKey, session);
         return await this.executeStepWithMode(
@@ -2045,8 +2630,9 @@ class ClaudeCodeSessionRuntime {
           true,
           allowCompactionLoopRestart,
           promptImages,
-          observedMutations,
+          mutationsAfterError,
           observedMcpCalls,
+          possibleSideEffectsAfterError,
         );
       }
       if (useResume && isMissingResumeSessionError(message)) {
@@ -2058,12 +2644,17 @@ class ClaudeCodeSessionRuntime {
           session,
           request,
           effectiveSystemPrompt,
-          buildReseedPrompt(observedMutations, observedMcpCalls),
+          buildReseedPrompt(
+            mutationsAfterError,
+            observedMcpCalls,
+            possibleSideEffectsAfterError,
+          ),
           false,
           allowCompactionLoopRestart,
           promptImages,
-          observedMutations,
+          mutationsAfterError,
           observedMcpCalls,
+          possibleSideEffectsAfterError,
         );
       }
       if (
@@ -2078,7 +2669,7 @@ class ClaudeCodeSessionRuntime {
         // The caller persists the fresh session id at turn end, replacing
         // the looping one. At most once per step, so a fresh session that
         // still loops fails loudly instead of cycling.
-        const mutations = [...observedMutations];
+        const mutations = [...mutationsAfterError];
         const mutationKeys = new Set(mutations.map(fileChangeDedupeKey));
         mergeFileChanges(mutations, mutationKeys, error.fileChanges);
         const mcpCalls = [...observedMcpCalls];
@@ -2091,12 +2682,13 @@ class ClaudeCodeSessionRuntime {
           session,
           request,
           effectiveSystemPrompt,
-          buildReseedPrompt(mutations, mcpCalls),
+          buildReseedPrompt(mutations, mcpCalls, possibleSideEffectsAfterError),
           false,
           false,
           promptImages,
           mutations,
           mcpCalls,
+          possibleSideEffectsAfterError,
         );
         if (error.fileChanges.length === 0) {
           return result;
@@ -2135,6 +2727,12 @@ class ClaudeCodeSessionRuntime {
       "--settings",
       CLAUDE_CODE_HOOK_SETTINGS,
     ];
+    if (
+      request.vanilla &&
+      !claudeWithoutForwardedSubagentText.has(resolveExternalCliPath("claude"))
+    ) {
+      args.push("--forward-subagent-text");
+    }
     if (!request.vanilla) {
       if (!mcpHost || !session.mcpConfigPath) {
         throw new Error("Claude Code native tool host is unavailable.");
@@ -2313,6 +2911,9 @@ class ClaudeCodeSessionRuntime {
       ),
       {
         stdio: ["pipe", "pipe", "pipe"],
+        // Creates one signalable process group on POSIX. Pipes stay attached,
+        // so normal lifecycle/stream behavior is unchanged.
+        detached: process.platform !== "win32",
         windowsHide: true,
         cwd: request.cwd,
         env: childEnv,
@@ -2328,6 +2929,7 @@ class ClaudeCodeSessionRuntime {
       closed: false,
       compacting: false,
       compactionCount: 0,
+      nativeBackgroundTaskIds: new Set(),
       launchConfig,
     };
     session.process = processState;
@@ -2337,6 +2939,67 @@ class ClaudeCodeSessionRuntime {
       for (const pending of processState.pending) {
         if (hasOutput) pending.hasOutput = true;
         this.refreshPendingIdleTimer(processState, pending);
+      }
+    };
+
+    const closeUnresolvedNativeChildren = (
+      pending: PendingClaudeCodePrompt,
+      error: string,
+    ) => {
+      if (
+        !pending.request.vanilla ||
+        claudeWithoutForwardedSubagentText.has(executablePath)
+      )
+        return;
+      try {
+        pending.request.onNativeChildEvent?.({
+          type: "run-ended",
+          claudeSessionId: processState.finalSessionId,
+          error,
+        });
+      } catch (error) {
+        console.warn(
+          "[claude-code] failed to close native child projections:",
+          normalizeErrorMessage(error),
+        );
+      }
+    };
+
+    const settleFrontResult = (parsedResult: Record<string, unknown>) => {
+      const completed = processState.pending.shift();
+      if (!completed) return;
+      completed.bufferedResult = undefined;
+      this.detachAbortListener(completed);
+      try {
+        const stepResult = this.parseResultPayload(
+          session,
+          parsedResult,
+          processState.stderrText,
+          Boolean(!completed.request.vanilla && session.allowEmptyNativeFinal),
+        );
+        closeUnresolvedNativeChildren(
+          completed,
+          "Claude Code returned its parent result before Stella observed this native agent's completion.",
+        );
+        completed.resolve(
+          completed.fileChanges.length > 0
+            ? { ...stepResult, fileChanges: completed.fileChanges }
+            : stepResult,
+        );
+      } catch (error) {
+        // Carry file writes observed during the failed step so a nudge
+        // recovery still reports them on the eventual turn result.
+        if (
+          error instanceof ClaudeCodeMalformedResultError &&
+          completed.fileChanges.length > 0
+        ) {
+          error.fileChanges.push(...completed.fileChanges);
+        }
+        if (error instanceof ClaudeCodeMalformedResultError) {
+          mergeMcpCalls(error.mcpCalls, completed.mcpCalls);
+          error.possibleSideEffects ||= completed.sawNativeToolUse;
+        }
+        completed.reject(error);
       }
     };
 
@@ -2355,6 +3018,12 @@ class ClaudeCodeSessionRuntime {
         }
         const parsedLine = parseStreamJsonLine(line);
         if (!parsedLine) {
+          continue;
+        }
+        // A reset can leave a few buffered lines on the retired stdout. They
+        // belong to the old generation and must never overwrite the resumed
+        // session id or notify callbacks for the replacement process.
+        if (session.process !== processState) {
           continue;
         }
         if (
@@ -2430,8 +3099,60 @@ class ClaudeCodeSessionRuntime {
         // don't spam).
         const modelFallback =
           getClaudeCodeModelFallbackFromStreamEvent(parsedLine);
+        const backgroundTaskIds =
+          getClaudeCodeBackgroundTaskIdsFromStreamEvent(parsedLine);
+        const previousBackgroundTaskCount =
+          processState.nativeBackgroundTaskIds.size;
+        if (backgroundTaskIds) {
+          processState.nativeBackgroundTaskIds = new Set(backgroundTaskIds);
+        }
+        const completedBackgroundTaskId =
+          getClaudeCodeCompletedBackgroundTaskId(parsedLine);
         const current = processState.pending[0];
         if (current) {
+          if (
+            current.request.vanilla &&
+            !claudeWithoutForwardedSubagentText.has(executablePath)
+          ) {
+            const nativeChild = collectClaudeCodeNativeChildEvents(
+              parsedLine,
+              processState.finalSessionId,
+            );
+            for (const childEvent of nativeChild.events) {
+              try {
+                current.request.onNativeChildEvent?.(childEvent);
+              } catch (error) {
+                // Observational persistence must never disrupt Claude's turn.
+                console.warn(
+                  "[claude-code] failed to persist native child observation:",
+                  normalizeErrorMessage(error),
+                );
+              }
+            }
+            if (nativeChild.forwardedChildMessage) {
+              // Forwarded child assistant/user messages are complete child
+              // transcript records, not parent model rounds or parent stream
+              // text. Classify them before any parent processing below.
+              current.hasOutput = true;
+              this.refreshPendingIdleTimer(processState, current);
+              continue;
+            }
+          }
+          if (
+            backgroundTaskIds &&
+            backgroundTaskIds.length > 0 &&
+            previousBackgroundTaskCount === 0
+          ) {
+            current.sawLastBackgroundCompletion = false;
+            current.bufferedResultIsPostBackground = false;
+          }
+          if (
+            completedBackgroundTaskId &&
+            processState.nativeBackgroundTaskIds.size === 1 &&
+            processState.nativeBackgroundTaskIds.has(completedBackgroundTaskId)
+          ) {
+            current.sawLastBackgroundCompletion = true;
+          }
           const modelRound = getClaudeCodeModelRoundFromStreamEvent(parsedLine);
           if (modelRound) {
             try {
@@ -2460,13 +3181,18 @@ class ClaudeCodeSessionRuntime {
             });
           }
           session.activeNativeToolUseCorrelator?.observeStreamEvent(parsedLine);
-          if (
-            updateClaudeCodeNativeToolActivity(
-              parsedLine,
-              current.activeNativeToolUseIds,
-              current.request.onNativeToolStart,
-            )
-          ) {
+          const nativeToolActivity = updateClaudeCodeNativeToolActivity(
+            parsedLine,
+            current.activeNativeToolUseIds,
+            current.request.onNativeToolStart,
+          );
+          current.sawNativeToolUse ||= nativeToolActivity.started;
+          current.awaitingBackgroundTaskLevel ||=
+            startsClaudeCodeBackgroundTask(parsedLine);
+          if (backgroundTaskIds) {
+            current.awaitingBackgroundTaskLevel = false;
+          }
+          if (nativeToolActivity.activityChanged) {
             this.refreshPendingIdleTimer(processState, current);
           }
           if (status) {
@@ -2485,41 +3211,52 @@ class ClaudeCodeSessionRuntime {
           if (nativeFileChanges.length > 0) {
             current.fileChanges.push(...nativeFileChanges);
           }
+          if (backgroundTaskIds) {
+            this.refreshPendingIdleTimer(processState, current);
+          }
         }
-        if (parsedLine.type === "result") {
-          const completed = processState.pending.shift();
-          if (!completed) {
+        if (backgroundTaskIds?.length === 0 && current?.bufferedResult) {
+          if (current.bufferedResultIsPostBackground) {
+            const postBackgroundResult = current.bufferedResult;
+            settleFrontResult(postBackgroundResult);
             continue;
           }
-          this.detachAbortListener(completed);
-          try {
-            const stepResult = this.parseResultPayload(
-              session,
-              parsedLine,
-              processState.stderrText,
-              Boolean(
-                !completed.request.vanilla && session.allowEmptyNativeFinal,
-              ),
-            );
-            completed.resolve(
-              completed.fileChanges.length > 0
-                ? { ...stepResult, fileChanges: completed.fileChanges }
-                : stepResult,
-            );
-          } catch (error) {
-            // Carry file writes observed during the failed step so a nudge
-            // recovery still reports them on the eventual turn result.
-            if (
-              error instanceof ClaudeCodeMalformedResultError &&
-              completed.fileChanges.length > 0
-            ) {
-              error.fileChanges.push(...completed.fileChanges);
-            }
-            if (error instanceof ClaudeCodeMalformedResultError) {
-              mergeMcpCalls(error.mcpCalls, completed.mcpCalls);
-            }
-            completed.reject(error);
+          // Claude Code automatically starts another model turn when its
+          // native background work finishes. The result buffered above was
+          // produced before the child completed, so it is only an interim
+          // parent result. Discard it and keep this prompt pending for the
+          // automatically-triggered post-child result, which can actually
+          // incorporate the child's report.
+          current.bufferedResult = undefined;
+          current.bufferedResultIsPostBackground = false;
+          current.request.onStatusChange?.({
+            state: "running",
+            text: "Claude Code background work finished; awaiting its updated final response",
+          });
+          this.refreshPendingIdleTimer(processState, current);
+          continue;
+        }
+        if (parsedLine.type === "result") {
+          const pending = processState.pending[0];
+          if (!pending) continue;
+          if (
+            processState.nativeBackgroundTaskIds.size > 0 ||
+            pending.awaitingBackgroundTaskLevel
+          ) {
+            pending.bufferedResult = parsedLine;
+            pending.bufferedResultIsPostBackground =
+              pending.sawLastBackgroundCompletion;
+            pending.request.onStatusChange?.({
+              state: "running",
+              text:
+                processState.nativeBackgroundTaskIds.size > 0
+                  ? `Waiting for ${processState.nativeBackgroundTaskIds.size} Claude Code background task${processState.nativeBackgroundTaskIds.size === 1 ? "" : "s"}`
+                  : "Waiting for Claude Code background task registration",
+            });
+            this.refreshPendingIdleTimer(processState, pending);
+            continue;
           }
+          settleFrontResult(parsedLine);
         }
       }
     };
@@ -2559,12 +3296,17 @@ class ClaudeCodeSessionRuntime {
       }
       for (const pending of processState.pending.splice(0)) {
         this.detachAbortListener(pending);
+        closeUnresolvedNativeChildren(
+          pending,
+          "Claude Code stopped before Stella observed this native agent's completion.",
+        );
         pending.reject(
           new ClaudeCodeProcessEndedError(
             wrapped.message,
             null,
             pending.fileChanges,
             pending.mcpCalls,
+            pending.sawNativeToolUse,
           ),
         );
       }
@@ -2572,6 +3314,17 @@ class ClaudeCodeSessionRuntime {
 
     child.once("close", (code) => {
       consumeStdout(true);
+      if (
+        request.vanilla &&
+        /(?:unknown|unrecognized|invalid) (?:option|argument)[^\n]*forward-subagent-text/i.test(
+          processState.stderrText,
+        )
+      ) {
+        // Older Claude Code releases lack the observational forwarding flag.
+        // The normal process-ended recovery respawns the same parent session;
+        // this latch makes that retry parent-only instead of failing the turn.
+        claudeWithoutForwardedSubagentText.add(executablePath);
+      }
       processState.closed = true;
       const ownsSessionProcess = session.process === processState;
       if (ownsSessionProcess) {
@@ -2591,6 +3344,12 @@ class ClaudeCodeSessionRuntime {
         `Claude Code exited with code ${code ?? "unknown"} before returning a result.`;
       for (const pending of processState.pending.splice(0)) {
         this.detachAbortListener(pending);
+        closeUnresolvedNativeChildren(
+          pending,
+          pending.request.abortSignal?.aborted
+            ? "The parent Claude Code run was canceled before Stella observed this native agent's completion."
+            : "Claude Code exited before Stella observed this native agent's completion.",
+        );
         pending.reject(
           pending.request.abortSignal?.aborted
             ? new Error("Claude Code run aborted.")
@@ -2599,6 +3358,7 @@ class ClaudeCodeSessionRuntime {
                 code,
                 pending.fileChanges,
                 pending.mcpCalls,
+                pending.sawNativeToolUse,
               ),
         );
       }
@@ -2629,6 +3389,10 @@ class ClaudeCodeSessionRuntime {
         fileChanges: [],
         mcpCalls: [],
         activeNativeToolUseIds: new Set(),
+        sawNativeToolUse: false,
+        awaitingBackgroundTaskLevel: false,
+        sawLastBackgroundCompletion: false,
+        bufferedResultIsPostBackground: false,
       };
       this.refreshPendingIdleTimer(processState, pending);
       if (request.abortSignal) {
@@ -2692,6 +3456,7 @@ class ClaudeCodeSessionRuntime {
             null,
             pending.fileChanges,
             pending.mcpCalls,
+            pending.sawNativeToolUse,
           ),
         );
       });
@@ -2725,7 +3490,10 @@ class ClaudeCodeSessionRuntime {
     // We cannot cancel an individual native tool from out here, so instead of
     // disarming entirely (an unresolved tool_use would hang the session
     // forever), arm the watchdog with the much longer tool ceiling.
-    const toolsInFlight = pending.activeNativeToolUseIds.size > 0;
+    const backgroundTasksInFlight =
+      processState.nativeBackgroundTaskIds.size > 0;
+    const toolsInFlight =
+      pending.activeNativeToolUseIds.size > 0 || backgroundTasksInFlight;
     const timeoutMs = toolsInFlight
       ? configuredTimeoutMs(
           "STELLA_CLAUDE_CODE_TOOL_IDLE_TIMEOUT_MS",
@@ -2750,7 +3518,7 @@ class ClaudeCodeSessionRuntime {
       pending.reject(
         new Error(
           toolsInFlight
-            ? `Claude Code produced no output for ${Math.round(timeoutMs / 1000)}s with ${pending.activeNativeToolUseIds.size} native tool call(s) still unresolved.`
+            ? `Claude Code produced no output for ${Math.round(timeoutMs / 1000)}s with ${pending.activeNativeToolUseIds.size} native tool call(s) and ${processState.nativeBackgroundTaskIds.size} background task(s) still unresolved.`
             : `Claude Code did not produce output for ${Math.round(timeoutMs / 1000)}s.`,
         ),
       );
@@ -2837,6 +3605,7 @@ class ClaudeCodeSessionRuntime {
         new ClaudeCodeCompactionLoopError(
           pending.fileChanges,
           pending.mcpCalls,
+          pending.sawNativeToolUse,
         ),
       );
     }

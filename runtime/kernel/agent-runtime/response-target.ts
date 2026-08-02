@@ -155,6 +155,7 @@ export const createOrchestratorResponseTargetTracker = (
 export const createAgentLifecycleResponseTarget = (args: {
   agentId?: string;
   eventType: string;
+  completionEventId?: string;
 }): RuntimeAgentEventPayload["responseTarget"] => {
   const agentId = asTaskId(args.agentId);
   if (!agentId) {
@@ -165,6 +166,9 @@ export const createAgentLifecycleResponseTarget = (args: {
       type: "agent_terminal_notice",
       agentId,
       terminalState: "completed",
+      ...(args.completionEventId
+        ? { completionEventId: args.completionEventId }
+        : {}),
     };
   }
   return {

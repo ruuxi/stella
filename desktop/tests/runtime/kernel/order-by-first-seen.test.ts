@@ -15,6 +15,8 @@ const task = (id: string, startedAtMs: number): ActivityRow => ({
     id,
     description: id,
     agentType: "general",
+    source: "stella",
+    readOnly: false,
     status: "running",
     statusText: undefined,
     startedAtMs,

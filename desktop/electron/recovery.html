@@ -167,7 +167,7 @@ After fixing, return a concise summary of what you changed.`;
       setBusy(true);
       status.textContent = 'Reverting...';
       try {
-        await window.electronAPI?.agent.selfModRevert(undefined, 1);
+        await window.electronAPI?.agent.selfModRevert({ steps: 1 });
         status.textContent = 'Reverted. Reloading...';
         setTimeout(() => window.electronAPI?.ui.reload(), 500);
       } catch {

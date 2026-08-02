@@ -459,17 +459,26 @@ export const createAgentThreadTabSpec = (
   id: `agent-thread:${args.threadId}`,
   kind: "chat",
   title: args.title,
-  tooltip: `${args.agentType} · read-only`,
+  tooltip:
+    args.source === "claude-native"
+      ? "Claude subagent · read-only"
+      : `${args.agentType} · read-only`,
   metadata: {
     kind: "agent-thread",
     threadId: args.threadId,
     conversationId: args.conversationId,
+    source: args.source ?? "stella",
+    readOnly: args.readOnly ?? true,
+    ...(args.parentAgentId ? { parentAgentId: args.parentAgentId } : {}),
   },
   render: () =>
     createElement(AgentThreadChatTab, {
       threadId: args.threadId,
       conversationId: args.conversationId,
       agentType: args.agentType,
+      source: args.source ?? "stella",
+      readOnly: args.readOnly ?? true,
+      parentAgentId: args.parentAgentId,
     }),
 });
 

@@ -12,11 +12,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
+import type { RuntimeSelfModRevertRequest } from "../../../../runtime/protocol/index.js";
 
 let container: HTMLDivElement;
 let root: Root;
-const applyCalls: Array<string | undefined> = [];
-const revertCalls: Array<string | undefined> = [];
+const applyCalls: Array<
+  [applyId: string | undefined, commitHash: string | undefined]
+> = [];
+const revertCalls: RuntimeSelfModRevertRequest[] = [];
 
 beforeEach(() => {
   applyCalls.length = 0;
@@ -26,11 +29,11 @@ beforeEach(() => {
   root = createRoot(container);
   (window as unknown as { electronAPI: unknown }).electronAPI = {
     agent: {
-      selfModApply: async (commitHash?: string) => {
-        applyCalls.push(commitHash);
+      selfModApply: async (applyId?: string, commitHash?: string) => {
+        applyCalls.push([applyId, commitHash]);
       },
-      selfModRevert: async (commitHash?: string) => {
-        revertCalls.push(commitHash);
+      selfModRevert: async (payload: RuntimeSelfModRevertRequest) => {
+        revertCalls.push(payload);
       },
     },
   };
@@ -74,12 +77,27 @@ describe("SelfModUndoButton", () => {
       actionButton()?.click();
     });
 
-    // The click still reaches the worker; the stash, not the hash, is what
-    // identifies what to apply.
-    expect(applyCalls).toEqual([undefined]);
+    // The click reaches the exact grouped stash even before a commit exists.
+    expect(applyCalls).toEqual([["run-1", undefined]]);
     // It lands in the applied state, still with no Undo to offer.
     expect(container.textContent).toContain("Stella was updated");
     expect(actionButton()).toBeNull();
+  });
+
+  it("preserves commit-hash fallback for legacy pending cards", async () => {
+    render(
+      card({
+        applyId: undefined,
+        commitHash: "legacy-abc123",
+        status: "pending",
+      }),
+    );
+
+    await act(async () => {
+      actionButton()?.click();
+    });
+
+    expect(applyCalls).toEqual([[undefined, "legacy-abc123"]]);
   });
 
   it("withholds Undo on an applied card whose commit never landed", () => {
@@ -103,6 +121,59 @@ describe("SelfModUndoButton", () => {
     expect(actionButton()?.textContent).toBe("Undo");
   });
 
+  it("offers all-or-nothing Undo for a complete grouped update", async () => {
+    render(
+      card({
+        applyId: "group-1",
+        changeSetId: "change-set-1",
+        status: "applied",
+        commitHashes: ["abc123", "def456"],
+      }),
+    );
+
+    expect(actionButton()?.textContent).toBe("Undo");
+    await act(async () => {
+      actionButton()?.click();
+    });
+    await act(async () => {
+      actionButton()?.click();
+    });
+
+    expect(revertCalls).toEqual([
+      {
+        applyId: "change-set-1",
+        commitHashes: ["abc123", "def456"],
+      },
+    ]);
+  });
+
+  it("withholds Undo for an invalid grouped set instead of falling back to a partial hash", () => {
+    render(
+      card({
+        status: "applied",
+        commitHash: "abc123",
+        commitHashes: ["abc123", "abc123"],
+      }),
+    );
+
+    expect(actionButton()).toBeNull();
+  });
+
+  it("keeps a persisted reverted card settled after a renderer reload", () => {
+    render(
+      card({
+        status: "reverted",
+        commitHashes: ["abc123", "def456"],
+      }),
+    );
+
+    expect(
+      container.querySelector(".selfmod-card")?.getAttribute("data-state"),
+    ).toBe("reverted");
+    expect(container.textContent).toContain("Update undone");
+    expect(actionButton()).toBeNull();
+  });
+
   it("reverts with the landed commit hash after confirming", async () => {
     render(card({ status: "applied", commitHash: "abc123" }));
 
@@ -116,7 +187,9 @@ describe("SelfModUndoButton", () => {
       actionButton()?.click();
     });
 
-    expect(revertCalls).toEqual(["abc123"]);
+    expect(revertCalls).toEqual([
+      { applyId: "run-1", commitHash: "abc123", steps: 1 },
+    ]);
     expect(container.textContent).toContain("Update undone");
   });
 });

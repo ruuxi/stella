@@ -1,4 +1,5 @@
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE } from "../../src/shared/contracts/ipc-channels.js";
 import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
@@ -212,6 +213,31 @@ export const registerLocalChatHandlers = (
           client.listAgentThreadMessages({
             threadId: payload?.threadId ?? "",
             limit: payload?.limit,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
+    IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE,
+    async (
+      event,
+      payload: {
+        threadId?: string;
+        limit?: number;
+        beforeSequence?: number;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGE_PAGE,
+        (client) =>
+          client.listAgentThreadMessagePage({
+            threadId: payload?.threadId ?? "",
+            limit: payload?.limit,
+            ...(payload?.beforeSequence === undefined
+              ? {}
+              : { beforeSequence: payload.beforeSequence }),
           }),
       ),
   );

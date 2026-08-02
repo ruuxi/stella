@@ -153,11 +153,9 @@ describe("createRevertNoticeHook — orchestrator path", () => {
     const result = await hook.handler(orchestratorPayload);
 
     expect(result?.prependMessages).toHaveLength(1);
+    expect(result?.prependMessages?.[0]?.text).toContain("clicked Undo");
     expect(result?.prependMessages?.[0]?.text).toContain(
-      "clicked Undo 2 times",
-    );
-    expect(result?.prependMessages?.[0]?.text).toContain(
-      "reverted those changes",
+      "reverted 2 changes",
     );
     expect(store.markSelfModRevertsOrchestratorConsumed).toHaveBeenCalledWith([
       "a",

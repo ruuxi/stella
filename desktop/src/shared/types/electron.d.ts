@@ -10,6 +10,7 @@ import type { UiState } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-stream.js";
 import type {
+  AgentThreadMessagePage,
   AgentThreadMessageRecord,
   EventRecord,
   LocalChatUpdatedPayload,
@@ -18,6 +19,7 @@ import type {
   MessageRecord,
 } from "../../../../runtime/contracts/local-chat.js";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
+import type { RuntimeSelfModRevertRequest } from "../../../../runtime/protocol/index.js";
 import type { MorphVisualTiming } from "../contracts/morph-timing";
 import type {
   ChatContext as SharedChatContext,
@@ -634,8 +636,8 @@ export type ElectronAgentApi = {
       pendingRuntimeRestart?: boolean;
     }) => void,
   ) => () => void;
-  selfModApply: (commitHash?: string) => Promise<unknown>;
-  selfModRevert: (commitHash?: string, steps?: number) => Promise<unknown>;
+  selfModApply: (applyId?: string, commitHash?: string) => Promise<unknown>;
+  selfModRevert: (payload: RuntimeSelfModRevertRequest) => Promise<unknown>;
   getCrashRecoveryStatus: () => Promise<
     | {
         kind: "dirty";
@@ -837,6 +839,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    subscriptionHarnessEnabled: boolean;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -876,6 +879,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    subscriptionHarnessEnabled?: boolean;
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -914,6 +918,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    subscriptionHarnessEnabled: boolean;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1500,6 +1505,13 @@ export type ElectronLocalChatApi = {
     threadId: string;
     limit?: number;
   }) => Promise<AgentThreadMessageRecord[]>;
+  /** Cursor-paginated read-only transcript, including Claude-native child
+   * conversations addressed by their synthetic thread id. */
+  listAgentThreadMessagePage: (payload: {
+    threadId: string;
+    limit?: number;
+    beforeSequence?: number;
+  }) => Promise<AgentThreadMessagePage>;
   listFiles: (payload: {
     conversationId: string;
     limit?: number;

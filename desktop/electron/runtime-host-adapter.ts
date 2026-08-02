@@ -12,6 +12,7 @@ import type {
   RuntimeHealthSnapshot,
   RuntimeListModelsRequest,
   RuntimeSocialSessionStatus,
+  RuntimeSelfModRevertRequest,
   RuntimeVoiceChatPayload,
   RuntimeVoiceOrchestratorConfigRequest,
   RuntimeVoiceToolCallPayload,
@@ -1181,11 +1182,11 @@ export class RuntimeHostAdapter {
     return this.host.getSocialSessionStatus();
   }
 
-  revertSelfModCommit(payload: { commitHash?: string; steps?: number }) {
+  revertSelfModCommit(payload: RuntimeSelfModRevertRequest) {
     return this.host.revertSelfModCommit(payload);
   }
 
-  applySelfModCommit(payload: { commitHash?: string }) {
+  applySelfModCommit(payload: { applyId?: string; commitHash?: string }) {
     return this.host.applySelfModCommit(payload);
   }
 

@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
 import {
   getDesktopDatabasePath,
@@ -17,6 +17,7 @@ import {
 } from "../../../../runtime/kernel/storage/database-init.js";
 import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
 import { SessionStore } from "../../../../runtime/kernel/storage/session-store.js";
+import { SelfModPendingStore } from "../../../../runtime/kernel/storage/self-mod-pending-store.js";
 import type { RuntimeStore } from "../../../../runtime/kernel/storage/runtime-store.js";
 import { StoreModStore } from "../../../../runtime/kernel/storage/store-mod-store.js";
 import { StoreModService } from "../../../../runtime/kernel/self-mod/store-mod-service.js";
@@ -51,17 +52,22 @@ type Harness = {
   db: SqliteDatabase;
   service: StoreModService;
   sessionStore: SessionStore;
+  pendingStore: SelfModPendingStore;
   controller: SelfModHmrController;
   coordinator: SelfModCoordinator;
   pendingApplies: Map<string, PendingSelfModApply>;
   requests: RecordedRequest[];
+  hostTransitionGate: {
+    enabled: boolean;
+    release: () => void;
+  };
   statusPatches: Array<{
     conversationId: string;
+    eventId?: string;
     applyId?: string;
     commitHash?: string;
-    status: "pending" | "applied";
+    status: "pending" | "applied" | "reverted";
   }>;
-  stagedConversations: string[];
 };
 
 const harnesses = new Set<Harness>();
@@ -88,12 +94,28 @@ const createHarness = async (): Promise<Harness> => {
   initializeDesktopDatabase(db);
   const service = new StoreModService(repoRoot, new StoreModStore(db));
   const sessionStore = new SessionStore(db);
+  const pendingStore = new SelfModPendingStore(db, repoRoot);
 
   const requests: RecordedRequest[] = [];
+  const hostTransitionWaiters: Array<() => void> = [];
+  const hostTransitionGate = {
+    enabled: false,
+    release: () => {
+      for (const resolve of hostTransitionWaiters.splice(0)) resolve();
+    },
+  };
   const peer: WorkerPeerLike = {
     notify: () => {},
     request: async <TResult>(method: string, params?: unknown) => {
       requests.push({ method, params });
+      if (
+        method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION &&
+        hostTransitionGate.enabled
+      ) {
+        await new Promise<void>((resolve) => {
+          hostTransitionWaiters.push(resolve);
+        });
+      }
       return {} as TResult;
     },
     registerRequestHandler: () => {},
@@ -107,7 +129,6 @@ const createHarness = async (): Promise<Harness> => {
   });
   const pendingApplies = new Map<string, PendingSelfModApply>();
   const statusPatches: Harness["statusPatches"] = [];
-  const stagedConversations: string[] = [];
 
   const coordinator = createSelfModCoordinator({
     peer,
@@ -116,16 +137,15 @@ const createHarness = async (): Promise<Harness> => {
     getRuntimeStore: () => sessionStore as unknown as RuntimeStore,
     getRepoRoot: () => repoRoot,
     getPendingSelfModApplies: () => pendingApplies,
+    getPendingSelfModStore: () => pendingStore,
     patchSelfModApplyStatus: (args) => {
       statusPatches.push({
         conversationId: args.conversationId,
+        ...(args.eventId ? { eventId: args.eventId } : {}),
         ...(args.applyId ? { applyId: args.applyId } : {}),
         ...(args.commitHash ? { commitHash: args.commitHash } : {}),
         status: args.status,
       });
-    },
-    onPendingApplyStaged: (conversationId) => {
-      stagedConversations.push(conversationId);
     },
   });
 
@@ -135,12 +155,13 @@ const createHarness = async (): Promise<Harness> => {
     db,
     service,
     sessionStore,
+    pendingStore,
     controller,
     coordinator,
     pendingApplies,
     requests,
+    hostTransitionGate,
     statusPatches,
-    stagedConversations,
   };
   harnesses.add(harness);
   return harness;
@@ -208,9 +229,21 @@ const runAgentSelfMod = async (
     taskPrompt: "prompt",
     conversationId,
     threadKey: `thread-${runId}`,
+    ownerThreadId: "general-1",
     succeeded: true,
   });
 };
+
+const publishCompletion = async (
+  h: Harness,
+  conversationId: string,
+  completionEventId: string,
+) =>
+  await h.coordinator.lifecycle.publishCompletion({
+    conversationId,
+    ownerThreadId: "general-1",
+    completionEventId,
+  });
 
 describe("self-mod coordinator", () => {
   let h: Harness;
@@ -281,6 +314,7 @@ describe("self-mod coordinator", () => {
       taskPrompt: "prompt",
       conversationId: "conv-nc",
       threadKey: "thread-run-nocommit",
+      ownerThreadId: "general-1",
       succeeded: true,
     });
 
@@ -298,10 +332,7 @@ describe("self-mod coordinator", () => {
     expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(0);
   });
 
-  it("signals each staged change so a late-finalizing run still gets a card", async () => {
-    // A background agent finalizes after the user turn already ended, so the
-    // turn's `onEnd` has no card to attach. The staged signal is what lets the
-    // server attach it to the conversation's latest reply instead.
+  it("keeps child finalization unpublished until its owning General completes", async () => {
     await runAgentSelfMod(
       h,
       "run-late",
@@ -310,10 +341,221 @@ describe("self-mod coordinator", () => {
       "conv-late",
     );
 
-    expect(h.stagedConversations).toEqual(["conv-late"]);
-    expect(h.pendingApplies.get("run-late")?.commitHash).toBe(
-      await getGitHead(h.repoRoot),
+    const pending = h.pendingApplies.get("run-late")!;
+    expect(pending.commitHash).toBe(await getGitHead(h.repoRoot));
+    expect(pending.changeSetId).toBeUndefined();
+    expect(pending.assistantMessageEventId).toBeUndefined();
+
+    const published = await publishCompletion(h, "conv-late", "completion-1");
+    expect(published).toEqual({
+      changeSetId: "self-mod-change-set:completion-1",
+      contributionCount: 1,
+    });
+    expect(pending.changeSetId).toBe("self-mod-change-set:completion-1");
+    expect(pending.completionEventId).toBe("completion-1");
+  });
+
+  it("keeps contention-drained child and parent runs as separate owner contributions", async () => {
+    for (const runId of ["child-run", "parent-run"]) {
+      await h.controller.beginRun(runId);
+      await h.coordinator.lifecycle.beginRun({
+        runId,
+        taskDescription: `Task ${runId}`,
+        taskPrompt: "prompt",
+        conversationId: "conv-shared",
+        mode: "author",
+      });
+    }
+
+    const sharedPath = "desktop/src/shared.tsx";
+    await writeRepoFile(h, sharedPath, "export const owner = 'child';\n");
+    await h.controller.recordWrite("child-run", [
+      path.join(h.repoRoot, sharedPath),
+    ]);
+    await writeRepoFile(h, sharedPath, "export const owner = 'parent';\n");
+    await h.controller.recordWrite("parent-run", [
+      path.join(h.repoRoot, sharedPath),
+    ]);
+
+    await h.coordinator.lifecycle.finalizeRun({
+      runId: "child-run",
+      taskDescription: "Child task",
+      taskPrompt: "prompt",
+      conversationId: "conv-shared",
+      threadKey: "child-thread",
+      ownerThreadId: "general-1",
+      succeeded: true,
+    });
+    expect(h.pendingApplies.size).toBe(0);
+
+    await h.coordinator.lifecycle.finalizeRun({
+      runId: "parent-run",
+      taskDescription: "Parent task",
+      taskPrompt: "prompt",
+      conversationId: "conv-shared",
+      threadKey: "general-1",
+      ownerThreadId: "general-1",
+      succeeded: true,
+    });
+
+    expect([...h.pendingApplies.keys()]).toEqual(["child-run", "parent-run"]);
+    expect(
+      h.pendingApplies
+        .get("child-run")
+        ?.applyResult.appliedRuns.map((run) => run.runId),
+    ).toEqual(["child-run"]);
+    expect(
+      h.pendingApplies
+        .get("parent-run")
+        ?.applyResult.appliedRuns.map((run) => run.runId),
+    ).toEqual(["parent-run"]);
+    expect(
+      await publishCompletion(h, "conv-shared", "completion-shared"),
+    ).toEqual({
+      changeSetId: "self-mod-change-set:completion-shared",
+      contributionCount: 2,
+    });
+  });
+
+  it("stages a held author contribution when its blocker is canceled", async () => {
+    for (const runId of ["held-child", "blocking-parent"]) {
+      await h.controller.beginRun(runId);
+      await h.coordinator.lifecycle.beginRun({
+        runId,
+        taskDescription: `Task ${runId}`,
+        taskPrompt: "prompt",
+        conversationId: "conv-cancel",
+        mode: "author",
+      });
+    }
+
+    const sharedPath = "desktop/src/cancel-shared.tsx";
+    await writeRepoFile(h, sharedPath, "export const owner = 'child';\n");
+    await h.controller.recordWrite("held-child", [
+      path.join(h.repoRoot, sharedPath),
+    ]);
+    await h.controller.recordWrite("blocking-parent", [
+      path.join(h.repoRoot, sharedPath),
+    ]);
+    await h.coordinator.lifecycle.finalizeRun({
+      runId: "held-child",
+      taskDescription: "Held child",
+      taskPrompt: "prompt",
+      conversationId: "conv-cancel",
+      ownerThreadId: "general-1",
+      succeeded: true,
+    });
+    expect(h.pendingApplies.size).toBe(0);
+
+    await h.coordinator.lifecycle.cancelRun("blocking-parent");
+
+    expect([...h.pendingApplies.keys()]).toEqual(["held-child"]);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(0);
+    expect(
+      await publishCompletion(h, "conv-cancel", "completion-cancel"),
+    ).toEqual({
+      changeSetId: "self-mod-change-set:completion-cancel",
+      contributionCount: 1,
+    });
+  });
+
+  it("reuses a publish-before-send set when terminal delivery retries", async () => {
+    await runAgentSelfMod(
+      h,
+      "run-first",
+      "desktop/src/first.tsx",
+      "export const first = true;\n",
+      "conv-owner",
     );
+    expect(
+      await h.coordinator.lifecycle.publishCompletion({
+        conversationId: "conv-owner",
+        ownerThreadId: "another-general",
+        completionEventId: "wrong-owner-completion",
+      }),
+    ).toEqual({
+      changeSetId: "self-mod-change-set:wrong-owner-completion",
+      contributionCount: 0,
+    });
+
+    const first = await publishCompletion(h, "conv-owner", "completion-1");
+    expect(first.contributionCount).toBe(1);
+    await runAgentSelfMod(
+      h,
+      "run-later",
+      "desktop/src/later.tsx",
+      "export const later = true;\n",
+      "conv-owner",
+    );
+
+    // The set is published before the hidden orchestrator turn starts. If that
+    // delivery fails and the terminal event replays, it must return the same
+    // set and cannot pull a contribution finalized afterwards into that card.
+    expect(await publishCompletion(h, "conv-owner", "completion-1")).toEqual(
+      first,
+    );
+    expect(h.pendingApplies.get("run-later")?.changeSetId).toBeUndefined();
+    expect(await publishCompletion(h, "conv-owner", "completion-2")).toEqual({
+      changeSetId: "self-mod-change-set:completion-2",
+      contributionCount: 1,
+    });
+  });
+
+  it("applies an attached change set after the worker cache rehydrates", async () => {
+    await runAgentSelfMod(
+      h,
+      "restart-run",
+      "desktop/src/restart.tsx",
+      "export const restarted = true;\n",
+      "conv-restart",
+    );
+    const published = await publishCompletion(
+      h,
+      "conv-restart",
+      "completion-restart",
+    );
+    h.pendingStore.markAttached({
+      completionEventId: "completion-restart",
+      assistantMessageEventId: "assistant-restart",
+    });
+
+    // Mirror worker shutdown/startup: the cache is lost, interrupted claims
+    // are recovered, and SQLite repopulates it in finalize order.
+    h.pendingApplies.clear();
+    h.pendingStore.recoverInterruptedApplies();
+    for (const contribution of h.pendingStore.listPendingContributions()) {
+      h.pendingApplies.set(contribution.applyId, contribution);
+    }
+    expect(h.pendingApplies.get("restart-run")).toMatchObject({
+      changeSetId: published.changeSetId,
+      completionEventId: "completion-restart",
+      assistantMessageEventId: "assistant-restart",
+    });
+
+    h.hostTransitionGate.enabled = true;
+    const applyPromise = h.coordinator.applyPendingWithMorph({
+      applyId: published.changeSetId,
+    });
+    await vi.waitFor(() => {
+      expect(
+        methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
+      ).toHaveLength(1);
+    });
+    // The real host calls resume while the outer transition RPC is still
+    // pending. Durable completion must happen inside that callback, before it
+    // releases the runtime pause that can trigger a worker restart.
+    const transitionId = (
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)[0]!.params as {
+        transitionId: string;
+      }
+    ).transitionId;
+    expect(
+      await h.coordinator.resumeTransition({ transitionId }),
+    ).toMatchObject({ ok: true });
+    expect(h.pendingStore.listPendingContributions()).toEqual([]);
+    expect(h.pendingApplies.size).toBe(0);
+    h.hostTransitionGate.release();
+    await expect(applyPromise).resolves.toMatchObject({ applied: true });
   });
 
   it("applies a card that has no commit hash and patches it by applyId", async () => {
@@ -339,11 +581,15 @@ describe("self-mod coordinator", () => {
       taskPrompt: "prompt",
       conversationId: "conv-nc2",
       threadKey: "thread-run-nc2",
+      ownerThreadId: "general-1",
       succeeded: true,
     });
     expect(h.pendingApplies.get("run-nc2")?.commitHash).toBeUndefined();
 
-    const result = await h.coordinator.applyPendingWithMorph({});
+    const published = await publishCompletion(h, "conv-nc2", "completion-nc2");
+    const result = await h.coordinator.applyPendingWithMorph({
+      applyId: published.changeSetId,
+    });
 
     expect(result.applied).toBe(true);
     expect(result.commitHash).toBeUndefined();
@@ -352,7 +598,7 @@ describe("self-mod coordinator", () => {
     expect(h.statusPatches).toEqual([
       {
         conversationId: "conv-nc2",
-        applyId: "run-nc2",
+        applyId: "self-mod-change-set:completion-nc2",
         status: "applied",
       },
     ]);
@@ -402,7 +648,7 @@ describe("self-mod coordinator", () => {
     expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
   });
 
-  it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {
+  it("clicking Update applies only its published change set and leaves later work pending", async () => {
     await runAgentSelfMod(
       h,
       "run-1",
@@ -421,25 +667,42 @@ describe("self-mod coordinator", () => {
     const secondHead = (await getGitHead(h.repoRoot))!;
     expect(h.pendingApplies.size).toBe(2);
 
+    const firstPublication = await publishCompletion(
+      h,
+      "conv-1",
+      "completion-1",
+    );
+    expect(firstPublication.contributionCount).toBe(2);
+
+    await runAgentSelfMod(
+      h,
+      "run-3",
+      "desktop/src/three.tsx",
+      "export const three = 3;\n",
+      "conv-1",
+    );
+    const thirdHead = (await getGitHead(h.repoRoot))!;
+    const secondPublication = await publishCompletion(
+      h,
+      "conv-1",
+      "completion-2",
+    );
+    expect(secondPublication.contributionCount).toBe(1);
+
     const applyResult = await h.coordinator.applyPendingWithMorph({
-      commitHash: secondHead,
+      applyId: firstPublication.changeSetId,
     });
     expect(applyResult).toEqual({ commitHash: secondHead, applied: true });
-    // Both pending entries drained into ONE merged transition.
+    // Only the two contributions published by completion-1 drain into one
+    // transition. The later completion-2 contribution remains untouched.
     const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
     expect(transitions).toHaveLength(1);
-    expect(h.pendingApplies.size).toBe(0);
+    expect([...h.pendingApplies.keys()]).toEqual(["run-3"]);
+    expect(h.pendingApplies.get("run-3")?.commitHash).toBe(thirdHead);
     expect(h.statusPatches).toEqual([
       {
         conversationId: "conv-1",
-        applyId: "run-1",
-        commitHash: firstHead,
-        status: "applied",
-      },
-      {
-        conversationId: "conv-1",
-        applyId: "run-2",
-        commitHash: secondHead,
+        applyId: "self-mod-change-set:completion-1",
         status: "applied",
       },
     ]);
@@ -452,6 +715,7 @@ describe("self-mod coordinator", () => {
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);
     expect(new Set(resumedRunIds(h))).toEqual(new Set(["run-1", "run-2"]));
+    expect(resumedRunIds(h)).not.toContain("run-3");
   });
 
   it("a stale resumeTransition releases the host-echoed reload pauses", async () => {
@@ -473,7 +737,14 @@ describe("self-mod coordinator", () => {
     );
     const head = (await getGitHead(h.repoRoot))!;
     // Adopt the pending change first (the user clicked Update earlier).
-    await h.coordinator.applyPendingWithMorph({ commitHash: head });
+    const publication = await publishCompletion(
+      h,
+      "conv-undo",
+      "completion-undo",
+    );
+    await h.coordinator.applyPendingWithMorph({
+      applyId: publication.changeSetId,
+    });
     const adoptTransition = (
       methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)[0]!.params as {
         transitionId: string;
@@ -511,6 +782,170 @@ describe("self-mod coordinator", () => {
     await h.coordinator.resumeTransition({ transitionId: revertTransition });
     // Every paused run was eventually resumed.
     expect(new Set(resumedRunIds(h))).toEqual(new Set(pausedRunIds(h)));
+  });
+
+  it("undoes a published contribution set atomically and preserves per-thread notices", async () => {
+    await runAgentSelfMod(
+      h,
+      "run-group-a",
+      "desktop/src/group-a.tsx",
+      "export const groupA = 1;\n",
+      "conv-group",
+    );
+    const firstCommit = (await getGitHead(h.repoRoot))!;
+    await runAgentSelfMod(
+      h,
+      "run-group-b",
+      "desktop/src/group-b.tsx",
+      "export const groupB = 1;\n",
+      "conv-group",
+    );
+    const secondCommit = (await getGitHead(h.repoRoot))!;
+
+    const publication = await publishCompletion(
+      h,
+      "conv-group",
+      "completion-group",
+    );
+    h.pendingStore.markAttached({
+      completionEventId: "completion-group",
+      assistantMessageEventId: "assistant-group",
+    });
+    await h.coordinator.applyPendingWithMorph({
+      applyId: publication.changeSetId,
+    });
+    const adoptTransition = (
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)[0]!.params as {
+        transitionId: string;
+      }
+    ).transitionId;
+    await h.coordinator.resumeTransition({ transitionId: adoptTransition });
+
+    const result = await h.coordinator.revertWithMorph({
+      applyId: publication.changeSetId,
+      // Deliberately shuffled. Only the kernel owns chronology and reversal.
+      commitHashes: [secondCommit, firstCommit],
+    });
+
+    expect(result.commitHashes).toEqual([firstCommit, secondCommit]);
+    expect(result.revertedCommitHashes).toEqual([secondCommit, firstCommit]);
+    await expect(
+      readFile(path.join(h.repoRoot, "desktop/src/group-a.tsx"), "utf8"),
+    ).rejects.toThrow();
+    await expect(
+      readFile(path.join(h.repoRoot, "desktop/src/group-b.tsx"), "utf8"),
+    ).rejects.toThrow();
+    expect(await listGitDirtyFiles(h.repoRoot)).toEqual([]);
+
+    expect(
+      new Set(
+        h.sessionStore
+          .listPendingOrchestratorReverts("conv-group")
+          .map((entry) => entry.commitHash),
+      ),
+    ).toEqual(new Set([firstCommit, secondCommit]));
+    expect(
+      h.sessionStore.listPendingOriginThreadReverts("thread-run-group-a"),
+    ).toHaveLength(1);
+    expect(
+      h.sessionStore.listPendingOriginThreadReverts("thread-run-group-b"),
+    ).toHaveLength(1);
+    expect(h.statusPatches.at(-1)).toMatchObject({
+      conversationId: "conv-group",
+      eventId: "assistant-group",
+      applyId: publication.changeSetId,
+      status: "reverted",
+    });
+
+    const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
+    expect(transitions).toHaveLength(2);
+    const revertTransition = (
+      transitions[1]!.params as { transitionId: string }
+    ).transitionId;
+    await h.coordinator.resumeTransition({ transitionId: revertTransition });
+    expect(new Set(resumedRunIds(h))).toEqual(new Set(pausedRunIds(h)));
+  });
+
+  it("rejects a partial grouped request before touching Git", async () => {
+    await runAgentSelfMod(
+      h,
+      "run-bound-a",
+      "desktop/src/bound-a.tsx",
+      "export const boundA = 1;\n",
+      "conv-bound",
+    );
+    const firstCommit = (await getGitHead(h.repoRoot))!;
+    await runAgentSelfMod(
+      h,
+      "run-bound-b",
+      "desktop/src/bound-b.tsx",
+      "export const boundB = 1;\n",
+      "conv-bound",
+    );
+    const headBefore = (await getGitHead(h.repoRoot))!;
+    const publication = await publishCompletion(
+      h,
+      "conv-bound",
+      "completion-bound",
+    );
+
+    await expect(
+      h.coordinator.revertWithMorph({
+        applyId: publication.changeSetId,
+        commitHashes: [firstCommit],
+      }),
+    ).rejects.toThrow(/durable commit set/);
+
+    expect(await getGitHead(h.repoRoot)).toBe(headBefore);
+    expect(await readFile(path.join(h.repoRoot, "desktop/src/bound-a.tsx"), "utf8"))
+      .toBe("export const boundA = 1;\n");
+    expect(await readFile(path.join(h.repoRoot, "desktop/src/bound-b.tsx"), "utf8"))
+      .toBe("export const boundB = 1;\n");
+  });
+
+  it("cancels synthetic HMR ownership when grouped Undo fails", async () => {
+    await runAgentSelfMod(
+      h,
+      "run-failed-undo",
+      "desktop/src/failed-undo.tsx",
+      "export const failedUndo = 1;\n",
+      "conv-failed-undo",
+    );
+    const commitHash = (await getGitHead(h.repoRoot))!;
+    const publication = await publishCompletion(
+      h,
+      "conv-failed-undo",
+      "completion-failed-undo",
+    );
+    await h.coordinator.applyPendingWithMorph({
+      applyId: publication.changeSetId,
+    });
+    const adoptTransition = (
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)[0]!.params as {
+        transitionId: string;
+      }
+    ).transitionId;
+    await h.coordinator.resumeTransition({ transitionId: adoptTransition });
+    await writeRepoFile(
+      h,
+      "desktop/src/user-wip.tsx",
+      "export const userWip = 1;\n",
+    );
+
+    await expect(
+      h.coordinator.revertWithMorph({
+        applyId: publication.changeSetId,
+        commitHashes: [commitHash],
+      }),
+    ).rejects.toThrow(/working tree is not clean/);
+
+    const syntheticRunId = pausedRunIds(h).at(-1)!;
+    expect(syntheticRunId).toMatch(/^self-mod-revert:/);
+    expect(h.controller.hasRun(syntheticRunId)).toBe(false);
+    expect(resumedRunIds(h)).toContain(syntheticRunId);
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/user-wip.tsx"), "utf8"),
+    ).toBe("export const userWip = 1;\n");
   });
 
   it("external lifecycle failure cancels the run without committing", async () => {

@@ -51,7 +51,7 @@
     var api = window.electronAPI;
     var revert =
       api && api.agent && typeof api.agent.selfModRevert === "function"
-        ? api.agent.selfModRevert(undefined, 1)
+        ? api.agent.selfModRevert({ steps: 1 })
         : Promise.reject(new Error("selfModRevert unavailable"));
     Promise.resolve(revert)
       .catch(function () {

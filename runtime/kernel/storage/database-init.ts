@@ -734,6 +734,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       -- written) so existing databases stay schema-compatible without a
       -- destructive table rebuild.
       manager_turn_state_json TEXT,
+      descendant_boundary_state_json TEXT,
       self_mod_metadata_json TEXT,
       model_config_json TEXT,
       status TEXT NOT NULL,
@@ -765,6 +766,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   }
   try {
     db.exec(
+      "ALTER TABLE runtime_agents ADD COLUMN descendant_boundary_state_json TEXT;",
+    );
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(
       "ALTER TABLE runtime_agents ADD COLUMN attempt_generation INTEGER NOT NULL DEFAULT 0;",
     );
   } catch {
@@ -780,6 +788,62 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_agents_updated
     ON runtime_agents(updated_at);
+  `);
+
+  // Passive Claude Code child projections. These deliberately do not share
+  // runtime_agents: Claude owns their execution/lifecycle, while Stella only
+  // persists enough observation state to render nested Activity and a
+  // read-only transcript without creating manager wake/cancel semantics.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS claude_native_children (
+      thread_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      owner_thread_id TEXT NOT NULL,
+      parent_thread_id TEXT NOT NULL,
+      claude_session_id TEXT NOT NULL,
+      native_tool_use_id TEXT NOT NULL,
+      native_task_id TEXT,
+      description TEXT NOT NULL,
+      prompt TEXT,
+      subagent_type TEXT,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      result TEXT,
+      error TEXT,
+      updated_at INTEGER NOT NULL,
+      root_run_id TEXT,
+      UNIQUE(owner_thread_id, claude_session_id, native_tool_use_id)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_claude_native_children_conversation
+    ON claude_native_children(conversation_id, started_at, thread_id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_claude_native_children_owner_tool
+    ON claude_native_children(owner_thread_id, native_tool_use_id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_claude_native_children_owner_task
+    ON claude_native_children(owner_thread_id, native_task_id);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS claude_native_child_messages (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id TEXT NOT NULL UNIQUE,
+      child_thread_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      event_kind TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(child_thread_id) REFERENCES claude_native_children(thread_id)
+        ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_claude_native_child_messages_page
+    ON claude_native_child_messages(child_thread_id, sequence DESC);
   `);
 
   // Must run AFTER runtime_threads and runtime_agents exist — the sync
@@ -842,6 +906,68 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       items_json TEXT NOT NULL,
       generated_at INTEGER NOT NULL
     );
+  `);
+
+  // Durable author-mode HMR ledger. Contributions are written as soon as a
+  // run's tracked writes finalize, then assigned to exactly one completion
+  // change set when the owning General's terminal result is delivered. The
+  // serialized ApplyResult is intentionally retained until the HMR transition
+  // succeeds so a worker restart can rehydrate a still-clickable Apply card.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_mod_pending_change_sets (
+      change_set_id TEXT PRIMARY KEY,
+      repo_root TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      owner_thread_id TEXT NOT NULL,
+      completion_event_id TEXT NOT NULL,
+      assistant_message_event_id TEXT,
+      commit_hashes_json TEXT,
+      status TEXT NOT NULL CHECK (
+        status IN ('published', 'attached', 'applying', 'applied')
+      ),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(repo_root, completion_event_id)
+    );
+  `);
+  try {
+    db.exec(
+      "ALTER TABLE self_mod_pending_change_sets ADD COLUMN commit_hashes_json TEXT;",
+    );
+  } catch {
+    // Column already exists.
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_mod_pending_contributions (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      apply_id TEXT NOT NULL,
+      repo_root TEXT NOT NULL,
+      commit_hash TEXT,
+      apply_result_json TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      files_json TEXT NOT NULL,
+      owner_thread_id TEXT,
+      change_set_id TEXT REFERENCES self_mod_pending_change_sets(change_set_id),
+      completion_event_id TEXT,
+      assistant_message_event_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(repo_root, apply_id)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_pending_unpublished_owner
+    ON self_mod_pending_contributions(
+      repo_root,
+      conversation_id,
+      owner_thread_id,
+      change_set_id,
+      sequence
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_pending_change_set
+    ON self_mod_pending_contributions(change_set_id, sequence);
   `);
 
   // Durable feature roster: one row per self-mod feature, keyed by the
