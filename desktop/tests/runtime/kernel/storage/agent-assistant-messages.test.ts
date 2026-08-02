@@ -517,6 +517,7 @@ describe("agent-authored assistant updates", () => {
             threadId,
             entryId: expect.any(String),
             atMs: 6_000,
+            source: "stella",
           },
         },
         {
@@ -525,6 +526,7 @@ describe("agent-authored assistant updates", () => {
             threadId,
             entryId: expect.any(String),
             atMs: 6_001,
+            source: "stella",
           },
         },
       ]);

@@ -645,6 +645,11 @@ describe("orchestrator direct tool surface", () => {
         description: "Add a notes page.",
         prompt: "Build the requested notes experience.",
         agentType: "general",
+        modelConfigSnapshot: {
+          engine: "default",
+          reasoningEffort: "high",
+          routeModel: "stella/openai/gpt-5.6-sol",
+        },
       },
     ]);
 
