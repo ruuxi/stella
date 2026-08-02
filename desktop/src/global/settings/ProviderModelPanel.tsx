@@ -226,7 +226,7 @@ export function ProviderModelPanel({
   const [localModelId, setLocalModelId] = useState("");
 
   const sections = useMemo(() => {
-    const trimmed = query.trim();
+    const trimmed = hideSearch ? "" : query.trim();
     const result: Array<{ tab: ProviderTab; models: CatalogModel[] }> = [];
     for (const tab of tabs) {
       const searched = trimmed
@@ -241,7 +241,7 @@ export function ProviderModelPanel({
       result.push({ tab, models: sorted });
     }
     return result;
-  }, [tabs, favoriteScope, favorites, query]);
+  }, [tabs, favoriteScope, favorites, hideSearch, query]);
 
   const toggleFavorite = useCallback(
     (modelId: string) => {

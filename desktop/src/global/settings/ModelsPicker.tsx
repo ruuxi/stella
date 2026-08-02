@@ -4,6 +4,7 @@ import {
   lazy,
   Suspense,
   useCallback,
+  useEffect,
   useState,
   type CSSProperties,
   type FocusEvent,
@@ -66,6 +67,11 @@ export function ModelsPicker({
   const [internalOpen, setInternalOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  useEffect(() => {
+    if (!open) return;
+    setHasOpened(true);
+    preloadModelsPicker();
+  }, [open]);
   const setOpen = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {

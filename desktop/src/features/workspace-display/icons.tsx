@@ -374,54 +374,6 @@ const TrashIcon = ({ size = 18, style }: IconProps) => (
   <Trash2 size={size} strokeWidth={1.5} style={style} />
 );
 
-/**
- * Engine tab icon — a chip silhouette (rounded square body, inner
- * core, four pins per side). Reads as "the compute doing the work"
- * at thumbnail size, without leaning on cog / starburst clichés.
- */
-const EngineIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    <path
-      d="M9 4v2M12 4v2M15 4v2M9 18v2M12 18v2M15 18v2M4 9h2M4 12h2M4 15h2M18 9h2M18 12h2M18 15h2"
-      stroke="currentColor"
-      strokeOpacity="0.65"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-    />
-    <rect
-      x="6"
-      y="6"
-      width="12"
-      height="12"
-      rx="2.4"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-    <rect
-      x="9.5"
-      y="9.5"
-      width="5"
-      height="5"
-      rx="1"
-      stroke="currentColor"
-      strokeOpacity="0.7"
-      strokeWidth="1.2"
-      fill="currentColor"
-      fillOpacity="0.18"
-    />
-  </svg>
-);
-
 const UrlIcon = ({ size = 18, style }: IconProps) => (
   <Globe size={size} strokeWidth={1.5} style={style} />
 );
@@ -474,7 +426,5 @@ export const DisplayTabIcon = ({
       return <StoreIcon size={size} style={style} />;
     case "trash":
       return <TrashIcon size={size} style={style} />;
-    case "engine":
-      return <EngineIcon size={size} style={style} />;
   }
 };

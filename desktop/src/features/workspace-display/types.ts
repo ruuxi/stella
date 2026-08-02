@@ -33,7 +33,6 @@ export type DisplayTabKind =
   | "download"
   | "text"
   | "trash"
-  | "engine"
   | "store";
 
 /**

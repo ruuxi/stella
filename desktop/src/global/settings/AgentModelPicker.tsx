@@ -82,6 +82,7 @@ type LocalModelPreferences = {
   codexServiceTier: CodexServiceTier;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
+  subscriptionHarnessEnabled: boolean;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -112,6 +113,7 @@ const ASSISTANT_TARGET = "__assistant__";
 const IMAGE_TARGET = "__image__";
 const VOICE_TARGET = "__voice__";
 const ENGINE_PENDING_TARGET = "__engine__";
+const SUBSCRIPTION_HARNESS_PENDING_TARGET = "__subscription_harness__";
 
 /**
  * Which source a dual-source brand routes through. `app` is the subscription
@@ -1323,6 +1325,43 @@ export function AgentModelPicker({
     ],
   );
 
+  const handleSubscriptionHarnessChange = useCallback(
+    async (enabled: boolean) => {
+      if (!preferences || pendingAgent) return;
+      const previous = preferences.subscriptionHarnessEnabled === true;
+      setPendingAgent(SUBSCRIPTION_HARNESS_PENDING_TARGET);
+      setError(null);
+      setPreferences({
+        ...preferences,
+        subscriptionHarnessEnabled: enabled,
+      });
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            subscriptionHarnessEnabled: enabled,
+          });
+        if (saved) setPreferences(saved);
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
+      } catch (caught) {
+        setPreferences((current) =>
+          current
+            ? { ...current, subscriptionHarnessEnabled: previous }
+            : current,
+        );
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Failed to update subscription harness setting.",
+        );
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [pendingAgent, preferences, setPreferences],
+  );
+
   const ready =
     preferences !== null &&
     (activeProviderSetting || modelDefaults !== undefined);
@@ -1773,6 +1812,7 @@ export function AgentModelPicker({
                 visibleProviders={[activeBrand]}
                 hideSelectedTitle
                 hideProviderLabel
+                hideSearch={activeBrand === "stella"}
               />
             )}
           </>
@@ -1801,61 +1841,76 @@ export function AgentModelPicker({
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
-          <span
-            className="agent-model-picker-engine-note"
-            title={footerModelLabel}
-          >
-            <BrandIcon brand={derivedBrand} size={13} />
-            <span className="agent-model-picker-engine-note-text">
-              {footerModelLabel}
+          <div className="agent-model-picker-footer-main">
+            <span
+              className="agent-model-picker-engine-note"
+              title={footerModelLabel}
+            >
+              <BrandIcon brand={derivedBrand} size={13} />
+              <span className="agent-model-picker-engine-note-text">
+                {footerModelLabel}
+              </span>
             </span>
-          </span>
-          <div className="agent-model-picker-controls">
-            {committedEngine === "codex_cli" && selectedChatGptSupportsFast ? (
-              <Switch
-                className="agent-model-picker-fast-toggle"
-                label="Fast"
-                checked={currentCodexServiceTier === "fast"}
-                onCheckedChange={(checked) => {
-                  void handleCodexServiceTierSelect(
-                    checked ? "fast" : "standard",
-                  );
-                }}
-                title="Fast uses more ChatGPT credits."
-                aria-label="Fast ChatGPT responses"
-                disabled={
-                  pendingAgent !== null ||
-                  chatGptConnection !== "connected" ||
-                  codexCatalog.loading
-                }
-              />
-            ) : null}
-            <div className="agent-model-picker-reasoning">
-              <span>Reasoning</span>
-              <Select
-                value={currentReasoningEffort}
-                onValueChange={(value) => {
-                  if (isReasoningEffort(value)) {
-                    void handleReasoningEffortSelect(value);
+            <div className="agent-model-picker-controls">
+              {committedEngine === "codex_cli" &&
+              selectedChatGptSupportsFast ? (
+                <Switch
+                  className="agent-model-picker-fast-toggle"
+                  label="Fast"
+                  checked={currentCodexServiceTier === "fast"}
+                  onCheckedChange={(checked) => {
+                    void handleCodexServiceTierSelect(
+                      checked ? "fast" : "standard",
+                    );
+                  }}
+                  title="Fast uses more ChatGPT credits."
+                  aria-label="Fast ChatGPT responses"
+                  disabled={
+                    pendingAgent !== null ||
+                    chatGptConnection !== "connected" ||
+                    codexCatalog.loading
                   }
-                }}
-                disabled={
-                  pendingAgent !== null ||
-                  (committedEngine === "codex_cli" &&
-                    (chatGptConnection !== "connected" || codexCatalog.loading))
-                }
-                aria-label="Reasoning effort"
-                options={REASONING_EFFORT_OPTIONS.filter(
-                  (option) =>
-                    committedEngine !== "claude_code_local" ||
-                    option.id !== "minimal",
-                ).map((option) => ({
-                  value: option.id,
-                  label: option.label,
-                }))}
-              />
+                />
+              ) : null}
+              <div className="agent-model-picker-reasoning">
+                <span>Reasoning</span>
+                <Select
+                  value={currentReasoningEffort}
+                  onValueChange={(value) => {
+                    if (isReasoningEffort(value)) {
+                      void handleReasoningEffortSelect(value);
+                    }
+                  }}
+                  disabled={
+                    pendingAgent !== null ||
+                    (committedEngine === "codex_cli" &&
+                      (chatGptConnection !== "connected" ||
+                        codexCatalog.loading))
+                  }
+                  aria-label="Reasoning effort"
+                  options={REASONING_EFFORT_OPTIONS.filter(
+                    (option) =>
+                      committedEngine !== "claude_code_local" ||
+                      option.id !== "minimal",
+                  ).map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                  }))}
+                />
+              </div>
             </div>
           </div>
+          <label className="agent-model-picker-harness-option">
+            <input
+              type="checkbox"
+              checked={preferences?.subscriptionHarnessEnabled === true}
+              disabled={!preferences || pendingAgent !== null}
+              onChange={(event) =>
+                void handleSubscriptionHarnessChange(event.target.checked)
+              }
+            />
+            <span>Use subscriptions through Stella harness</span>
+          </label>
         </div>
       )}
     </div>

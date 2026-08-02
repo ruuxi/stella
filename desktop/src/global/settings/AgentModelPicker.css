@@ -61,12 +61,42 @@
 
 .agent-model-picker-footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
   margin-top: 4px;
   padding: 6px 4px 2px;
   border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+.agent-model-picker-footer-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-model-picker-harness-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-base);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  cursor: default;
+}
+
+.agent-model-picker-harness-option input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--interactive, var(--primary));
+}
+
+.agent-model-picker-harness-option:has(input:disabled) {
+  opacity: 0.55;
 }
 
 /* Brand icon rail — one icon per provider brand; scrolls horizontally when
@@ -384,7 +414,7 @@
 }
 
 @media (max-width: 520px) {
-  .agent-model-picker-footer {
+  .agent-model-picker-footer-main {
     align-items: stretch;
     flex-direction: column;
   }

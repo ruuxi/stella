@@ -433,6 +433,174 @@ class ThreadFtsBackfillError extends Error {
   }
 }
 
+const SELF_MOD_PENDING_CHANGE_SETS_TABLE = "self_mod_pending_change_sets";
+const SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE =
+  "self_mod_pending_change_sets_legacy_v1";
+
+const CURRENT_SELF_MOD_PENDING_CHANGE_SETS_SQL = `
+  CREATE TABLE IF NOT EXISTS self_mod_pending_change_sets (
+    change_set_id TEXT PRIMARY KEY,
+    repo_root TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    owner_thread_id TEXT NOT NULL,
+    completion_event_id TEXT NOT NULL,
+    assistant_message_event_id TEXT,
+    commit_hashes_json TEXT,
+    status TEXT NOT NULL CHECK (
+      status IN ('published', 'attached', 'applying', 'applied')
+    ),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(repo_root, completion_event_id)
+  );
+`;
+
+type SqliteTableInfoRow = { name: string };
+
+const sqliteTableColumns = (
+  db: SqliteDatabase,
+  tableName: string,
+): Set<string> =>
+  new Set(
+    (
+      db
+        .prepare(`PRAGMA table_info(${tableName});`)
+        .all() as SqliteTableInfoRow[]
+    ).map((row) => row.name),
+  );
+
+/**
+ * A reverted self-mod implementation used this table name for an incompatible
+ * payload_json ledger. SQLite keeps removed-feature tables forever, so
+ * CREATE TABLE IF NOT EXISTS cannot upgrade those installations to the
+ * current grouped-Apply schema. Preserve the obsolete payloads in a stable
+ * archive and replace the source table atomically before worker startup reads
+ * the new columns.
+ */
+const migrateLegacySelfModPendingChangeSets = (db: SqliteDatabase): void => {
+  const sourceColumns = sqliteTableColumns(
+    db,
+    SELF_MOD_PENDING_CHANGE_SETS_TABLE,
+  );
+  if (sourceColumns.size === 0 || !sourceColumns.has("payload_json")) return;
+
+  const requiredLegacyColumns = [
+    "change_set_id",
+    "repo_root",
+    "payload_json",
+    "created_at",
+    "updated_at",
+  ];
+  const supportedLegacyColumns = new Set([
+    ...requiredLegacyColumns,
+    "commit_hashes_json",
+  ]);
+  if (
+    requiredLegacyColumns.some((column) => !sourceColumns.has(column)) ||
+    [...sourceColumns].some((column) => !supportedLegacyColumns.has(column))
+  ) {
+    throw new Error(
+      "Cannot losslessly archive an unknown self_mod_pending_change_sets schema.",
+    );
+  }
+
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    // Hold the write lock while checking this fence. Otherwise another worker
+    // could stage a current contribution after the check but before the old
+    // parent table is replaced.
+    const contributionColumns = sqliteTableColumns(
+      db,
+      "self_mod_pending_contributions",
+    );
+    if (contributionColumns.size > 0) {
+      const contribution = db
+        .prepare("SELECT 1 FROM self_mod_pending_contributions LIMIT 1;")
+        .get();
+      if (contribution) {
+        throw new Error(
+          "Cannot migrate the legacy self-mod change-set table while current pending contributions exist.",
+        );
+      }
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ${SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE} (
+        change_set_id TEXT PRIMARY KEY,
+        repo_root TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        commit_hashes_json TEXT
+      );
+    `);
+    const archiveColumns = sqliteTableColumns(
+      db,
+      SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE,
+    );
+    if (
+      requiredLegacyColumns.some((column) => !archiveColumns.has(column)) ||
+      [...archiveColumns].some((column) => !supportedLegacyColumns.has(column))
+    ) {
+      throw new Error(
+        "Cannot merge the legacy self-mod change-set archive because its schema is incompatible.",
+      );
+    }
+    if (!archiveColumns.has("commit_hashes_json")) {
+      db.exec(`
+        ALTER TABLE ${SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE}
+        ADD COLUMN commit_hashes_json TEXT;
+      `);
+    }
+
+    const sourceCommitHashes = sourceColumns.has("commit_hashes_json")
+      ? "commit_hashes_json"
+      : "NULL";
+    db.exec(`
+      INSERT INTO ${SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE} (
+        change_set_id,
+        repo_root,
+        payload_json,
+        created_at,
+        updated_at,
+        commit_hashes_json
+      )
+      SELECT
+        change_set_id,
+        repo_root,
+        payload_json,
+        created_at,
+        updated_at,
+        ${sourceCommitHashes}
+      FROM ${SELF_MOD_PENDING_CHANGE_SETS_TABLE}
+      WHERE true
+      ON CONFLICT(change_set_id) DO UPDATE SET
+        repo_root = excluded.repo_root,
+        payload_json = excluded.payload_json,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        commit_hashes_json = excluded.commit_hashes_json
+      WHERE excluded.updated_at >
+        ${SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE}.updated_at;
+    `);
+
+    db.exec(`DROP TABLE ${SELF_MOD_PENDING_CHANGE_SETS_TABLE};`);
+    db.exec(CURRENT_SELF_MOD_PENDING_CHANGE_SETS_SQL);
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_self_mod_pending_change_sets_legacy_v1_repo_created
+      ON ${SELF_MOD_PENDING_CHANGE_SETS_LEGACY_TABLE}(repo_root, created_at);
+    `);
+    db.exec("COMMIT;");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK;");
+    } catch {
+      // Preserve the migration failure.
+    }
+    throw error;
+  }
+};
+
 export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
@@ -913,23 +1081,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   // change set when the owning General's terminal result is delivered. The
   // serialized ApplyResult is intentionally retained until the HMR transition
   // succeeds so a worker restart can rehydrate a still-clickable Apply card.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS self_mod_pending_change_sets (
-      change_set_id TEXT PRIMARY KEY,
-      repo_root TEXT NOT NULL,
-      conversation_id TEXT NOT NULL,
-      owner_thread_id TEXT NOT NULL,
-      completion_event_id TEXT NOT NULL,
-      assistant_message_event_id TEXT,
-      commit_hashes_json TEXT,
-      status TEXT NOT NULL CHECK (
-        status IN ('published', 'attached', 'applying', 'applied')
-      ),
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      UNIQUE(repo_root, completion_event_id)
-    );
-  `);
+  migrateLegacySelfModPendingChangeSets(db);
+  db.exec(CURRENT_SELF_MOD_PENDING_CHANGE_SETS_SQL);
   try {
     db.exec(
       "ALTER TABLE self_mod_pending_change_sets ADD COLUMN commit_hashes_json TEXT;",

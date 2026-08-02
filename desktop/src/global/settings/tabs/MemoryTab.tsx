@@ -14,7 +14,10 @@ import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs"
 import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
 
-type TFunction = (key: string, params?: Record<string, string | number>) => string;
+type TFunction = (
+  key: string,
+  params?: Record<string, string | number>,
+) => string;
 
 type ChronicleStatus = {
   enabled: boolean;
@@ -106,8 +109,7 @@ function formatDreamRunResult(
 function ChronicleSettingsCard() {
   const t = useT();
   const chronicleApi = window.electronAPI?.chronicle;
-  const { hasConnectedAccount, isLoading: authLoading } =
-    useAuthSessionState();
+  const { hasConnectedAccount, isLoading: authLoading } = useAuthSessionState();
   const [billingNowMs] = useState(() => Date.now());
   const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
     now: billingNowMs,
@@ -138,10 +140,7 @@ function ChronicleSettingsCard() {
     const onChange = () => {
       void load();
     };
-    window.addEventListener(
-      "stella:local-model-preferences-changed",
-      onChange,
-    );
+    window.addEventListener("stella:local-model-preferences-changed", onChange);
     return () => {
       cancelled = true;
       window.removeEventListener(
@@ -165,13 +164,9 @@ function ChronicleSettingsCard() {
     if (!chronicleProvider || chronicleProvider === "stella") return false;
     return Boolean(
       findApiKey(credentials.apiKeys, chronicleProvider) ??
-        findOauthCredential(credentials.oauthCredentials, chronicleProvider),
+      findOauthCredential(credentials.oauthCredentials, chronicleProvider),
     );
-  }, [
-    chronicleProvider,
-    credentials.apiKeys,
-    credentials.oauthCredentials,
-  ]);
+  }, [chronicleProvider, credentials.apiKeys, credentials.oauthCredentials]);
   const hasStellaPaidPlan =
     hasConnectedAccount &&
     billingStatus !== undefined &&
@@ -181,8 +176,7 @@ function ChronicleSettingsCard() {
     hasConnectedAccount &&
     billingStatus === undefined &&
     !hasChronicleByokCredential;
-  const credentialsLoading =
-    !chronicleOverrideLoaded || credentials.loading;
+  const credentialsLoading = !chronicleOverrideLoaded || credentials.loading;
   const accessLoading = authLoading || billingLoading || credentialsLoading;
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
@@ -205,10 +199,7 @@ function ChronicleSettingsCard() {
       setError(null);
     } catch (caught) {
       setError(
-        getSettingsErrorMessage(
-          caught,
-          t("settings.memory.errors.loadStatus"),
-        ),
+        getSettingsErrorMessage(caught, t("settings.memory.errors.loadStatus")),
       );
     } finally {
       setLoading(false);
@@ -236,7 +227,7 @@ function ChronicleSettingsCard() {
       // Two failure modes; pick the most actionable copy. If they're
       // anonymous it's "sign in or BYOK"; if they're on Stella free
       // it's "upgrade or BYOK". Either way the BYOK link opens the
-      // workspace panel's Engine tab on the Models section.
+      // sidebar Models popover.
       const message = !hasConnectedAccount
         ? t("settings.memory.access.signInMessage")
         : t("settings.memory.access.upgradeMessage");
@@ -401,9 +392,7 @@ function ChronicleSettingsCard() {
           <div className="settings-row-label">
             {t("settings.memory.screen.label")}
           </div>
-          <div className="settings-row-sublabel">
-            {screenMemoryDescription}
-          </div>
+          <div className="settings-row-sublabel">{screenMemoryDescription}</div>
         </div>
         <div className="settings-row-control">
           <Button
