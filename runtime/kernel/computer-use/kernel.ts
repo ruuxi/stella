@@ -196,10 +196,16 @@ type ActiveEvaluation = {
     mutated: boolean;
     visualMutated: boolean;
     screenshotObserved: boolean;
+    screenshotAttachments: BrowserScreenshotAttachment[];
     terminalLifecycle: boolean;
     lastAction?: string;
   };
 };
+
+type BrowserScreenshotAttachment = Readonly<{
+  path: string;
+  mimeType: "image/jpeg" | "image/png";
+}>;
 
 const BROWSER_METHODS = new Set(["command", "chain"]);
 const READ_ONLY_BROWSER_ACTIONS = new Set([
@@ -539,6 +545,7 @@ class NodeReplKernel {
           mutated: false,
           visualMutated: false,
           screenshotObserved: false,
+          screenshotAttachments: [],
           terminalLifecycle: false,
         },
       };
@@ -720,6 +727,7 @@ class NodeReplKernel {
         if (!outcome?.ok) throw error;
         value = await this.executeBrowserMessage(active, message);
       }
+      value = await this.prepareBrowserScreenshotResult(active, message, value);
       if (serializedSize(value) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES) {
         throw new Error("browser result exceeds the protocol limit.");
       }
@@ -737,6 +745,134 @@ class NodeReplKernel {
         this.postBrowserError(message.callId, error);
       }
     }
+  }
+
+  private async prepareBrowserScreenshotResult(
+    active: ActiveEvaluation,
+    message: Extract<WorkerToNodeReplParentMessage, { type: "browser-call" }>,
+    value: unknown,
+  ): Promise<unknown> {
+    const receipt = this.recordValue(value);
+    const result = this.recordValue(receipt?.result);
+    const data = this.recordValue(result?.data);
+    if (!data) return value;
+
+    if (message.method === "command" && message.args[0] === "screenshot") {
+      const params = this.recordValue(message.args[1]);
+      await this.materializeBrowserScreenshot(active, data, {
+        base64Key: "base64",
+        pathKey: "path",
+        format: data.format ?? params?.format,
+      });
+      return value;
+    }
+
+    if (message.method !== "chain") return value;
+    const steps = Array.isArray(message.args[0]) ? message.args[0] : [];
+    const results = Array.isArray(data.results) ? data.results : [];
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = this.recordValue(steps[index]);
+      if (step?.action !== "screenshot") continue;
+      const stepResult = this.recordValue(results[index]);
+      const stepData = this.recordValue(stepResult?.data);
+      if (!stepData) continue;
+      const stepParams = this.recordValue(step.params);
+      await this.materializeBrowserScreenshot(active, stepData, {
+        base64Key: "base64",
+        pathKey: "path",
+        format: stepData.format ?? stepParams?.format,
+      });
+    }
+
+    const options = this.recordValue(message.args[1]);
+    if (options?.returnScreenshot === true) {
+      await this.materializeBrowserScreenshot(active, data, {
+        base64Key: "screenshot",
+        pathKey: "screenshotPath",
+        format: data.screenshotFormat,
+      });
+    }
+    return value;
+  }
+
+  private recordValue(value: unknown): Record<string, unknown> | undefined {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private async materializeBrowserScreenshot(
+    active: ActiveEvaluation,
+    data: Record<string, unknown>,
+    options: {
+      base64Key: string;
+      pathKey: string;
+      format: unknown;
+    },
+  ): Promise<void> {
+    const encoded = data[options.base64Key];
+    const existingPath = data[options.pathKey];
+    const format = this.browserScreenshotFormat(
+      options.format,
+      typeof existingPath === "string" ? existingPath : undefined,
+    );
+    let screenshotPath =
+      typeof existingPath === "string" && path.isAbsolute(existingPath)
+        ? existingPath
+        : undefined;
+
+    if (typeof encoded === "string") {
+      delete data[options.base64Key];
+      if (encoded) {
+        screenshotPath = await this.writeBrowserScreenshot(encoded, format);
+        data[options.pathKey] = screenshotPath;
+      }
+    }
+
+    if (!screenshotPath) return;
+    const attachment = {
+      path: screenshotPath,
+      mimeType: format === "png" ? "image/png" : "image/jpeg",
+    } as const;
+    if (
+      !active.browserActivity.screenshotAttachments.some(
+        (candidate) => candidate.path === attachment.path,
+      )
+    ) {
+      active.browserActivity.screenshotAttachments.push(attachment);
+    }
+  }
+
+  private browserScreenshotFormat(
+    value: unknown,
+    screenshotPath?: string,
+  ): "jpeg" | "png" {
+    if (value === "png") return "png";
+    if (value === "jpeg" || value === "jpg") return "jpeg";
+    return screenshotPath?.toLowerCase().endsWith(".png") ? "png" : "jpeg";
+  }
+
+  private async writeBrowserScreenshot(
+    encoded: string,
+    format: "jpeg" | "png",
+  ): Promise<string> {
+    const directory = path.join(os.tmpdir(), "stella-browser-repl");
+    await mkdir(directory, { recursive: true });
+    const screenshotPath = path.join(
+      directory,
+      `${randomUUID()}.${format === "png" ? "png" : "jpeg"}`,
+    );
+    await writeFile(screenshotPath, Buffer.from(encoded, "base64"));
+    this.browserScreenshotPaths.add(screenshotPath);
+    while (
+      this.browserScreenshotPaths.size > MAX_BROWSER_SCREENSHOT_FILES_PER_KERNEL
+    ) {
+      const oldest = this.browserScreenshotPaths.values().next().value;
+      if (typeof oldest !== "string") break;
+      this.browserScreenshotPaths.delete(oldest);
+      await rm(oldest, { force: true }).catch(() => undefined);
+    }
+    return screenshotPath;
   }
 
   private async executeBrowserMessage(
@@ -851,7 +987,9 @@ class NodeReplKernel {
         active.onToolResult?.(result);
       }
       if (result.error) throw new Error(result.error);
-      if (serializedSize(result.result) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES) {
+      if (
+        serializedSize(result.result) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES
+      ) {
         throw new Error("Tool result exceeds the Node REPL protocol limit.");
       }
       if (!this.closed && this.active === active) {
@@ -934,6 +1072,9 @@ class NodeReplKernel {
     if (this.active !== active) return;
     let finalOutput = output;
     const activity = active.browserActivity;
+    for (const attachment of activity.screenshotAttachments) {
+      finalOutput += `${finalOutput ? "\n" : ""}[stella-attach-image] inline=${attachment.mimeType} path=${JSON.stringify(attachment.path)}`;
+    }
     if (activity.callCount > 0) {
       if (!activity.mutated || activity.terminalLifecycle) {
         const receipt = `[browser-receipt] calls=${activity.callCount} mutated=${activity.mutated}${

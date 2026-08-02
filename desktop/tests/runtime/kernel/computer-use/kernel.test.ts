@@ -345,7 +345,11 @@ describe("persistent Node REPL kernels", () => {
       sessionFactory: defaultSessionFactory,
       idleTimeoutMs: 60_000,
       browserSessionFactory: () =>
-        ({ command, chain: vi.fn(), dispose }) as unknown as BrowserSessionClient,
+        ({
+          command,
+          chain: vi.fn(),
+          dispose,
+        }) as unknown as BrowserSessionClient,
     });
 
     try {
@@ -501,6 +505,145 @@ describe("persistent Node REPL kernels", () => {
           code: "ENOENT",
         });
         await rm(screenshotPath, { force: true });
+      }
+    }
+  });
+
+  it("attaches explicit browser screenshots without exposing base64 to node_repl", async () => {
+    const png = Buffer.from("explicit-browser-image-bytes");
+    const encoded = png.toString("base64");
+    const command = vi.fn(async (action: string) => ({
+      sessionId: "agent-explicit-screenshot",
+      bridgeSessionId: "stella-app-bridge",
+      requestId: `request-${command.mock.calls.length}`,
+      action,
+      params: {},
+      result: {
+        id: "response",
+        success: true as const,
+        data: { base64: encoded, format: "png" },
+      },
+      attempts: 1,
+      durationMs: 1,
+    }));
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      idleTimeoutMs: 60_000,
+      browserSessionFactory: () =>
+        ({
+          command,
+          chain: vi.fn(),
+          dispose: vi.fn(async () => undefined),
+        }) as unknown as BrowserSessionClient,
+    });
+    let screenshotPath: string | undefined;
+
+    try {
+      const output = await registry.evaluate(
+        "await browser.tabs.get(44).screenshot({ format: 'png' })",
+        context("agent-explicit-screenshot"),
+      );
+      expect(output).not.toContain(encoded);
+      expect(output).not.toContain("base64");
+      expect(output).toContain(
+        "[browser-receipt] calls=1 mutated=false last=screenshot",
+      );
+      expect(output).toContain("[stella-attach-image] inline=image/png");
+      const pathMatch = output.match(
+        /\[stella-attach-image\][^\n]+path=("[^"\n]+")/,
+      );
+      expect(pathMatch?.[1]).toBeTruthy();
+      screenshotPath = JSON.parse(pathMatch![1]!);
+      await expect(readFile(screenshotPath!)).resolves.toEqual(png);
+      expect(command).toHaveBeenCalledTimes(1);
+    } finally {
+      await registry.dispose();
+      if (screenshotPath) {
+        await expect(readFile(screenshotPath)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    }
+  });
+
+  it("attaches requested chain screenshots without returning their base64", async () => {
+    const jpeg = Buffer.from("chain-browser-image-bytes");
+    const encoded = jpeg.toString("base64");
+    const command = vi.fn(async (action: string) => ({
+      sessionId: "agent-chain-screenshot",
+      bridgeSessionId: "stella-app-bridge",
+      requestId: `request-${command.mock.calls.length}`,
+      action,
+      params: {},
+      result: {
+        id: "response",
+        success: true as const,
+        data: {
+          tabs: [{ tabId: 44, active: true }],
+          activeTabId: 44,
+        },
+      },
+      attempts: 1,
+      durationMs: 1,
+    }));
+    const chain = vi.fn(async () => ({
+      sessionId: "agent-chain-screenshot",
+      bridgeSessionId: "stella-app-bridge",
+      requestId: "request-chain",
+      action: "chain",
+      params: {},
+      result: {
+        id: "response",
+        success: true as const,
+        data: {
+          results: [{ step: 0, action: "click", success: true, data: {} }],
+          completed: 1,
+          total: 1,
+          totalDurationMs: 1,
+          screenshot: encoded,
+          screenshotFormat: "jpeg",
+        },
+      },
+      attempts: 1,
+      durationMs: 1,
+    }));
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      idleTimeoutMs: 60_000,
+      browserSessionFactory: () =>
+        ({
+          command,
+          chain,
+          dispose: vi.fn(async () => undefined),
+        }) as unknown as BrowserSessionClient,
+    });
+    let screenshotPath: string | undefined;
+
+    try {
+      const output = await registry.evaluate(
+        "await browser.chain([{ action: 'click', params: { tabId: 44, selector: '#save' } }], { returnScreenshot: true, delay: { min: 0, max: 0 } })",
+        context("agent-chain-screenshot"),
+      );
+      expect(output).not.toContain(encoded);
+      expect(output).not.toContain(`screenshot: '${encoded}'`);
+      expect(output).toContain("screenshotPath:");
+      expect(output).toContain("[stella-attach-image] inline=image/jpeg");
+      const pathMatch = output.match(
+        /\[stella-attach-image\][^\n]+path=("[^"\n]+")/,
+      );
+      expect(pathMatch?.[1]).toBeTruthy();
+      screenshotPath = JSON.parse(pathMatch![1]!);
+      await expect(readFile(screenshotPath!)).resolves.toEqual(jpeg);
+      expect(chain).toHaveBeenCalledTimes(1);
+      expect(command.mock.calls.map(([action]) => action)).toEqual([
+        "tab_list",
+      ]);
+    } finally {
+      await registry.dispose();
+      if (screenshotPath) {
+        await expect(readFile(screenshotPath)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
       }
     }
   });
