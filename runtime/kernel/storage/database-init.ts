@@ -1085,6 +1085,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec(CURRENT_SELF_MOD_PENDING_CHANGE_SETS_SQL);
   try {
     db.exec(
+      "ALTER TABLE self_mod_pending_change_sets ADD COLUMN assistant_message_event_id TEXT;",
+    );
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(
       "ALTER TABLE self_mod_pending_change_sets ADD COLUMN commit_hashes_json TEXT;",
     );
   } catch {
@@ -1108,6 +1115,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       UNIQUE(repo_root, apply_id)
     );
   `);
+  try {
+    db.exec(
+      "ALTER TABLE self_mod_pending_contributions ADD COLUMN assistant_message_event_id TEXT;",
+    );
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_self_mod_pending_unpublished_owner
     ON self_mod_pending_contributions(

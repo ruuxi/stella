@@ -255,6 +255,59 @@ describe("SelfModPendingStore", () => {
     ).toHaveLength(1);
   });
 
+  it("adds assistant event columns to existing current ledger tables", () => {
+    db.close();
+    db = new DatabaseSync(":memory:") as unknown as SqliteDatabase;
+    db.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE self_mod_pending_change_sets (
+        change_set_id TEXT PRIMARY KEY,
+        repo_root TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        owner_thread_id TEXT NOT NULL,
+        completion_event_id TEXT NOT NULL,
+        commit_hashes_json TEXT,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(repo_root, completion_event_id)
+      );
+      CREATE TABLE self_mod_pending_contributions (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        apply_id TEXT NOT NULL,
+        repo_root TEXT NOT NULL,
+        commit_hash TEXT,
+        apply_result_json TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        files_json TEXT NOT NULL,
+        owner_thread_id TEXT,
+        change_set_id TEXT REFERENCES self_mod_pending_change_sets(change_set_id),
+        completion_event_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(repo_root, apply_id)
+      );
+    `);
+
+    initializeDesktopDatabase(db);
+    store = new SelfModPendingStore(db, "/repo/stella");
+
+    expect(
+      db
+        .prepare("PRAGMA table_info(self_mod_pending_change_sets);")
+        .all()
+        .map((row) => (row as { name: string }).name),
+    ).toContain("assistant_message_event_id");
+    expect(
+      db
+        .prepare("PRAGMA table_info(self_mod_pending_contributions);")
+        .all()
+        .map((row) => (row as { name: string }).name),
+    ).toContain("assistant_message_event_id");
+    expect(() => store.recoverInterruptedApplies()).not.toThrow();
+    expect(store.listPendingContributions()).toEqual([]);
+  });
+
   it("rolls back without dropping legacy rows when an existing archive is incompatible", () => {
     db.close();
     db = new DatabaseSync(":memory:") as unknown as SqliteDatabase;
