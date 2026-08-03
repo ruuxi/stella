@@ -27,7 +27,8 @@ export type AgentModelConfigSnapshot = {
   /**
    * True when this durable General/subagent tree uses Stella's managed
    * subscription harness instead of the engine's native execution boundary.
-   * Absent is the backward-compatible native/default mode.
+   * False is an explicitly sampled native opt-out; absent retains the
+   * backward-compatible native meaning of legacy persisted snapshots.
    */
   subscriptionHarnessEnabled?: boolean;
   /** Exact in-process route used for model metadata and native execution. */

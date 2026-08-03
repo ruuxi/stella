@@ -2120,9 +2120,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           payload.claudeCodeReasoningEffort,
         );
       }
-      if (payload?.subscriptionHarnessEnabled !== undefined) {
-        patch.subscriptionHarnessEnabled =
-          payload.subscriptionHarnessEnabled === true;
+      if (payload?.useNativeAgentRuntimes !== undefined) {
+        patch.useNativeAgentRuntimes =
+          payload.useNativeAgentRuntimes === true;
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

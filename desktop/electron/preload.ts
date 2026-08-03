@@ -1201,7 +1201,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
-        subscriptionHarnessEnabled: boolean;
+        useNativeAgentRuntimes: boolean;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1241,7 +1241,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "medium"
         | "high"
         | "xhigh";
-      subscriptionHarnessEnabled?: boolean;
+      useNativeAgentRuntimes?: boolean;
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1281,7 +1281,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
-        subscriptionHarnessEnabled: boolean;
+        useNativeAgentRuntimes: boolean;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";

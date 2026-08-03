@@ -7,6 +7,7 @@ import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 import type { AgentModelConfigSnapshot } from "../../../../runtime/contracts/agent-engine.js";
 import {
   getLocalModelPreferences,
+  getSubscriptionHarnessEnabled,
   loadLocalPreferences,
   updateLocalModelPreferences,
 } from "../../../../runtime/kernel/preferences/local-preferences.js";
@@ -88,40 +89,47 @@ const contextFor = (stellaDataDir: string): RunnerContext =>
   }) as unknown as RunnerContext;
 
 describe("subscription harness preference and durable snapshots", () => {
-  it("loads legacy preferences as disabled and round-trips an explicit opt-in", () => {
+  it("defaults to the harness, ignores the retired key, and round-trips native opt-out", () => {
     const stellaDataDir = makeDataDir();
-    fs.writeFileSync(
-      path.join(stellaDataDir, "preferences.json"),
-      JSON.stringify({ agentRuntimeEngine: "codex_cli" }),
-    );
-
-    expect(loadLocalPreferences(stellaDataDir).subscriptionHarnessEnabled).toBe(
-      false,
-    );
-    expect(
-      getLocalModelPreferences(stellaDataDir).subscriptionHarnessEnabled,
-    ).toBe(false);
-
     fs.writeFileSync(
       path.join(stellaDataDir, "preferences.json"),
       JSON.stringify({
         agentRuntimeEngine: "codex_cli",
-        subscriptionHarnessEnabled: "true",
+        subscriptionHarnessEnabled: false,
       }),
     );
-    expect(loadLocalPreferences(stellaDataDir).subscriptionHarnessEnabled).toBe(
+
+    expect(loadLocalPreferences(stellaDataDir).useNativeAgentRuntimes).toBe(
       false,
     );
+    expect(getLocalModelPreferences(stellaDataDir)).toMatchObject({
+      useNativeAgentRuntimes: false,
+    });
+    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(true);
+
+    const legacyTrueDir = makeDataDir();
+    fs.writeFileSync(
+      path.join(legacyTrueDir, "preferences.json"),
+      JSON.stringify({
+        agentRuntimeEngine: "codex_cli",
+        subscriptionHarnessEnabled: true,
+      }),
+    );
+    expect(loadLocalPreferences(legacyTrueDir).useNativeAgentRuntimes).toBe(
+      false,
+    );
+    expect(getSubscriptionHarnessEnabled(legacyTrueDir)).toBe(true);
 
     const saved = updateLocalModelPreferences(stellaDataDir, {
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: true,
     });
-    expect(saved.subscriptionHarnessEnabled).toBe(true);
-    expect(
-      JSON.parse(
-        fs.readFileSync(path.join(stellaDataDir, "preferences.json"), "utf8"),
-      ),
-    ).toMatchObject({ subscriptionHarnessEnabled: true });
+    expect(saved.useNativeAgentRuntimes).toBe(true);
+    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(false);
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(stellaDataDir, "preferences.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(persisted).toMatchObject({ useNativeAgentRuntimes: true });
+    expect(persisted).not.toHaveProperty("subscriptionHarnessEnabled");
   });
 
   it("captures Codex harness identity without losing the engine model, effort, or tier", () => {
@@ -131,7 +139,7 @@ describe("subscription harness preference and durable snapshots", () => {
       codexModelExplicit: true,
       codexReasoningEffort: "high",
       codexServiceTier: "fast",
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: false,
     });
 
     expect(
@@ -157,7 +165,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       codexModel: "gpt-5.6-sol",
       codexModelExplicit: false,
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: false,
     });
 
     expect(
@@ -181,7 +189,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "default",
       codexReasoningEffort: "high",
-      subscriptionHarnessEnabled: false,
+      useNativeAgentRuntimes: true,
     });
     const sampledCodexConfig = sampleAgentEngineConfig({
       stellaDataDir,
@@ -214,7 +222,7 @@ describe("subscription harness preference and durable snapshots", () => {
 
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "claude_code_local",
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: false,
     });
     const sampledOff = await buildAgentContext(contextFor(stellaDataDir), {
       conversationId: "conversation-sampled-off",
@@ -231,7 +239,7 @@ describe("subscription harness preference and durable snapshots", () => {
     });
     expect(
       sampledOff.modelConfigSnapshot?.subscriptionHarnessEnabled,
-    ).toBeUndefined();
+    ).toBe(false);
   });
 
   it("preserves an absent pre-route engine effort after the live preference becomes explicit", async () => {
@@ -239,7 +247,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "codex_cli",
       codexReasoningEffort: "default",
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: false,
     });
     const sampledCodexConfig = sampleAgentEngineConfig({
       stellaDataDir,
@@ -271,7 +279,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       codexModel: "gpt-5.6-sol",
       codexModelExplicit: true,
-      subscriptionHarnessEnabled: true,
+      useNativeAgentRuntimes: false,
     });
     const common = {
       stellaDataDir,

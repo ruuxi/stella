@@ -839,7 +839,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
-    subscriptionHarnessEnabled: boolean;
+    useNativeAgentRuntimes: boolean;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -879,7 +879,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
-    subscriptionHarnessEnabled?: boolean;
+    useNativeAgentRuntimes?: boolean;
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -918,7 +918,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
-    subscriptionHarnessEnabled: boolean;
+    useNativeAgentRuntimes: boolean;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";

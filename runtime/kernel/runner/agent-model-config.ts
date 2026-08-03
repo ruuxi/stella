@@ -87,9 +87,9 @@ export const captureEffectiveModelConfig = (args: {
         : normalizeCapturedReasoningEffort(codex.reasoningEffort));
     return {
       engine: args.engine,
-      ...(args.subscriptionHarnessEnabled
-        ? { subscriptionHarnessEnabled: true }
-        : {}),
+      // Always freeze the mode for newly sampled external-engine runs. Older
+      // persisted snapshots legitimately omit this field and remain native.
+      subscriptionHarnessEnabled: args.subscriptionHarnessEnabled === true,
       routeModel,
       engineModel: codexModel,
       ...(effort ? { reasoningEffort: effort } : {}),
@@ -116,9 +116,7 @@ export const captureEffectiveModelConfig = (args: {
           ));
     return {
       engine: args.engine,
-      ...(args.subscriptionHarnessEnabled
-        ? { subscriptionHarnessEnabled: true }
-        : {}),
+      subscriptionHarnessEnabled: args.subscriptionHarnessEnabled === true,
       routeModel,
       engineModel: model,
       ...(effort ? { reasoningEffort: effort } : {}),

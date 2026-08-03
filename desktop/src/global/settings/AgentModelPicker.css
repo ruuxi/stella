@@ -76,9 +76,9 @@
   gap: 12px;
 }
 
-.agent-model-picker-harness-option {
+.agent-model-picker-native-runtime-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
   color: var(--text-base);
   font-size: var(--font-size-xs);
@@ -87,16 +87,29 @@
   cursor: default;
 }
 
-.agent-model-picker-harness-option input {
+.agent-model-picker-native-runtime-option input {
   flex: none;
   width: 14px;
   height: 14px;
-  margin: 0;
+  margin: 1px 0 0;
   accent-color: var(--interactive, var(--primary));
 }
 
-.agent-model-picker-harness-option:has(input:disabled) {
+.agent-model-picker-native-runtime-option:has(input:disabled) {
   opacity: 0.55;
+}
+
+.agent-model-picker-native-runtime-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-model-picker-native-runtime-helper {
+  color: var(--text-weak);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-regular);
 }
 
 /* Brand icon rail — one icon per provider brand; scrolls horizontally when

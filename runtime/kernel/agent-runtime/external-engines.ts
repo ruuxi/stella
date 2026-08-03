@@ -1100,9 +1100,9 @@ const runClaudeHostedTurn = async (args: {
     stellaAppDir: args.opts.stellaAppDir,
   });
   // Claude Code is role-split at this boundary. The root orchestrator keeps
-  // Stella's takeover integration. General subagents default to vanilla
-  // Claude Code, unless their durable snapshot opted into Stella's managed
-  // subscription harness; that mode restores the prior takeover/tool bridge.
+  // Stella's takeover integration. A General subagent's durable snapshot
+  // selects Stella's managed subscription harness by default for new runs;
+  // false or a legacy-absent field keeps vanilla Claude Code.
   const spawnEngine = args.opts.agentContext.spawnEngine;
   const usesSubscriptionHarness =
     args.session.kind === "subagent" &&

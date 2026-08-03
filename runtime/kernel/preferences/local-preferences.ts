@@ -86,11 +86,13 @@ export type LocalPreferences = {
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
   /**
-   * Run subscription-backed General agents through Stella's managed harness.
-   * Off preserves each engine's native integration (Codex app-server and
-   * vanilla Claude Code). The value is sampled into a durable run snapshot.
+   * Opt eligible General/subagent runs out of Stella's managed subscription
+   * harness and back into each engine's native integration (Codex app-server
+   * and vanilla Claude Code). False is the safe default for both new and
+   * legacy preference files. The derived execution mode is sampled into a
+   * durable run snapshot before enqueue.
    */
-  subscriptionHarnessEnabled: boolean;
+  useNativeAgentRuntimes: boolean;
   /** Codex model id used when the Codex engine is selected. */
   codexModel: string;
   /**
@@ -174,7 +176,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "stellaConversationModelOverrides"
   | "stellaConversationReasoningEfforts"
   | "agentRuntimeEngine"
-  | "subscriptionHarnessEnabled"
+  | "useNativeAgentRuntimes"
   | "codexModel"
   | "codexModelExplicit"
   | "codexReasoningEffort"
@@ -200,7 +202,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   stellaConversationModelOverrides: {},
   stellaConversationReasoningEfforts: {},
   agentRuntimeEngine: "default",
-  subscriptionHarnessEnabled: false,
+  useNativeAgentRuntimes: false,
   codexModel: DEFAULT_CODEX_MODEL,
   codexModelExplicit: false,
   codexReasoningEffort: "default",
@@ -266,7 +268,11 @@ export const loadLocalPreferences = (
         parsed.stellaConversationReasoningEfforts,
       ),
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
-      subscriptionHarnessEnabled: parsed.subscriptionHarnessEnabled === true,
+      // Intentionally ignore the retired `subscriptionHarnessEnabled` key.
+      // Older builds materialized it as false by default, which was not an
+      // affirmative request for native execution and must not invert the new
+      // harness-by-default behavior.
+      useNativeAgentRuntimes: parsed.useNativeAgentRuntimes === true,
       codexModel: normalizeCodexModel(parsed.codexModel),
       codexModelExplicit: parsed.codexModelExplicit === true,
       codexReasoningEffort: normalizeReasoningEffort(
@@ -365,7 +371,7 @@ export const getAgentRuntimeEngine = (stellaDataDir: string): AgentEngine => {
 };
 
 export const getSubscriptionHarnessEnabled = (stellaDataDir: string): boolean =>
-  loadLocalPreferences(stellaDataDir).subscriptionHarnessEnabled;
+  !loadLocalPreferences(stellaDataDir).useNativeAgentRuntimes;
 
 export const getMaxAgentConcurrency = (stellaDataDir: string): number => {
   return loadLocalPreferences(stellaDataDir).maxAgentConcurrency;
@@ -403,7 +409,7 @@ export const getLocalModelPreferences = (
       ...prefs.stellaConversationReasoningEfforts,
     },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
-    subscriptionHarnessEnabled: prefs.subscriptionHarnessEnabled,
+    useNativeAgentRuntimes: prefs.useNativeAgentRuntimes,
     codexModel: prefs.codexModel,
     codexModelExplicit: prefs.codexModelExplicit,
     codexReasoningEffort: prefs.codexReasoningEffort,
@@ -451,10 +457,10 @@ export const updateLocalModelPreferences = (
       patch.agentRuntimeEngine === undefined
         ? prefs.agentRuntimeEngine
         : normalizeEngine(patch.agentRuntimeEngine),
-    subscriptionHarnessEnabled:
-      patch.subscriptionHarnessEnabled === undefined
-        ? prefs.subscriptionHarnessEnabled
-        : patch.subscriptionHarnessEnabled === true,
+    useNativeAgentRuntimes:
+      patch.useNativeAgentRuntimes === undefined
+        ? prefs.useNativeAgentRuntimes
+        : patch.useNativeAgentRuntimes === true,
     codexModel:
       patch.codexModel === undefined
         ? prefs.codexModel

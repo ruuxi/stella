@@ -137,20 +137,25 @@ const legacyPreferences = {
   codexServiceTier: "standard" as const,
   claudeCodeModel: "default",
   claudeCodeReasoningEffort: "default" as const,
+  useNativeAgentRuntimes: false,
   maxAgentConcurrency: 24,
   imageGeneration: { provider: "stella" as const },
   realtimeVoice: { provider: "stella" as const },
 };
 
-const settle = async () => {
-  for (let index = 0; index < 24; index += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    });
-  }
+const waitForMountedPicker = async (): Promise<HTMLElement> => {
+  let picker: HTMLElement | null = null;
+  await vi.waitFor(
+    () => {
+      picker = document.body.querySelector('[data-models-picker="true"]');
+      expect(picker?.querySelector(".agent-model-picker")).not.toBeNull();
+    },
+    { timeout: 5_000 },
+  );
+  return picker as HTMLElement;
 };
 
-describe("ModelsPicker subscription harness control", () => {
+describe("ModelsPicker native agent runtime control", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -205,17 +210,16 @@ describe("ModelsPicker subscription harness control", () => {
         <ModelsPicker trigger={trigger} open onOpenChange={() => {}} />,
       );
     });
-    await settle();
 
-    const picker = document.body.querySelector('[data-models-picker="true"]');
-    expect(picker?.getAttribute("data-state")).toBe("open");
-    expect(picker?.querySelector(".agent-model-picker")).not.toBeNull();
-    expect(picker?.textContent).toContain(
-      "Use subscriptions through Stella harness",
+    const picker = await waitForMountedPicker();
+    expect(picker.getAttribute("data-state")).toBe("open");
+    expect(picker.textContent).toContain("Use native Codex and Claude Code");
+    expect(picker.textContent).toContain(
+      "Checked runs them directly using their native configuration, skills, and MCPs. Unchecked uses Stella's harness.",
     );
   });
 
-  it("opens the user-facing picker with no Stella search and a persisted harness checkbox", async () => {
+  it("persists checked and unchecked native runtime behavior while keeping provider search scoped", async () => {
     const { ModelsPicker } = await import("@/global/settings/ModelsPicker");
     await act(async () => {
       root.render(
@@ -228,38 +232,43 @@ describe("ModelsPicker subscription harness control", () => {
     ) as HTMLButtonElement | null;
     expect(trigger).not.toBeNull();
     await act(async () => trigger?.click());
-    await settle();
 
-    const picker = document.body.querySelector('[data-models-picker="true"]');
-    expect(picker).not.toBeNull();
-    expect(picker?.querySelector('[aria-label="Search models"]')).toBeNull();
+    const picker = await waitForMountedPicker();
+    expect(picker.querySelector('[aria-label="Search models"]')).toBeNull();
 
-    const checkbox = picker?.querySelector(
+    const checkbox = picker.querySelector(
       '.agent-model-picker-footer input[type="checkbox"]',
     ) as HTMLInputElement | null;
     expect(checkbox).not.toBeNull();
     expect(checkbox?.checked).toBe(false);
     expect(checkbox?.disabled).toBe(false);
+    expect(picker?.textContent).toContain("Use native Codex and Claude Code");
     expect(picker?.textContent).toContain(
-      "Use subscriptions through Stella harness",
+      "Checked runs them directly using their native configuration, skills, and MCPs. Unchecked uses Stella's harness.",
     );
 
     await act(async () => checkbox?.click());
-    await settle();
-
-    expect(setLocalModelPreferences).toHaveBeenCalledWith({
-      subscriptionHarnessEnabled: true,
+    await vi.waitFor(() => {
+      expect(setLocalModelPreferences).toHaveBeenCalledWith({
+        useNativeAgentRuntimes: true,
+      });
+      expect(checkbox?.checked).toBe(true);
     });
-    expect(checkbox?.checked).toBe(true);
 
-    const googleTab = picker?.querySelector(
+    await act(async () => checkbox?.click());
+    await vi.waitFor(() => {
+      expect(setLocalModelPreferences).toHaveBeenLastCalledWith({
+        useNativeAgentRuntimes: false,
+      });
+      expect(checkbox?.checked).toBe(false);
+    });
+
+    const googleTab = picker.querySelector(
       'button[role="tab"][aria-label="Google"]',
     ) as HTMLButtonElement | null;
     expect(googleTab).not.toBeNull();
     await act(async () => googleTab?.click());
 
-    expect(
-      picker?.querySelector('[aria-label="Search models"]'),
-    ).not.toBeNull();
+    expect(picker.querySelector('[aria-label="Search models"]')).not.toBeNull();
   });
 });
