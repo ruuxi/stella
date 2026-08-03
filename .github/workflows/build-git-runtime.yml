@@ -87,7 +87,11 @@ jobs:
             NO_TCLTK=YesPlease
           )
           if [ "${{ runner.os }}" = "macOS" ]; then
-            make_args+=(APPLE_COMMON_CRYPTO=YesPlease NO_OPENSSL=YesPlease)
+            make_args+=(
+              APPLE_COMMON_CRYPTO=YesPlease
+              NO_OPENSSL=YesPlease
+              CURL_CONFIG=/usr/bin/curl-config
+            )
           fi
 
           make -C "$source_dir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)" "${make_args[@]}" all
