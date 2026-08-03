@@ -164,6 +164,7 @@ describe("spawn_agent model inheritance snapshots", () => {
         engineModel: "gpt-5.6-codex",
         reasoningEffort: "high",
         serviceTier: "fast",
+        subscriptionHarnessEnabled: false,
       });
     } finally {
       fs.rmSync(stellaDataDir, { recursive: true, force: true });
