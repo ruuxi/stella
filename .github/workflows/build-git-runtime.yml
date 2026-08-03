@@ -63,10 +63,10 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 --output git-source.tar.xz "$GIT_SOURCE_URL"
-          if command -v sha256sum >/dev/null 2>&1; then
-            echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | sha256sum --check
-          else
+          if [ "${{ runner.os }}" = "macOS" ]; then
             echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | shasum -a 256 --check
+          else
+            echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | sha256sum --check
           fi
           tar -xJf git-source.tar.xz
 
