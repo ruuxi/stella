@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  existsSync,
+  readdirSync,
+} from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +22,7 @@ import {
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
 import {
+  activateStagedStellaBrowserBinary,
   resolveLegacyStellaBrowserBinaryPath,
   resolveStellaBrowserBinaryPath,
   resolveStellaBrowserRoot,
@@ -240,16 +247,28 @@ export class StellaBrowserBridgeService {
 
   private spawnDaemon() {
     const stellaBrowserRoot = resolveStellaBrowserRoot();
-    const binPath = path.join(stellaBrowserRoot, "bin", "stella-browser.js");
+    activateStagedStellaBrowserBinary(stellaBrowserRoot);
+    const binPath = resolveStellaBrowserBinaryPath(stellaBrowserRoot);
+    if (!binPath) {
+      throw new Error(
+        "The native Stella Browser service is unavailable. Reinstall Stella or restore the browser service artifact.",
+      );
+    }
+    if (process.platform !== "win32") {
+      try {
+        accessSync(binPath, constants.X_OK);
+      } catch {
+        chmodSync(binPath, 0o755);
+      }
+    }
 
     const daemon = spawn(
-      process.execPath,
-      [binPath, "service", "run", "--session", STELLA_BROWSER_BRIDGE_SESSION],
+      binPath,
+      ["service", "run", "--session", STELLA_BROWSER_BRIDGE_SESSION],
       {
         cwd: stellaBrowserRoot,
         env: {
           ...process.env,
-          ELECTRON_RUN_AS_NODE: "1",
           STELLA_BROWSER_EXT_PORT: STELLA_BROWSER_BRIDGE_PORT,
           STELLA_BROWSER_EXT_TOKEN: STELLA_BROWSER_BRIDGE_TOKEN,
         },
