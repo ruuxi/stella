@@ -115,6 +115,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       addToast(typeof options === "string" ? { description: options } : options);
 
     setToastFn(imperativeToast);
+    setDismissToastFn(removeToast);
     if (typeof window !== "undefined") {
       (window as unknown as { showToast?: typeof showToast }).showToast = showToast;
     }
@@ -123,8 +124,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       if (toastFn === imperativeToast) {
         setToastFn(null);
       }
+      if (dismissToastFn === removeToast) {
+        setDismissToastFn(null);
+      }
     };
-  }, [addToast]);
+  }, [addToast, removeToast]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -200,9 +204,14 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
 }
 
 let toastFn: ((options: ToastOptions | string) => string) | null = null;
+let dismissToastFn: ((id: string) => void) | null = null;
 
 function setToastFn(fn: ((options: ToastOptions | string) => string) | null) {
   toastFn = fn;
+}
+
+function setDismissToastFn(fn: ((id: string) => void) | null) {
+  dismissToastFn = fn;
 }
 
 export function showToast(options: ToastOptions | string): string {
@@ -212,6 +221,11 @@ export function showToast(options: ToastOptions | string): string {
   }
   const opts = typeof options === "string" ? { description: options } : options;
   return toastFn(opts);
+}
+
+export function dismissToast(id: string): void {
+  if (!id) return;
+  dismissToastFn?.(id);
 }
 
 // Window hook so we can fire toasts from the DevTools console while

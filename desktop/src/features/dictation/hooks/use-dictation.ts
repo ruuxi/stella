@@ -21,9 +21,12 @@ import {
   ensureDictationSuperFastWarm,
   InworldDictationSession,
   isDictationSuperFastEnabled,
+  isLocalDictationEnabled,
+  isLocalDictationPlatform,
   warmLocalDictationModel,
   type DictationSessionState,
 } from "@/features/dictation/services/inworld-dictation";
+import { DOWNLOAD_LOCAL_DICTATION_ACTION } from "@/features/dictation/services/local-dictation-download";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 import { getClaimedDictationComposer } from "@/features/dictation/active-composer";
 import { showToast } from "@/ui/toast";
@@ -243,14 +246,28 @@ export const useDictation = ({
                   normalized,
                 );
               if (needsSignIn) {
-                showToast({
-                  title: "Sign in to use dictation",
-                  description:
-                    "Dictation needs you signed in to Stella when on-device transcription isn't available. Sign in to keep going.",
-                  variant: "error",
-                  duration: 8000,
-                  action: SIGN_IN_TOAST_ACTION,
-                });
+                const canDownloadLocalDictation =
+                  isLocalDictationPlatform() && isLocalDictationEnabled();
+                showToast(
+                  canDownloadLocalDictation
+                    ? {
+                        title: "Local dictation isn't ready",
+                        description:
+                          "Download the voice feature to dictate on this device, or sign in to use cloud transcription.",
+                        variant: "error",
+                        duration: 10_000,
+                        action: DOWNLOAD_LOCAL_DICTATION_ACTION,
+                        secondaryAction: SIGN_IN_TOAST_ACTION,
+                      }
+                    : {
+                        title: "Sign in to use dictation",
+                        description:
+                          "Dictation needs you signed in to Stella when on-device transcription isn't available. Sign in to keep going.",
+                        variant: "error",
+                        duration: 8000,
+                        action: SIGN_IN_TOAST_ACTION,
+                      },
+                );
               } else {
                 showToast({
                   title: "Dictation didn't work",

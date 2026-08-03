@@ -87,7 +87,7 @@ type HelperResponse = {
   id?: string;
 };
 
-type LocalParakeetStatus = {
+export type LocalParakeetStatus = {
   available: boolean;
   model: string;
   reason?: string;
@@ -540,6 +540,35 @@ export const warmLocalParakeet = async (): Promise<LocalParakeetStatus> => {
   try {
     await startService(engine);
     // Perf: arm idle eviction so a warmed-but-unused model gets reclaimed.
+    armIdleEviction();
+    return { available: true, model: status.model };
+  } catch (error) {
+    return {
+      available: false,
+      model: status.model,
+      reason: (error as Error).message,
+    };
+  }
+};
+
+/**
+ * Install (when necessary) and fully warm the local dictation model.
+ *
+ * Unlike `warmLocalParakeet`, this waits for the parakeet.cpp GGUF download
+ * to finish. The on-demand UI uses this stronger contract so its completion
+ * toast means the next dictation can actually stay on-device.
+ */
+export const downloadLocalParakeet = async (): Promise<LocalParakeetStatus> => {
+  const status = await getLocalParakeetStatus();
+  if (!status.available) return status;
+  const engine = resolveEngine();
+  if (!engine) return status;
+
+  if (engine === "cpp") {
+    await ensureCppModel();
+  }
+  try {
+    await startService(engine);
     armIdleEviction();
     return { available: true, model: status.model };
   } catch (error) {

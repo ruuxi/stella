@@ -6,6 +6,7 @@
  * toggle-style globalShortcut path.
  */
 import {
+  type IpcMainInvokeEvent,
   app,
   BrowserWindow,
   clipboard,
@@ -31,10 +32,13 @@ import {
   type ShortcutRegistrationResult,
 } from "./shortcut-registration.js";
 import {
+  downloadLocalParakeet,
   getLocalParakeetStatus,
   transcribeWithLocalParakeet,
   warmLocalParakeet,
 } from "../dictation/local-parakeet.js";
+import { createLocalDictationDownloader } from "../dictation/local-dictation-download.js";
+import { refreshNativeHelpers } from "./updates-handlers.js";
 
 const DEFAULT_DICTATION_SHORTCUT = "Alt";
 const DEFAULT_NON_MAC_DICTATION_SHORTCUT = "Control+M";
@@ -58,7 +62,12 @@ const execFileAsync = promisify(execFile);
 type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
-  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
+  getStellaInstallDir: () => string | null;
+  assertPrivilegedSender: (
+    event: IpcMainInvokeEvent,
+    channel: string,
+  ) => boolean;
   onDictationActiveChanged?: (active: boolean) => void;
 };
 
@@ -231,8 +240,8 @@ export const registerDictationHandlers = (
   let dictationActive = false;
 
   const areDictationSoundsEnabled = () => {
-    const stellaAppDir = options.getStellaAppDir();
-    return stellaAppDir ? getDictationSoundEffectsEnabled(stellaAppDir) : true;
+    const stellaDataDir = options.getStellaDataDir();
+    return stellaDataDir ? getDictationSoundEffectsEnabled(stellaDataDir) : true;
   };
 
   const playEnabledDictationSound = (sound: DictationSound) => {
@@ -650,9 +659,9 @@ export const registerDictationHandlers = (
       process.platform === "darwin"
         ? DEFAULT_DICTATION_SHORTCUT
         : DEFAULT_NON_MAC_DICTATION_SHORTCUT;
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) return platformDefault;
-    const shortcut = loadLocalPreferences(stellaAppDir).dictationShortcut;
+    const stellaDataDir = options.getStellaDataDir();
+    if (!stellaDataDir) return platformDefault;
+    const shortcut = loadLocalPreferences(stellaDataDir).dictationShortcut;
     if (
       process.platform !== "darwin" &&
       shortcut === PUSH_TO_TALK_DICTATION_SHORTCUT
@@ -665,11 +674,11 @@ export const registerDictationHandlers = (
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) return;
-    const prefs = loadLocalPreferences(stellaAppDir);
+    const stellaDataDir = options.getStellaDataDir();
+    if (!stellaDataDir) return;
+    const prefs = loadLocalPreferences(stellaDataDir);
     prefs.dictationShortcut = shortcut;
-    saveLocalPreferences(stellaAppDir, prefs);
+    saveLocalPreferences(stellaDataDir, prefs);
   };
 
   const initial = applyDictationShortcutRegistration(loadConfiguredShortcut());
@@ -697,11 +706,11 @@ export const registerDictationHandlers = (
     "dictation:setSoundEffectsEnabled",
     (_event, enabled: boolean) => {
       const nextEnabled = enabled === true;
-      const stellaAppDir = options.getStellaAppDir();
-      if (stellaAppDir) {
-        const prefs = loadLocalPreferences(stellaAppDir);
+      const stellaDataDir = options.getStellaDataDir();
+      if (stellaDataDir) {
+        const prefs = loadLocalPreferences(stellaDataDir);
         prefs.dictationSoundEffectsEnabled = nextEnabled;
-        saveLocalPreferences(stellaAppDir, prefs);
+        saveLocalPreferences(stellaDataDir, prefs);
       }
       return { enabled: nextEnabled };
     },
@@ -710,6 +719,23 @@ export const registerDictationHandlers = (
   ipcMain.handle("dictation:warmLocal", () => warmLocalParakeet());
 
   ipcMain.handle("dictation:localStatus", () => getLocalParakeetStatus());
+
+  const downloadLocalDictation = createLocalDictationDownloader({
+    getStellaInstallDir: options.getStellaInstallDir,
+    getStatus: getLocalParakeetStatus,
+    refreshNativeHelpers: (stellaInstallDir) =>
+      refreshNativeHelpers(stellaInstallDir),
+    downloadModel: downloadLocalParakeet,
+  });
+
+  ipcMain.handle("dictation:downloadLocalModel", (event) => {
+    if (
+      !options.assertPrivilegedSender(event, "dictation:downloadLocalModel")
+    ) {
+      throw new Error("Blocked untrusted local dictation download request.");
+    }
+    return downloadLocalDictation();
+  });
 
   ipcMain.handle(
     "dictation:transcribeLocal",

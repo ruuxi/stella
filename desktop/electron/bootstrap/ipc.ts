@@ -502,7 +502,10 @@ export const registerBootstrapIpcHandlers = (
   const dictationPushToTalk = registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
-    getStellaAppDir: lifecycle.getStellaDataDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
+    getStellaInstallDir: lifecycle.getStellaAppDir,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
     onDictationActiveChanged: (active) => {
       wakewordPausedForDictation = active;
       syncWakewordPause();

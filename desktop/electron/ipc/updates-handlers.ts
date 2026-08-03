@@ -553,7 +553,7 @@ const resolveNativeHelpersManifestUrl = (
   return releaseNativeRef?.manifestUrl ?? getNativeHelpersManifestUrl();
 };
 
-const refreshNativeHelpers = async (
+export const refreshNativeHelpers = async (
   stellaAppDir: string,
   _releaseTag?: string,
   artifactRefs?: StellaReleaseArtifactRef[],
