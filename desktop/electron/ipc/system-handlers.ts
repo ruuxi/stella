@@ -2120,9 +2120,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           payload.claudeCodeReasoningEffort,
         );
       }
-      if (payload?.useNativeAgentRuntimes !== undefined) {
-        patch.useNativeAgentRuntimes =
-          payload.useNativeAgentRuntimes === true;
+      if (payload?.useNativeCodexRuntime !== undefined) {
+        patch.useNativeCodexRuntime = payload.useNativeCodexRuntime === true;
+      }
+      if (payload?.useNativeClaudeCodeRuntime !== undefined) {
+        patch.useNativeClaudeCodeRuntime =
+          payload.useNativeClaudeCodeRuntime === true;
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

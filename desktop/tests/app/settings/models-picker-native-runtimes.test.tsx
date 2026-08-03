@@ -26,6 +26,16 @@ vi.mock("@/global/settings/hooks/use-model-catalog", () => ({
         name: "Gemini 3 Flash",
         provider: "google",
       },
+      {
+        id: "local/qwen3",
+        name: "Qwen 3 Local",
+        provider: "local",
+      },
+      {
+        id: "openrouter/auto",
+        name: "OpenRouter Auto",
+        provider: "openrouter",
+      },
     ],
     defaults: [],
     groups: [
@@ -51,6 +61,34 @@ vi.mock("@/global/settings/hooks/use-model-catalog", () => ({
             id: "google/gemini-3-flash-preview",
             name: "Gemini 3 Flash",
             provider: "google",
+          },
+        ],
+        runtimeManaged: false,
+        runtimeManagedAuth: false,
+        runtimeCredentialless: false,
+      },
+      {
+        provider: "local",
+        providerName: "Local",
+        models: [
+          {
+            id: "local/qwen3",
+            name: "Qwen 3 Local",
+            provider: "local",
+          },
+        ],
+        runtimeManaged: false,
+        runtimeManagedAuth: false,
+        runtimeCredentialless: true,
+      },
+      {
+        provider: "openrouter",
+        providerName: "OpenRouter",
+        models: [
+          {
+            id: "openrouter/auto",
+            name: "OpenRouter Auto",
+            provider: "openrouter",
           },
         ],
         runtimeManaged: false,
@@ -137,7 +175,8 @@ const legacyPreferences = {
   codexServiceTier: "standard" as const,
   claudeCodeModel: "default",
   claudeCodeReasoningEffort: "default" as const,
-  useNativeAgentRuntimes: false,
+  useNativeCodexRuntime: false,
+  useNativeClaudeCodeRuntime: false,
   maxAgentConcurrency: 24,
   imageGeneration: { provider: "stella" as const },
   realtimeVoice: { provider: "stella" as const },
@@ -153,6 +192,49 @@ const waitForMountedPicker = async (): Promise<HTMLElement> => {
     { timeout: 5_000 },
   );
   return picker as HTMLElement;
+};
+
+const clickBrand = async (picker: HTMLElement, label: string) => {
+  const button = picker.querySelector(
+    `button[role="tab"][aria-label="${label}"]`,
+  ) as HTMLButtonElement | null;
+  expect(button).not.toBeNull();
+  await act(async () => button?.click());
+};
+
+const clickConnection = async (picker: HTMLElement, label: string) => {
+  const button = Array.from(
+    picker.querySelectorAll<HTMLButtonElement>(
+      '.agent-model-picker-source button[role="tab"]',
+    ),
+  ).find((candidate) => candidate.textContent?.trim() === label);
+  expect(button).not.toBeUndefined();
+  await act(async () => button?.click());
+};
+
+const waitForDirectControl = async (
+  picker: HTMLElement,
+  label: string,
+): Promise<HTMLInputElement> => {
+  let checkbox: HTMLInputElement | null = null;
+  await vi.waitFor(() => {
+    const option = Array.from(
+      picker.querySelectorAll<HTMLLabelElement>(
+        ".agent-model-picker-native-runtime-option",
+      ),
+    ).find((candidate) => candidate.textContent?.includes(label));
+    checkbox = option?.querySelector('input[type="checkbox"]') ?? null;
+    expect(checkbox).not.toBeNull();
+  });
+  return checkbox as HTMLInputElement;
+};
+
+const waitForNoDirectControl = async (picker: HTMLElement) => {
+  await vi.waitFor(() => {
+    expect(
+      picker.querySelector(".agent-model-picker-native-runtime-option"),
+    ).toBeNull();
+  });
 };
 
 describe("ModelsPicker native agent runtime control", () => {
@@ -213,13 +295,13 @@ describe("ModelsPicker native agent runtime control", () => {
 
     const picker = await waitForMountedPicker();
     expect(picker.getAttribute("data-state")).toBe("open");
-    expect(picker.textContent).toContain("Use native Codex and Claude Code");
-    expect(picker.textContent).toContain(
-      "Checked runs them directly using their native configuration, skills, and MCPs. Unchecked uses Stella's harness.",
-    );
+    expect(
+      picker.querySelector(".agent-model-picker-native-runtime-option"),
+    ).toBeNull();
+    expect(picker.textContent?.toLowerCase()).not.toContain("subscription");
   });
 
-  it("persists checked and unchecked native runtime behavior while keeping provider search scoped", async () => {
+  it("shows and persists independent direct runtime controls only on the matching app catalogs", async () => {
     const { ModelsPicker } = await import("@/global/settings/ModelsPicker");
     await act(async () => {
       root.render(
@@ -235,40 +317,103 @@ describe("ModelsPicker native agent runtime control", () => {
 
     const picker = await waitForMountedPicker();
     expect(picker.querySelector('[aria-label="Search models"]')).toBeNull();
+    await waitForNoDirectControl(picker);
+    expect(picker.textContent?.toLowerCase()).not.toContain("subscription");
 
-    const checkbox = picker.querySelector(
-      '.agent-model-picker-footer input[type="checkbox"]',
-    ) as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
-    expect(checkbox?.checked).toBe(false);
-    expect(checkbox?.disabled).toBe(false);
-    expect(picker?.textContent).toContain("Use native Codex and Claude Code");
-    expect(picker?.textContent).toContain(
-      "Checked runs them directly using their native configuration, skills, and MCPs. Unchecked uses Stella's harness.",
+    await clickBrand(picker, "OpenAI");
+    const codexCheckbox = await waitForDirectControl(
+      picker,
+      "Use Codex instead",
     );
+    expect(codexCheckbox.checked).toBe(false);
+    expect(codexCheckbox.disabled).toBe(false);
+    expect(picker.textContent).toContain(
+      "Uses Codex app-server with your native Codex configuration and tools instead of Stella's harness.",
+    );
+    expect(picker.textContent).not.toContain("Use Claude Code instead");
 
-    await act(async () => checkbox?.click());
+    await act(async () => codexCheckbox.click());
     await vi.waitFor(() => {
       expect(setLocalModelPreferences).toHaveBeenCalledWith({
-        useNativeAgentRuntimes: true,
+        useNativeCodexRuntime: true,
       });
-      expect(checkbox?.checked).toBe(true);
+      expect(codexCheckbox.checked).toBe(true);
+      expect(codexCheckbox.disabled).toBe(false);
     });
 
-    await act(async () => checkbox?.click());
+    await clickConnection(picker, "API key");
+    await waitForNoDirectControl(picker);
+
+    await clickBrand(picker, "Anthropic");
+    const claudeCheckbox = await waitForDirectControl(
+      picker,
+      "Use Claude Code instead",
+    );
+    expect(claudeCheckbox.checked).toBe(false);
+    expect(claudeCheckbox.disabled).toBe(false);
+    expect(picker.textContent).toContain(
+      "Uses your installed Claude Code configuration, skills, and MCP servers instead of Stella's harness.",
+    );
+    expect(picker.textContent).not.toContain("Use Codex instead");
+
+    await act(async () => claudeCheckbox.click());
     await vi.waitFor(() => {
       expect(setLocalModelPreferences).toHaveBeenLastCalledWith({
-        useNativeAgentRuntimes: false,
+        useNativeClaudeCodeRuntime: true,
       });
-      expect(checkbox?.checked).toBe(false);
+      expect(claudeCheckbox.checked).toBe(true);
+      expect(claudeCheckbox.disabled).toBe(false);
     });
 
-    const googleTab = picker.querySelector(
-      'button[role="tab"][aria-label="Google"]',
-    ) as HTMLButtonElement | null;
-    expect(googleTab).not.toBeNull();
-    await act(async () => googleTab?.click());
+    await clickConnection(picker, "API key");
+    await waitForNoDirectControl(picker);
 
-    expect(picker.querySelector('[aria-label="Search models"]')).not.toBeNull();
+    for (const provider of ["Local", "Google", "OpenRouter"]) {
+      await clickBrand(picker, provider);
+      await waitForNoDirectControl(picker);
+      expect(
+        picker.querySelector('[aria-label="Search models"]'),
+      ).not.toBeNull();
+    }
+
+    await clickBrand(picker, "Stella");
+    await waitForNoDirectControl(picker);
+    expect(picker.querySelector('[aria-label="Search models"]')).toBeNull();
+
+    await clickBrand(picker, "OpenAI");
+    await waitForNoDirectControl(picker);
+    await clickConnection(picker, "ChatGPT");
+    const persistedCodexCheckbox = await waitForDirectControl(
+      picker,
+      "Use Codex instead",
+    );
+    expect(persistedCodexCheckbox.checked).toBe(true);
+    await act(async () => persistedCodexCheckbox.click());
+    await vi.waitFor(() => {
+      expect(setLocalModelPreferences).toHaveBeenLastCalledWith({
+        useNativeCodexRuntime: false,
+      });
+      expect(persistedCodexCheckbox.checked).toBe(false);
+      expect(persistedCodexCheckbox.disabled).toBe(false);
+    });
+
+    await clickBrand(picker, "Anthropic");
+    await waitForNoDirectControl(picker);
+    await clickConnection(picker, "Claude Code");
+    const persistedClaudeCheckbox = await waitForDirectControl(
+      picker,
+      "Use Claude Code instead",
+    );
+    expect(persistedClaudeCheckbox.checked).toBe(true);
+    await act(async () => persistedClaudeCheckbox.click());
+    await vi.waitFor(() => {
+      expect(setLocalModelPreferences).toHaveBeenLastCalledWith({
+        useNativeClaudeCodeRuntime: false,
+      });
+      expect(persistedClaudeCheckbox.checked).toBe(false);
+      expect(persistedClaudeCheckbox.disabled).toBe(false);
+    });
+
+    expect(picker.textContent?.toLowerCase()).not.toContain("subscription");
   });
 });

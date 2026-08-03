@@ -82,7 +82,8 @@ type LocalModelPreferences = {
   codexServiceTier: CodexServiceTier;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
-  useNativeAgentRuntimes: boolean;
+  useNativeCodexRuntime: boolean;
+  useNativeClaudeCodeRuntime: boolean;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -113,7 +114,9 @@ const ASSISTANT_TARGET = "__assistant__";
 const IMAGE_TARGET = "__image__";
 const VOICE_TARGET = "__voice__";
 const ENGINE_PENDING_TARGET = "__engine__";
-const NATIVE_AGENT_RUNTIMES_PENDING_TARGET = "__native_agent_runtimes__";
+const NATIVE_CODEX_RUNTIME_PENDING_TARGET = "__native_codex_runtime__";
+const NATIVE_CLAUDE_CODE_RUNTIME_PENDING_TARGET =
+  "__native_claude_code_runtime__";
 
 /**
  * Which source a dual-source brand routes through. `app` is the subscription
@@ -1325,33 +1328,38 @@ export function AgentModelPicker({
     ],
   );
 
-  const handleNativeAgentRuntimesChange = useCallback(
-    async (useNativeAgentRuntimes: boolean) => {
+  const handleNativeRuntimeChange = useCallback(
+    async (
+      preference: "useNativeCodexRuntime" | "useNativeClaudeCodeRuntime",
+      enabled: boolean,
+    ) => {
       if (!preferences || pendingAgent) return;
-      const previous = preferences.useNativeAgentRuntimes === true;
-      setPendingAgent(NATIVE_AGENT_RUNTIMES_PENDING_TARGET);
+      const previous = preferences[preference] === true;
+      const runtimeLabel =
+        preference === "useNativeCodexRuntime" ? "Codex" : "Claude Code";
+      setPendingAgent(
+        preference === "useNativeCodexRuntime"
+          ? NATIVE_CODEX_RUNTIME_PENDING_TARGET
+          : NATIVE_CLAUDE_CODE_RUNTIME_PENDING_TARGET,
+      );
       setError(null);
-      setPreferences({
-        ...preferences,
-        useNativeAgentRuntimes,
-      });
+      const patch = { [preference]: enabled } as Partial<LocalModelPreferences>;
+      setPreferences({ ...preferences, ...patch });
       try {
         const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            useNativeAgentRuntimes,
-          });
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
         if (saved) setPreferences(saved);
         window.dispatchEvent(
           new CustomEvent("stella:local-model-preferences-changed"),
         );
       } catch (caught) {
         setPreferences((current) =>
-          current ? { ...current, useNativeAgentRuntimes: previous } : current,
+          current ? { ...current, [preference]: previous } : current,
         );
         setError(
           caught instanceof Error
             ? caught.message
-            : "Failed to update native agent runtime setting.",
+            : `Failed to update direct ${runtimeLabel} setting.`,
         );
       } finally {
         setPendingAgent(null);
@@ -1898,23 +1906,49 @@ export function AgentModelPicker({
               </div>
             </div>
           </div>
-          <label className="agent-model-picker-native-runtime-option">
-            <input
-              type="checkbox"
-              checked={preferences?.useNativeAgentRuntimes === true}
-              disabled={!preferences || pendingAgent !== null}
-              onChange={(event) =>
-                void handleNativeAgentRuntimesChange(event.target.checked)
-              }
-            />
-            <span className="agent-model-picker-native-runtime-copy">
-              <span>Use native Codex and Claude Code</span>
-              <span className="agent-model-picker-native-runtime-helper">
-                Checked runs them directly using their native configuration,
-                skills, and MCPs. Unchecked uses Stella&apos;s harness.
+          {showChatGptPanel ? (
+            <label className="agent-model-picker-native-runtime-option">
+              <input
+                type="checkbox"
+                checked={preferences?.useNativeCodexRuntime === true}
+                disabled={!preferences || pendingAgent !== null}
+                onChange={(event) =>
+                  void handleNativeRuntimeChange(
+                    "useNativeCodexRuntime",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span className="agent-model-picker-native-runtime-copy">
+                <span>Use Codex instead</span>
+                <span className="agent-model-picker-native-runtime-helper">
+                  Uses Codex app-server with your native Codex configuration and
+                  tools instead of Stella&apos;s harness.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ) : showClaudeCodePanel ? (
+            <label className="agent-model-picker-native-runtime-option">
+              <input
+                type="checkbox"
+                checked={preferences?.useNativeClaudeCodeRuntime === true}
+                disabled={!preferences || pendingAgent !== null}
+                onChange={(event) =>
+                  void handleNativeRuntimeChange(
+                    "useNativeClaudeCodeRuntime",
+                    event.target.checked,
+                  )
+                }
+              />
+              <span className="agent-model-picker-native-runtime-copy">
+                <span>Use Claude Code instead</span>
+                <span className="agent-model-picker-native-runtime-helper">
+                  Uses your installed Claude Code configuration, skills, and MCP
+                  servers instead of Stella&apos;s harness.
+                </span>
+              </span>
+            </label>
+          ) : null}
         </div>
       )}
     </div>

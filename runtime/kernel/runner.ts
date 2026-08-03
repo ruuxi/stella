@@ -131,12 +131,13 @@ export const createStellaHostRunner = (
       context.stellaDataDir,
       args.agentType,
     );
-    const subscriptionHarnessEnabled = getSubscriptionHarnessEnabled(
-      context.stellaDataDir,
-    );
     const selectedEngine =
       args.modelConfigSnapshot?.engine ??
       resolveAgentEngineForRun(configuredAgentEngine, args.spawnEngine);
+    const subscriptionHarnessEnabled = getSubscriptionHarnessEnabled(
+      context.stellaDataDir,
+      selectedEngine,
+    );
     const sampledEngineConfig = args.modelConfigSnapshot
       ? undefined
       : sampleAgentEngineConfig({

@@ -89,7 +89,7 @@ const contextFor = (stellaDataDir: string): RunnerContext =>
   }) as unknown as RunnerContext;
 
 describe("subscription harness preference and durable snapshots", () => {
-  it("defaults to the harness, ignores the retired key, and round-trips native opt-out", () => {
+  it("defaults both engines to the harness and migrates the retired global opt-out", () => {
     const stellaDataDir = makeDataDir();
     fs.writeFileSync(
       path.join(stellaDataDir, "preferences.json"),
@@ -99,37 +99,63 @@ describe("subscription harness preference and durable snapshots", () => {
       }),
     );
 
-    expect(loadLocalPreferences(stellaDataDir).useNativeAgentRuntimes).toBe(
-      false,
-    );
-    expect(getLocalModelPreferences(stellaDataDir)).toMatchObject({
-      useNativeAgentRuntimes: false,
+    expect(loadLocalPreferences(stellaDataDir)).toMatchObject({
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: false,
     });
-    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(true);
+    expect(getLocalModelPreferences(stellaDataDir)).toMatchObject({
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: false,
+    });
+    expect(getSubscriptionHarnessEnabled(stellaDataDir, "codex_cli")).toBe(
+      true,
+    );
+    expect(
+      getSubscriptionHarnessEnabled(stellaDataDir, "claude_code_local"),
+    ).toBe(true);
 
-    const legacyTrueDir = makeDataDir();
+    const globalNativeDir = makeDataDir();
     fs.writeFileSync(
-      path.join(legacyTrueDir, "preferences.json"),
+      path.join(globalNativeDir, "preferences.json"),
       JSON.stringify({
         agentRuntimeEngine: "codex_cli",
-        subscriptionHarnessEnabled: true,
+        useNativeAgentRuntimes: true,
       }),
     );
-    expect(loadLocalPreferences(legacyTrueDir).useNativeAgentRuntimes).toBe(
+    expect(loadLocalPreferences(globalNativeDir)).toMatchObject({
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: true,
+    });
+    expect(getSubscriptionHarnessEnabled(globalNativeDir, "codex_cli")).toBe(
       false,
     );
-    expect(getSubscriptionHarnessEnabled(legacyTrueDir)).toBe(true);
+    expect(
+      getSubscriptionHarnessEnabled(globalNativeDir, "claude_code_local"),
+    ).toBe(false);
 
     const saved = updateLocalModelPreferences(stellaDataDir, {
-      useNativeAgentRuntimes: true,
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: false,
     });
-    expect(saved.useNativeAgentRuntimes).toBe(true);
-    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(false);
+    expect(saved).toMatchObject({
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: false,
+    });
+    expect(getSubscriptionHarnessEnabled(stellaDataDir, "codex_cli")).toBe(
+      false,
+    );
+    expect(
+      getSubscriptionHarnessEnabled(stellaDataDir, "claude_code_local"),
+    ).toBe(true);
     const persisted = JSON.parse(
       fs.readFileSync(path.join(stellaDataDir, "preferences.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(persisted).toMatchObject({ useNativeAgentRuntimes: true });
+    expect(persisted).toMatchObject({
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: false,
+    });
     expect(persisted).not.toHaveProperty("subscriptionHarnessEnabled");
+    expect(persisted).not.toHaveProperty("useNativeAgentRuntimes");
   });
 
   it("captures Codex harness identity without losing the engine model, effort, or tier", () => {
@@ -139,7 +165,7 @@ describe("subscription harness preference and durable snapshots", () => {
       codexModelExplicit: true,
       codexReasoningEffort: "high",
       codexServiceTier: "fast",
-      useNativeAgentRuntimes: false,
+      useNativeCodexRuntime: false,
     });
 
     expect(
@@ -165,7 +191,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       codexModel: "gpt-5.6-sol",
       codexModelExplicit: false,
-      useNativeAgentRuntimes: false,
+      useNativeCodexRuntime: false,
     });
 
     expect(
@@ -189,7 +215,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "default",
       codexReasoningEffort: "high",
-      useNativeAgentRuntimes: true,
+      useNativeCodexRuntime: true,
     });
     const sampledCodexConfig = sampleAgentEngineConfig({
       stellaDataDir,
@@ -222,7 +248,7 @@ describe("subscription harness preference and durable snapshots", () => {
 
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "claude_code_local",
-      useNativeAgentRuntimes: false,
+      useNativeClaudeCodeRuntime: false,
     });
     const sampledOff = await buildAgentContext(contextFor(stellaDataDir), {
       conversationId: "conversation-sampled-off",
@@ -237,9 +263,9 @@ describe("subscription harness preference and durable snapshots", () => {
       engine: "codex_cli",
       engineModel: "gpt-5.6-sol",
     });
-    expect(
-      sampledOff.modelConfigSnapshot?.subscriptionHarnessEnabled,
-    ).toBe(false);
+    expect(sampledOff.modelConfigSnapshot?.subscriptionHarnessEnabled).toBe(
+      false,
+    );
   });
 
   it("preserves an absent pre-route engine effort after the live preference becomes explicit", async () => {
@@ -247,7 +273,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "codex_cli",
       codexReasoningEffort: "default",
-      useNativeAgentRuntimes: false,
+      useNativeCodexRuntime: false,
     });
     const sampledCodexConfig = sampleAgentEngineConfig({
       stellaDataDir,
@@ -279,7 +305,7 @@ describe("subscription harness preference and durable snapshots", () => {
     updateLocalModelPreferences(stellaDataDir, {
       codexModel: "gpt-5.6-sol",
       codexModelExplicit: true,
-      useNativeAgentRuntimes: false,
+      useNativeCodexRuntime: false,
     });
     const common = {
       stellaDataDir,

@@ -8,6 +8,7 @@ import type { AgentModelConfigSnapshot } from "../../../../runtime/contracts/age
 import type { ResolvedLlmRoute } from "../../../../runtime/kernel/model-routing.js";
 import {
   getSubscriptionHarnessEnabled,
+  loadLocalPreferences,
   updateLocalModelPreferences,
 } from "../../../../runtime/kernel/preferences/local-preferences.js";
 import { buildAgentContext } from "../../../../runtime/kernel/runner/context.js";
@@ -78,13 +79,18 @@ const contextFor = (stellaDataDir: string): RunnerContext =>
   }) as unknown as RunnerContext;
 
 describe("native agent runtime opt-out regression", () => {
-  it("freezes the inverse-default mode for new General, Orchestrator, and explicit spawn contexts", async () => {
+  it("freezes independent inverse-default modes for new General, Orchestrator, and explicit spawn contexts", async () => {
     const stellaDataDir = makeDataDir();
     const context = contextFor(stellaDataDir);
     const codex = resolvedRoute("openai-codex", "gpt-5.6-sol");
     const stella = resolvedRoute("stella", "openai/gpt-5.6-sol");
 
-    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(true);
+    expect(getSubscriptionHarnessEnabled(stellaDataDir, "codex_cli")).toBe(
+      true,
+    );
+    expect(
+      getSubscriptionHarnessEnabled(stellaDataDir, "claude_code_local"),
+    ).toBe(true);
 
     const newCodexGeneral = await buildAgentContext(context, {
       conversationId: "new-codex-general",
@@ -112,16 +118,29 @@ describe("native agent runtime opt-out regression", () => {
       subscriptionHarnessEnabled: true,
     });
 
-    const orchestrator = await buildAgentContext(context, {
-      conversationId: "orchestrator-parent",
+    const claudeOrchestrator = await buildAgentContext(context, {
+      conversationId: "claude-orchestrator-parent",
       agentType: AGENT_IDS.ORCHESTRATOR,
-      runId: "run-orchestrator-parent",
+      runId: "run-claude-orchestrator-parent",
       configuredAgentEngine: "claude_code_local",
       model: "stella/default",
       resolvedLlm: stella,
     });
-    expect(orchestrator.modelConfigSnapshot).toMatchObject({
+    expect(claudeOrchestrator.modelConfigSnapshot).toMatchObject({
       engine: "claude_code_local",
+      subscriptionHarnessEnabled: true,
+    });
+
+    const codexOrchestrator = await buildAgentContext(context, {
+      conversationId: "codex-orchestrator-parent",
+      agentType: AGENT_IDS.ORCHESTRATOR,
+      runId: "run-codex-orchestrator-parent",
+      configuredAgentEngine: "codex_cli",
+      model: "openai-codex/gpt-5.6-sol",
+      resolvedLlm: codex,
+    });
+    expect(codexOrchestrator.modelConfigSnapshot).toMatchObject({
+      engine: "codex_cli",
       subscriptionHarnessEnabled: true,
     });
 
@@ -136,6 +155,20 @@ describe("native agent runtime opt-out regression", () => {
     });
     expect(explicitCodex.modelConfigSnapshot).toMatchObject({
       engine: "codex_cli",
+      subscriptionHarnessEnabled: true,
+    });
+
+    const explicitClaude = await buildAgentContext(context, {
+      conversationId: "explicit-claude",
+      agentType: AGENT_IDS.GENERAL,
+      runId: "run-explicit-claude",
+      configuredAgentEngine: "default",
+      spawnEngine: { engine: "claude_code_local", model: "opus" },
+      model: "stella/default",
+      resolvedLlm: stella,
+    });
+    expect(explicitClaude.modelConfigSnapshot).toMatchObject({
+      engine: "claude_code_local",
       subscriptionHarnessEnabled: true,
     });
 
@@ -156,9 +189,14 @@ describe("native agent runtime opt-out regression", () => {
     );
 
     updateLocalModelPreferences(stellaDataDir, {
-      useNativeAgentRuntimes: true,
+      useNativeCodexRuntime: true,
     });
-    expect(getSubscriptionHarnessEnabled(stellaDataDir)).toBe(false);
+    expect(getSubscriptionHarnessEnabled(stellaDataDir, "codex_cli")).toBe(
+      false,
+    );
+    expect(
+      getSubscriptionHarnessEnabled(stellaDataDir, "claude_code_local"),
+    ).toBe(true);
 
     const nativeCodex = await buildAgentContext(context, {
       conversationId: "native-codex",
@@ -171,6 +209,37 @@ describe("native agent runtime opt-out regression", () => {
     expect(nativeCodex.modelConfigSnapshot).toMatchObject({
       engine: "codex_cli",
       subscriptionHarnessEnabled: false,
+    });
+
+    const stillHarnessedClaude = await buildAgentContext(context, {
+      conversationId: "still-harnessed-claude",
+      agentType: AGENT_IDS.GENERAL,
+      runId: "run-still-harnessed-claude",
+      configuredAgentEngine: "claude_code_local",
+      model: "stella/default",
+      resolvedLlm: stella,
+    });
+    expect(stillHarnessedClaude.modelConfigSnapshot).toMatchObject({
+      engine: "claude_code_local",
+      subscriptionHarnessEnabled: true,
+    });
+
+    updateLocalModelPreferences(stellaDataDir, {
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: true,
+    });
+
+    const reenabledCodexHarness = await buildAgentContext(context, {
+      conversationId: "reenabled-codex-harness",
+      agentType: AGENT_IDS.GENERAL,
+      runId: "run-reenabled-codex-harness",
+      configuredAgentEngine: "codex_cli",
+      model: "openai-codex/gpt-5.6-sol",
+      resolvedLlm: codex,
+    });
+    expect(reenabledCodexHarness.modelConfigSnapshot).toMatchObject({
+      engine: "codex_cli",
+      subscriptionHarnessEnabled: true,
     });
 
     const nativeClaude = await buildAgentContext(context, {
@@ -192,6 +261,52 @@ describe("native agent runtime opt-out regression", () => {
     expect(
       newClaudeGeneral.modelConfigSnapshot?.subscriptionHarnessEnabled,
     ).toBe(true);
+  });
+  it("migrates the retired global true per absent engine key while ignoring false", () => {
+    const writePreferences = (value: Record<string, unknown>) => {
+      const stellaDataDir = makeDataDir();
+      fs.writeFileSync(
+        path.join(stellaDataDir, "preferences.json"),
+        JSON.stringify(value),
+      );
+      return loadLocalPreferences(stellaDataDir);
+    };
+
+    expect(writePreferences({ useNativeAgentRuntimes: true })).toMatchObject({
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: true,
+    });
+    expect(writePreferences({ useNativeAgentRuntimes: false })).toMatchObject({
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: false,
+    });
+    expect(
+      writePreferences({
+        useNativeAgentRuntimes: true,
+        useNativeCodexRuntime: false,
+      }),
+    ).toMatchObject({
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: true,
+    });
+    expect(
+      writePreferences({
+        useNativeAgentRuntimes: true,
+        useNativeClaudeCodeRuntime: false,
+      }),
+    ).toMatchObject({
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: false,
+    });
+    expect(
+      writePreferences({
+        subscriptionHarnessEnabled: true,
+        useNativeAgentRuntimes: false,
+      }),
+    ).toMatchObject({
+      useNativeCodexRuntime: false,
+      useNativeClaudeCodeRuntime: false,
+    });
   });
 
   it("keeps harness, native, and legacy-native snapshots byte-for-byte stable across a database reopen", () => {
@@ -240,7 +355,8 @@ describe("native agent runtime opt-out regression", () => {
     });
 
     updateLocalModelPreferences(stellaDataDir, {
-      useNativeAgentRuntimes: true,
+      useNativeCodexRuntime: true,
+      useNativeClaudeCodeRuntime: true,
     });
     db.close();
 
@@ -308,5 +424,84 @@ describe("native agent runtime opt-out regression", () => {
       explicitNative,
     );
     await expect(inheritSnapshot(legacyNative)).resolves.toEqual(legacyNative);
+  });
+
+  it("resamples the explicitly pinned child engine instead of inheriting an Orchestrator's other-engine mode", async () => {
+    const spawnPinned = async (
+      parentSnapshot: AgentModelConfigSnapshot,
+      model: string,
+      childSnapshot: AgentModelConfigSnapshot,
+    ) => {
+      const created: AgentToolRequest[] = [];
+      const state = createStateContext(
+        "/tmp",
+        {
+          createAgent: async (request) => {
+            created.push(request);
+            return { threadId: `pinned-child-${created.length}` };
+          },
+          getAgent: async () => null,
+          cancelAgent: async () => ({ canceled: false }),
+        },
+        undefined,
+        undefined,
+        async ({ spawnEngine }) => {
+          expect(spawnEngine.engine).toBe(childSnapshot.engine);
+          return childSnapshot;
+        },
+      );
+
+      await handleSpawnAgent(
+        state,
+        {
+          description: "Cross-engine pin check",
+          prompt: "Use the explicitly selected child engine.",
+          model,
+        },
+        {
+          conversationId: "cross-engine-orchestrator-pin",
+          deviceId: "cross-engine-orchestrator-pin",
+          requestId: `cross-engine-${model}`,
+          agentType: AGENT_IDS.ORCHESTRATOR,
+          agentDepth: 0,
+          maxAgentDepth: 2,
+          modelConfigSnapshot: parentSnapshot,
+        },
+      );
+
+      return created[0];
+    };
+
+    const codexHarnessParent: AgentModelConfigSnapshot = {
+      engine: "codex_cli",
+      subscriptionHarnessEnabled: true,
+      routeModel: "openai-codex/gpt-5.6-sol",
+      engineModel: "gpt-5.6-sol",
+    };
+    const nativeClaudeChild: AgentModelConfigSnapshot = {
+      engine: "claude_code_local",
+      subscriptionHarnessEnabled: false,
+      routeModel: "stella/openai/gpt-5.6-sol",
+      engineModel: "opus",
+    };
+    const nativeClaudeParent: AgentModelConfigSnapshot = {
+      ...nativeClaudeChild,
+    };
+    const codexHarnessChild: AgentModelConfigSnapshot = {
+      ...codexHarnessParent,
+    };
+
+    await expect(
+      spawnPinned(codexHarnessParent, "claude-code/opus", nativeClaudeChild),
+    ).resolves.toMatchObject({
+      spawnEngine: { engine: "claude_code_local", model: "opus" },
+      modelConfigSnapshot: nativeClaudeChild,
+    });
+    await expect(
+      spawnPinned(nativeClaudeParent, "codex/gpt-5.6-sol", codexHarnessChild),
+    ).resolves.toMatchObject({
+      spawnEngine: { engine: "codex_cli", model: "gpt-5.6-sol" },
+      modelConfigSnapshot: codexHarnessChild,
+    });
   });
 });

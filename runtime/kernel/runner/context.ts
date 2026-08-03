@@ -548,8 +548,10 @@ export const createRunnerContext = ({
       spawnReasoningEffort,
     }) => {
       const configuredEngine = getAgentRuntimeEngine(stellaDataDir);
-      const subscriptionHarnessEnabled =
-        getSubscriptionHarnessEnabled(stellaDataDir);
+      const subscriptionHarnessEnabled = getSubscriptionHarnessEnabled(
+        stellaDataDir,
+        spawnEngine.engine,
+      );
       const agent = resolveAgent(context, agentType);
       const configuredModel =
         spawnModel ?? getConfiguredModel(context, agentType, agent);
@@ -1127,7 +1129,7 @@ export const buildAgentContext = async (
   const subscriptionHarnessEnabled = args.modelConfigSnapshot
     ? args.modelConfigSnapshot.subscriptionHarnessEnabled === true
     : (args.subscriptionHarnessEnabled ??
-      getSubscriptionHarnessEnabled(context.stellaDataDir));
+      getSubscriptionHarnessEnabled(context.stellaDataDir, agentEngine));
   const capturedSubscriptionHarness =
     subscriptionHarnessEnabled &&
     (agentEngine === "codex_cli" || agentEngine === "claude_code_local");
