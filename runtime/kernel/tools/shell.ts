@@ -7,7 +7,6 @@ import path from "path";
 import os from "os";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { readdir, stat } from "fs/promises";
-import { setupEnvironment } from "dugite";
 import {
   fileChange,
   isNoiseProducedPath,
@@ -603,7 +602,7 @@ export const extractOfficePreviewRef = (
 const buildWindowsCliShimScript = (envVar: string): string =>
   [
     "@echo off",
-    'set "ELECTRON_RUN_AS_NODE=1"',
+    'if "%STELLA_NODE_IS_ELECTRON%"=="1" set "ELECTRON_RUN_AS_NODE=1"',
     `"%STELLA_NODE_BIN%" "%${envVar}%" %*`,
     "",
   ].join("\r\n");
@@ -611,15 +610,20 @@ const buildWindowsCliShimScript = (envVar: string): string =>
 const buildWindowsNodeShimScript = (): string =>
   [
     "@echo off",
-    'set "ELECTRON_RUN_AS_NODE=1"',
+    'if "%STELLA_NODE_IS_ELECTRON%"=="1" set "ELECTRON_RUN_AS_NODE=1"',
     '"%STELLA_NODE_BIN%" %*',
     "",
   ].join("\r\n");
 
 const buildUnixNodeShimScript = (): string =>
-  ["#!/bin/sh", 'ELECTRON_RUN_AS_NODE=1 exec "$STELLA_NODE_BIN" "$@"', ""].join(
-    "\n",
-  );
+  [
+    "#!/bin/sh",
+    'if [ "${STELLA_NODE_IS_ELECTRON:-0}" = "1" ]; then',
+    '  ELECTRON_RUN_AS_NODE=1 exec "$STELLA_NODE_BIN" "$@"',
+    "fi",
+    'exec "$STELLA_NODE_BIN" "$@"',
+    "",
+  ].join("\n");
 
 const ensureNodeShim = (secretStateRoot: string): string | undefined => {
   const shimDir = path.join(secretStateRoot, "shell-shims");
@@ -767,8 +771,15 @@ const buildProtectedCommand = (
     pythonNames.size > 0 ? ` ${[...pythonNames].join(" ")}` : "";
 
   const preamble = `
+__stella_node_exec() {
+  if [ "$STELLA_NODE_IS_ELECTRON" = "1" ]; then
+    ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$@"
+  else
+    "$STELLA_NODE_BIN" "$@"
+  fi
+}
 __stella_dd() {
-  ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
+  __stella_node_exec "$STELLA_DEFERRED_DELETE_HELPER" "$@"
 }
 __stella_git_exec() {
   if [ -n "$STELLA_GIT_BIN" ]; then
@@ -826,13 +837,13 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
-${stellaOfficeBin ? `stella-office() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
-${stellaComputerCli ? `stella-computer() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
-${stellaConnectCli ? `stella-connect() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
-${stellaMediaCli ? `stella-media() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
-${stellaXApiCli ? `stella-x-api() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_X_API_CLI" "$@"; }` : ""}
+${stellaOfficeBin ? `stella-office() { __stella_node_exec "$STELLA_OFFICE_BIN" "$@"; }` : ""}
+${stellaComputerCli ? `stella-computer() { __stella_node_exec "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
+${stellaConnectCli ? `stella-connect() { __stella_node_exec "$STELLA_CONNECT_CLI" "$@"; }` : ""}
+${stellaMediaCli ? `stella-media() { __stella_node_exec "$STELLA_MEDIA_CLI" "$@"; }` : ""}
+${stellaXApiCli ? `stella-x-api() { __stella_node_exec "$STELLA_X_API_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_node_exec __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -915,25 +926,6 @@ const maybeTrashNativeWindowsDeletes = async (
   };
 };
 
-// dugite's setupEnvironment rebuilds the entire environment map on every call
-// just to graft the embedded git onto it. Its contribution depends only on a
-// handful of input keys — plus PATH, which it prepends the embedded-git bin
-// dirs to on Windows — so compute the delta once per distinct input tuple and
-// merge the cached result into each shell env instead.
-const DUGITE_ENV_INPUT_KEYS = [
-  "LOCAL_GIT_DIRECTORY",
-  "GIT_EXEC_PATH",
-  "GIT_CONFIG_SYSTEM",
-  "GIT_SSL_CAINFO",
-] as const;
-
-type DugiteEnvContribution = {
-  pathPrefix: string;
-  vars: [string, string][];
-};
-
-const dugiteEnvContributions = new Map<string, DugiteEnvContribution>();
-
 export const resolveShellNodeBinary = (
   env: NodeJS.ProcessEnv = process.env,
 ): string => {
@@ -950,33 +942,14 @@ export const resolveShellNodeBinary = (
   return process.execPath;
 };
 
-const getDugiteEnvContribution = (
-  mergedEnv: NodeJS.ProcessEnv,
-): DugiteEnvContribution => {
-  const inputs = DUGITE_ENV_INPUT_KEYS.map((key) => mergedEnv[key]);
-  const cacheKey = JSON.stringify(inputs);
-  const cached = dugiteEnvContributions.get(cacheKey);
-  if (cached) return cached;
-
-  const probe: Record<string, string> = { PATH: "" };
-  DUGITE_ENV_INPUT_KEYS.forEach((key, index) => {
-    const value = inputs[index];
-    if (value !== undefined) probe[key] = value;
-  });
-  const { env } = setupEnvironment(probe, {});
-  const vars: [string, string][] = [];
-  for (const [key, value] of Object.entries(env)) {
-    if (key === "PATH" || value === undefined || probe[key] === value) continue;
-    vars.push([key, value]);
-  }
-  const contribution: DugiteEnvContribution = {
-    // With an empty probe PATH the output PATH is exactly the prefix dugite
-    // prepends ("" on platforms where it leaves PATH alone).
-    pathPrefix: env.PATH ?? "",
-    vars,
-  };
-  dugiteEnvContributions.set(cacheKey, contribution);
-  return contribution;
+export const shellNodeUsesElectron = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean => {
+  if (env.STELLA_NODE_IS_ELECTRON?.trim() === "1") return true;
+  const explicit = env.STELLA_NODE_BIN?.trim();
+  if (explicit && existsSync(explicit)) return false;
+  const hostExecutable = env.STELLA_HOST_EXECUTABLE_PATH?.trim();
+  return Boolean(hostExecutable && existsSync(hostExecutable));
 };
 
 const buildShellEnv = (
@@ -999,6 +972,11 @@ const buildShellEnv = (
     STELLA_NODE_BIN: resolveShellNodeBinary(
       envOverrides ? { ...process.env, ...envOverrides } : process.env,
     ),
+    STELLA_NODE_IS_ELECTRON: shellNodeUsesElectron(
+      envOverrides ? { ...process.env, ...envOverrides } : process.env,
+    )
+      ? "1"
+      : "0",
     STELLA_RUNTIME_WORKER_PID: String(process.pid),
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot
@@ -1049,26 +1027,6 @@ const buildShellEnv = (
     }
   }
 
-  const dugite = getDugiteEnvContribution(mergedEnv);
-  for (const [key, value] of dugite.vars) {
-    mergedEnv[key] = value;
-  }
-  if (dugite.pathPrefix) {
-    // Mirror dugite's case-insensitive env map on Windows: when PATH appears
-    // under several casings, the last assignment wins and the first-seen
-    // casing is kept.
-    const pathKeys = Object.keys(mergedEnv).filter(
-      (key) => key.toLowerCase() === "path",
-    );
-    const existingPath = pathKeys.length
-      ? mergedEnv[pathKeys[pathKeys.length - 1]]
-      : "";
-    for (const key of pathKeys.slice(1)) {
-      delete mergedEnv[key];
-    }
-    mergedEnv[pathKeys[0] ?? "PATH"] =
-      `${dugite.pathPrefix}${typeof existingPath === "string" ? existingPath : ""}`;
-  }
   return mergedEnv;
 };
 

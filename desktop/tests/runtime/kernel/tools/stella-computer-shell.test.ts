@@ -6,6 +6,7 @@ import {
   handleBash,
   resolveShellNodeBinary,
   runShell,
+  shellNodeUsesElectron,
 } from "../../../../../runtime/kernel/tools/shell.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
@@ -59,7 +60,7 @@ describe("stella-computer shell bootstrap", () => {
     expect(output).not.toContain("Command exited with code");
     expect(JSON.parse(output)).toEqual({
       cli: fakeComputerCliPath,
-      electronRunAsNode: "1",
+      electronRunAsNode: null,
       args: ["snapshot", "--json"],
     });
   });
@@ -122,11 +123,13 @@ describe("stella-computer shell bootstrap", () => {
       path.join(String(state.windowsCliShimDir), "stella-computer.cmd"),
       "utf-8",
     );
-    expect(shim).toContain('set "ELECTRON_RUN_AS_NODE=1"');
+    expect(shim).toContain(
+      'if "%STELLA_NODE_IS_ELECTRON%"=="1" set "ELECTRON_RUN_AS_NODE=1"',
+    );
     expect(shim).toContain('"%STELLA_NODE_BIN%" "%STELLA_COMPUTER_CLI%" %*');
   });
 
-  it("runs stella-connect through Electron's Node mode", async () => {
+  it("runs stella-connect through the selected Node runtime", async () => {
     const tempDir = createTempDir();
     const fakeConnectCliPath = path.join(tempDir, "fake-stella-connect.js");
     writeFileSync(
@@ -149,12 +152,12 @@ describe("stella-computer shell bootstrap", () => {
     );
 
     expect(JSON.parse(output)).toEqual({
-      electronRunAsNode: "1",
+      electronRunAsNode: null,
       args: ["tools", "outlook"],
     });
   });
 
-  it("always creates a Windows cmd shim for Node.js", () => {
+  it("creates a Windows Node shim that only enables Electron Node mode when needed", () => {
     forcePlatform("win32");
     const tempDir = createTempDir();
 
@@ -165,7 +168,9 @@ describe("stella-computer shell bootstrap", () => {
       path.join(String(state.nodeShimDir), "node.cmd"),
       "utf-8",
     );
-    expect(shim).toContain('set "ELECTRON_RUN_AS_NODE=1"');
+    expect(shim).toContain(
+      'if "%STELLA_NODE_IS_ELECTRON%"=="1" set "ELECTRON_RUN_AS_NODE=1"',
+    );
     expect(shim).toContain('"%STELLA_NODE_BIN%" %*');
   });
 
@@ -188,6 +193,23 @@ describe("stella-computer shell bootstrap", () => {
       }),
     ).toBe(explicitNode);
     expect(resolveShellNodeBinary({})).toBe(process.execPath);
+    expect(
+      shellNodeUsesElectron({
+        STELLA_HOST_EXECUTABLE_PATH: hostExecutable,
+      }),
+    ).toBe(true);
+    expect(
+      shellNodeUsesElectron({
+        STELLA_NODE_BIN: explicitNode,
+        STELLA_HOST_EXECUTABLE_PATH: hostExecutable,
+      }),
+    ).toBe(false);
+    expect(
+      shellNodeUsesElectron({
+        STELLA_NODE_BIN: explicitNode,
+        STELLA_NODE_IS_ELECTRON: "1",
+      }),
+    ).toBe(true);
   });
 
   it("injects stella-media with media auth for command runs", async () => {

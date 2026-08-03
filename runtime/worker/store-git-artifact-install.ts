@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { inflateSync } from "node:zlib";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../git-environment.js";
 import type {
   StoreInstallRecord,
   StoreReleaseGitArtifact,
@@ -132,7 +132,7 @@ const runGitWithObjectEnv = async (args: {
   alternateObjectDirectory: string;
   gitArgs: string[];
 }): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
-  const { env, gitLocation } = setupEnvironment({
+  const { env, gitLocation } = setupGitEnvironment({
     ...process.env,
     GIT_OBJECT_DIRECTORY: args.gitObjectDirectory,
     GIT_ALTERNATE_OBJECT_DIRECTORIES: args.alternateObjectDirectory,
@@ -168,7 +168,7 @@ const runGitBuffer = async (
   repoRoot: string,
   gitArgs: string[],
 ): Promise<{ exitCode: number; stdout: Buffer; stderr: string }> => {
-  const { env, gitLocation } = setupEnvironment({ ...process.env });
+  const { env, gitLocation } = setupGitEnvironment();
   try {
     const result = await execFileAsync(gitLocation, gitArgs, {
       cwd: repoRoot,

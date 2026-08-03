@@ -284,7 +284,9 @@ const createNodeReplTransport = (
   const child = spawn(executable, ["-"], {
     env: {
       ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
+      ...(process.env.STELLA_NODE_IS_ELECTRON === "1"
+        ? { ELECTRON_RUN_AS_NODE: "1" }
+        : {}),
       STELLA_NODE_REPL_WORKER_DATA: JSON.stringify(workerData),
     },
     stdio: ["pipe", "ignore", "ignore", "ipc"],

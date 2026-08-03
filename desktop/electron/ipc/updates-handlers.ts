@@ -22,7 +22,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../../../runtime/git-environment.js";
 import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
@@ -429,7 +429,7 @@ type ReleaseManifestSnapshot = {
 
 const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
   new Promise((resolve, reject) => {
-    const { env, gitLocation } = setupEnvironment({});
+    const { env, gitLocation } = setupGitEnvironment();
     const child = spawn(gitLocation, args, {
       cwd,
       env,

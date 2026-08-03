@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../../git-environment.js";
 import type {
   AgentModelReasoningEffort,
   AgentRuntimeEngine,
@@ -472,7 +472,7 @@ const runGit = async (
   repoRoot: string,
   args: string[],
 ): Promise<{ ok: boolean; stdout: string }> => {
-  const { env, gitLocation } = setupEnvironment(process.env);
+  const { env, gitLocation } = setupGitEnvironment();
   try {
     const result = await execFileAsync(gitLocation, args, {
       cwd: repoRoot,

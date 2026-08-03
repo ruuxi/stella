@@ -1,0 +1,327 @@
+name: Build Git Runtime
+
+# Stella uses a working Git already installed by the user when one is available.
+# These artifacts are the private, user-scoped fallback used by the launcher.
+# macOS and Linux are built from the pinned upstream Git source. Windows uses
+# the pinned official PortableGit distribution so Git Bash is included.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/build-git-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GIT_VERSION: "2.53.0"
+  GIT_SOURCE_URL: https://www.kernel.org/pub/software/scm/git/git-2.53.0.tar.xz
+  GIT_SOURCE_SHA256: 5818bd7d80b061bbbdfec8a433d609dc8818a05991f731ffc4a561e2ca18c653
+  GIT_FOR_WINDOWS_RELEASE: "2.53.0.windows.3"
+  GIT_FOR_WINDOWS_X64_URL: https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.3/PortableGit-2.53.0.3-64-bit.7z.exe
+  GIT_FOR_WINDOWS_X64_SHA256: b365da794b1d2225eb24d5f5e09ef7792cfd5fa26c3a3586210280c80dff3a2a
+  GIT_FOR_WINDOWS_ARM64_URL: https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.3/PortableGit-2.53.0.3-arm64.7z.exe
+  GIT_FOR_WINDOWS_ARM64_SHA256: 0db54010054c01f35501cf69e1e32d3710138ecb934d188bd77093afed24300e
+
+jobs:
+  build-unix:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            os: macos-15
+          - platform: darwin-x64
+            os: macos-15-intel
+          - platform: linux-arm64
+            os: ubuntu-22.04-arm
+          - platform: linux-x64
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gettext \
+            libcurl4-openssl-dev \
+            libexpat1-dev \
+            libssl-dev \
+            xz-utils \
+            zlib1g-dev
+
+      - name: Download and verify Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --output git-source.tar.xz "$GIT_SOURCE_URL"
+          if command -v sha256sum >/dev/null 2>&1; then
+            echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | sha256sum --check
+          else
+            echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | shasum -a 256 --check
+          fi
+          tar -xJf git-source.tar.xz
+
+      - name: Build relocatable Git runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$PWD/git-$GIT_VERSION"
+          prefix="$PWD/stage/git"
+          mkdir -p "$prefix"
+
+          make_args=(
+            "prefix=$prefix"
+            NO_GETTEXT=YesPlease
+            NO_INSTALL_HARDLINKS=YesPlease
+            NO_PERL=YesPlease
+            NO_PYTHON=YesPlease
+            NO_TCLTK=YesPlease
+          )
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            make_args+=(APPLE_COMMON_CRYPTO=YesPlease NO_OPENSSL=YesPlease)
+          fi
+
+          make -C "$source_dir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)" "${make_args[@]}" all
+          make -C "$source_dir" "${make_args[@]}" install
+
+          mkdir -p "$prefix/share/licenses/stella-git"
+          cp "$source_dir/COPYING" "$prefix/share/licenses/stella-git/Git-COPYING"
+          printf '%s\n' \
+            "Git $GIT_VERSION built from $GIT_SOURCE_URL" \
+            "Source SHA-256: $GIT_SOURCE_SHA256" \
+            > "$prefix/share/licenses/stella-git/SOURCE"
+
+      - name: Verify runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git_root="$PWD/stage/git"
+          export GIT_EXEC_PATH="$git_root/libexec/git-core"
+          export GIT_TEMPLATE_DIR="$git_root/share/git-core/templates"
+          "$git_root/bin/git" --version | grep -F "git version $GIT_VERSION"
+          "$git_root/bin/git" ls-remote https://github.com/git/git HEAD >/dev/null
+          test -x "$git_root/libexec/git-core/git-remote-http"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            if otool -L "$git_root/bin/git" "$git_root/libexec/git-core/git-remote-http" | grep -E '/opt/homebrew|/usr/local/(opt|Cellar)'; then
+              echo "Git runtime linked against a Homebrew-only library." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Package runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export COPYFILE_DISABLE=1
+          tar -czf "stella-git-${{ matrix.platform }}.tar.gz" -C stage/git .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stella-git-${{ matrix.platform }}
+          path: stella-git-${{ matrix.platform }}.tar.gz
+          retention-days: 14
+
+  package-windows:
+    name: Package ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: win-x64
+            url_env: GIT_FOR_WINDOWS_X64_URL
+            sha_env: GIT_FOR_WINDOWS_X64_SHA256
+            mingw_dir: mingw64
+          - platform: win-arm64
+            url_env: GIT_FOR_WINDOWS_ARM64_URL
+            sha_env: GIT_FOR_WINDOWS_ARM64_SHA256
+            mingw_dir: clangarm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install archive tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Download and verify official PortableGit
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_url="${!URL_ENV}"
+          asset_sha="${!SHA_ENV}"
+          curl --fail --location --retry 3 --output portable-git.7z.exe "$asset_url"
+          echo "$asset_sha  portable-git.7z.exe" | sha256sum --check
+        env:
+          URL_ENV: ${{ matrix.url_env }}
+          SHA_ENV: ${{ matrix.sha_env }}
+
+      - name: Package runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage/git
+          7z x -y -ostage/git portable-git.7z.exe >/dev/null
+          test -f stage/git/cmd/git.exe
+          test -f stage/git/usr/bin/bash.exe
+          test -f "stage/git/${{ matrix.mingw_dir }}/libexec/git-core/git.exe"
+
+          mkdir -p stage/git/share/licenses/stella-git
+          printf '%s\n' \
+            "Git for Windows $GIT_FOR_WINDOWS_RELEASE" \
+            "Official distribution: ${!URL_ENV}" \
+            "Distribution SHA-256: ${!SHA_ENV}" \
+            > stage/git/share/licenses/stella-git/SOURCE
+          tar -czf "stella-git-${{ matrix.platform }}.tar.gz" -C stage/git .
+        env:
+          URL_ENV: ${{ matrix.url_env }}
+          SHA_ENV: ${{ matrix.sha_env }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stella-git-${{ matrix.platform }}
+          path: stella-git-${{ matrix.platform }}.tar.gz
+          retention-days: 14
+
+  publish:
+    needs: [build-unix, package-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: git-runtime-current-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: git-assets
+          pattern: stella-git-*
+          merge-multiple: true
+
+      - name: Build and publish manifest
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
+          SOURCE_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_BUCKET:-}" ] || [ -z "${R2_ENDPOINT:-}" ]; then
+            echo "R2 secrets are not configured; cannot publish Git runtimes." >&2
+            exit 1
+          fi
+
+          curl --fail --location --retry 3 --output git-source.tar.xz "$GIT_SOURCE_URL"
+          echo "$GIT_SOURCE_SHA256  git-source.tar.xz" | sha256sum --check
+          manifest_path="$(mktemp)"
+          upload_plan="$(mktemp)"
+          node - "$manifest_path" "$upload_plan" "$R2_PUBLIC_BASE_URL" git-assets <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const [manifestPath, uploadPlanPath, publicBaseUrl, assetsRoot] = process.argv.slice(2);
+          const version = process.env.GIT_VERSION;
+          const sourceCommit = process.env.SOURCE_COMMIT;
+          const sourceUrl = process.env.GIT_SOURCE_URL;
+          const sourceSha256 = process.env.GIT_SOURCE_SHA256;
+          const publicBase = publicBaseUrl.replace(/\/$/, "");
+          const platforms = [
+            "darwin-arm64",
+            "darwin-x64",
+            "linux-arm64",
+            "linux-x64",
+            "win-arm64",
+            "win-x64",
+          ];
+          const assets = {};
+          const uploads = [];
+          for (const platform of platforms) {
+            const fileName = `stella-git-${platform}.tar.gz`;
+            const filePath = join(assetsRoot, fileName);
+            const bytes = readFileSync(filePath);
+            const sha256 = createHash("sha256").update(bytes).digest("hex");
+            const objectKey = `git-runtime/objects/${sha256}.tar.gz`;
+            assets[platform] = {
+              fileName,
+              url: `${publicBase}/${objectKey}`,
+              sha256,
+              size: statSync(filePath).size,
+            };
+            uploads.push({ filePath, objectKey });
+          }
+          const sourceObjectKey = `git-runtime/sources/git-${version}-${sourceSha256}.tar.xz`;
+          writeFileSync(manifestPath, `${JSON.stringify({
+            schemaVersion: 1,
+            version,
+            sourceCommit,
+            builtAt: new Date().toISOString(),
+            source: {
+              upstreamUrl: sourceUrl,
+              url: `${publicBase}/${sourceObjectKey}`,
+              sha256: sourceSha256,
+              size: statSync("git-source.tar.xz").size,
+            },
+            windowsDistribution: {
+              version: process.env.GIT_FOR_WINDOWS_RELEASE,
+              x64: {
+                upstreamUrl: process.env.GIT_FOR_WINDOWS_X64_URL,
+                sha256: process.env.GIT_FOR_WINDOWS_X64_SHA256,
+              },
+              arm64: {
+                upstreamUrl: process.env.GIT_FOR_WINDOWS_ARM64_URL,
+                sha256: process.env.GIT_FOR_WINDOWS_ARM64_SHA256,
+              },
+            },
+            assets,
+          }, null, 2)}\n`);
+          uploads.push({ filePath: "git-source.tar.xz", objectKey: sourceObjectKey });
+          writeFileSync(uploadPlanPath, `${JSON.stringify(uploads)}\n`);
+          NODE
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION=auto
+          node - "$upload_plan" <<'NODE' | while IFS=$'\t' read -r file_path object_key; do
+          const uploads = JSON.parse(require("node:fs").readFileSync(process.argv[2], "utf8"));
+          for (const upload of uploads) process.stdout.write(`${upload.filePath}\t${upload.objectKey}\n`);
+          NODE
+            aws s3 cp "$file_path" "s3://${R2_BUCKET}/${object_key}" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --endpoint-url "$R2_ENDPOINT"
+          done
+
+          master_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/master | awk '{print $1}')"
+          if [ -z "$master_sha" ]; then
+            echo "Could not resolve origin/master; refusing to update Git runtime manifests." >&2
+            exit 1
+          fi
+          if [ "$SOURCE_COMMIT" = "$master_sha" ]; then
+            aws s3 cp "$manifest_path" \
+              "s3://${R2_BUCKET}/git-runtime/versions/${GIT_VERSION}/manifest.json" \
+              --content-type application/json \
+              --cache-control no-cache \
+              --endpoint-url "$R2_ENDPOINT"
+            aws s3 cp "$manifest_path" \
+              "s3://${R2_BUCKET}/git-runtime/current.json" \
+              --content-type application/json \
+              --cache-control no-cache \
+              --endpoint-url "$R2_ENDPOINT"
+          else
+            echo "Published immutable objects for $SOURCE_COMMIT; current master is $master_sha, so manifests were left unchanged."
+          fi
+
+          echo "Published Git runtime manifest:"
+          cat "$manifest_path"

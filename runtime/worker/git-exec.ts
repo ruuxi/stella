@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../git-environment.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,7 +18,7 @@ export const runGitStatus = async (
   args: string[],
   options?: { maxBuffer?: number },
 ): Promise<GitRunStatus> => {
-  const { env, gitLocation } = setupEnvironment({});
+  const { env, gitLocation } = setupGitEnvironment();
   try {
     const result = await execFileAsync(gitLocation, args, {
       cwd,

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../../../git-environment.js";
 import {
   assertGitRepository,
   normalizeGitPath,
@@ -67,7 +67,7 @@ export const readGitObjectsBatch = async (args: {
   if (specs.length === 0) return result;
   await assertGitRepository(args.repoRoot);
 
-  const { env, gitLocation } = setupEnvironment({});
+  const { env, gitLocation } = setupGitEnvironment();
   const stdout = await new Promise<Buffer>((resolve, reject) => {
     const child = spawn(gitLocation, ["cat-file", "--batch"], {
       cwd: args.repoRoot,

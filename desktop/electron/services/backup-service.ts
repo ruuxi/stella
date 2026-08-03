@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import { setupEnvironment } from "dugite";
+import { setupGitEnvironment } from "../../../runtime/git-environment.js";
 import type { RuntimeHealthSnapshot } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
@@ -253,7 +253,7 @@ const readJsonFile = async <T>(filePath: string): Promise<T | null> => {
 };
 
 const runGit = async (repoRoot: string, args: string[]): Promise<Buffer> => {
-  const { env, gitLocation } = setupEnvironment({});
+  const { env, gitLocation } = setupGitEnvironment();
   const { stdout } = await execFileAsync(gitLocation, ["-C", repoRoot, ...args], {
     env,
     encoding: "buffer",
@@ -1137,7 +1137,7 @@ export class BackupService {
     }
 
     const bundlePath = path.join(args.tempRoot, "repo.bundle");
-    const { env, gitLocation } = setupEnvironment({});
+    const { env, gitLocation } = setupGitEnvironment();
     await execFileAsync(
       gitLocation,
       ["-C", this.deps.stellaAppDir, "bundle", "create", bundlePath, "--all"],
