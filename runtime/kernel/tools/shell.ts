@@ -21,6 +21,7 @@ import type {
   ToolUpdateCallback,
 } from "./types.js";
 import { truncate } from "./utils.js";
+import { getTerminalRecoveryHint } from "./terminal-hints.js";
 import {
   HeadTailOutputBuffer,
   RAW_SHELL_OUTPUT_MAX_BYTES,
@@ -1615,6 +1616,14 @@ const buildExecToolPayload = (
     cwd: record.cwd,
     command: record.command,
   };
+  if (!record.running && record.exitCode !== 0) {
+    const hint = getTerminalRecoveryHint({
+      command: record.command,
+      exitCode: record.exitCode,
+      output: drained.text,
+    });
+    if (hint) payload.hint = hint;
+  }
   return payload;
 };
 

@@ -349,6 +349,111 @@ const seekSequence = (
   return -1;
 };
 
+const findExactSequenceLocations = (
+  lines: string[],
+  pattern: string[],
+): number[] => {
+  if (pattern.length === 0 || pattern.length > lines.length) return [];
+  const locations: number[] = [];
+  const upper = lines.length - pattern.length;
+  for (let index = 0; index <= upper; index += 1) {
+    if (matchExact(lines, pattern, index)) locations.push(index);
+  }
+  return locations;
+};
+
+const isAlreadyAppliedHunk = (
+  fileLines: string[],
+  oldLines: string[],
+  newLines: string[],
+): boolean => {
+  const newText = newLines.join("\n");
+  if (newText.length < 8 || newLines.length === 0) return false;
+  return (
+    findExactSequenceLocations(fileLines, newLines).length > 0 &&
+    findExactSequenceLocations(fileLines, oldLines).length === 0
+  );
+};
+
+const visualizeLeadingWhitespace = (line: string): string => {
+  const leading = line.match(/^[\t ]*/)?.[0] ?? "";
+  const visible = leading.replaceAll("\t", "→").replaceAll(" ", "·");
+  return `${visible}${line.slice(leading.length)}`;
+};
+
+const formatLineSnippet = (line: string): string => {
+  const compact = line.trim().replace(/\s+/g, " ");
+  return compact.length > 100 ? `${compact.slice(0, 100)}…` : compact;
+};
+
+const buildPatchMissHint = (
+  fileLines: string[],
+  expectedLines: string[],
+): string => {
+  const anchors = expectedLines
+    .map((line) => ({ line, normalized: fuzzyNormalize(line) }))
+    .filter((entry) => entry.normalized.length >= 4)
+    .sort((left, right) => right.normalized.length - left.normalized.length);
+  const fallbackAnchor = anchors[0];
+  if (!fallbackAnchor) {
+    return "Re-read the file and retry with a non-empty, unique context anchor.";
+  }
+
+  let anchor = fallbackAnchor;
+  let locations: number[] = [];
+  for (const candidate of anchors) {
+    const candidateLocations: number[] = [];
+    for (let index = 0; index < fileLines.length; index += 1) {
+      if (fuzzyNormalize(fileLines[index] ?? "") === candidate.normalized) {
+        candidateLocations.push(index);
+      }
+    }
+    if (candidateLocations.length > 0) {
+      anchor = candidate;
+      locations = candidateLocations;
+      break;
+    }
+  }
+
+  const parts: string[] = [];
+  if (locations.length > 0) {
+    const shown = locations
+      .slice(0, 5)
+      .map(
+        (index) =>
+          `L${index + 1}: ${formatLineSnippet(fileLines[index] ?? "")}`,
+      );
+    parts.push(
+      `Matching anchor location${locations.length === 1 ? "" : "s"}:\n${shown.join("\n")}` +
+        (locations.length > shown.length
+          ? `\n… and ${locations.length - shown.length} more.`
+          : ""),
+    );
+  }
+
+  const whitespaceLocation = locations.find(
+    (index) =>
+      (fileLines[index] ?? "").trim() === anchor.line.trim() &&
+      fileLines[index] !== anchor.line,
+  );
+  if (whitespaceLocation !== undefined) {
+    parts.push(
+      [
+        "Leading whitespace differs:",
+        `file has: ${visualizeLeadingWhitespace(fileLines[whitespaceLocation] ?? "")}`,
+        `you sent: ${visualizeLeadingWhitespace(anchor.line)}`,
+      ].join("\n"),
+    );
+  }
+
+  parts.push(
+    locations.length > 0
+      ? "Re-read around those lines and retry with the exact surrounding context."
+      : "No matching anchor line was found. Re-read the file and retry with current context.",
+  );
+  return parts.join("\n\n");
+};
+
 // ----------------------------------------------------------------------------
 // File operations
 // ----------------------------------------------------------------------------
@@ -363,12 +468,18 @@ const newLinesOf = (hunk: Hunk): string[] =>
 
 type Replacement = { startIdx: number; oldLen: number; newLines: string[] };
 
+type ReplacementPlan = {
+  replacements: Replacement[];
+  alreadyAppliedHunks: number;
+};
+
 const computeReplacements = (
   fileLines: string[],
   hunks: Hunk[],
   filePath: string,
-): Replacement[] => {
+): ReplacementPlan => {
   const replacements: Replacement[] = [];
+  let alreadyAppliedHunks = 0;
   let cursor = 0;
 
   for (const hunk of hunks) {
@@ -379,7 +490,7 @@ const computeReplacements = (
       const headerIdx = seekSequence(fileLines, [hunk.header], cursor, false);
       if (headerIdx === -1) {
         throw new Error(
-          `apply_patch: failed to find context '${hunk.header}' in ${filePath}.`,
+          `apply_patch: failed to find context '${hunk.header}' in ${filePath}.\n\n${buildPatchMissHint(fileLines, [hunk.header])}`,
         );
       }
       cursor = headerIdx + 1;
@@ -430,8 +541,12 @@ const computeReplacements = (
     }
 
     if (found === -1) {
+      if (isAlreadyAppliedHunk(fileLines, pattern, replacementLines)) {
+        alreadyAppliedHunks += 1;
+        continue;
+      }
       throw new Error(
-        `apply_patch: failed to find expected lines in ${filePath}:\n${oldLines.join("\n")}`,
+        `apply_patch: failed to find expected lines in ${filePath}:\n${oldLines.join("\n")}\n\n${buildPatchMissHint(fileLines, oldLines)}`,
       );
     }
     replacements.push({
@@ -442,7 +557,7 @@ const computeReplacements = (
     cursor = found + pattern.length;
   }
 
-  return replacements;
+  return { replacements, alreadyAppliedHunks };
 };
 
 const applyReplacements = (
@@ -482,8 +597,15 @@ const applyUpdate = async (
       fileLines = fileLines.slice(0, -1);
     }
 
-    const replacements = computeReplacements(fileLines, op.hunks, op.path);
-    fileLines = applyReplacements(fileLines, replacements);
+    const plan = computeReplacements(fileLines, op.hunks, op.path);
+    if (plan.replacements.length === 0 && plan.alreadyAppliedHunks > 0) {
+      return {
+        kind: "noop" as const,
+        path: op.path,
+        note: `Patch already applied to ${op.path}; no write was needed.`,
+      };
+    }
+    fileLines = applyReplacements(fileLines, plan.replacements);
 
     let newContent = fileLines.join("\n");
     if (trailingNewline) newContent += "\n";
@@ -612,7 +734,12 @@ export const handleApplyPatch = async (
       );
       if (scopeError) return scopeError;
     }
-    const results: Array<{ kind: string; path: string; movedTo?: string }> = [];
+    const results: Array<{
+      kind: string;
+      path: string;
+      movedTo?: string;
+      note?: string;
+    }> = [];
     for (const op of ops) {
       switch (op.kind) {
         case "add":

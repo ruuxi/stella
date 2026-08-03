@@ -17,6 +17,7 @@ import type {
 } from "./types.js";
 import type { SelfModCommitAppliedPayload } from "../../contracts/local-chat.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import { resetSkillReadDedup } from "../tools/skill-read-dedup.js";
 
 const logger = createRuntimeLogger("agent-runtime.completion");
 
@@ -542,6 +543,7 @@ export const finalizeOrchestratorSuccess = async (args: {
             : {}),
         });
         if (compacted) {
+          resetSkillReadDedup(args.threadKey);
           args.opts.orchestratorSession?.notifyCompacted();
         }
       },
@@ -655,6 +657,7 @@ export const finalizeSubagentSuccess = async (args: {
           messageCount,
         });
         if (compacted) {
+          resetSkillReadDedup(args.threadKey);
           args.opts.subagentSession?.notifyCompacted();
         }
       },

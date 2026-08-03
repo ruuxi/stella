@@ -183,7 +183,7 @@ const renderInlineSkillCatalogBlock = (
 
   lines.push("## How to use skills");
   lines.push(
-    "- If a task matches a skill description, open its `SKILL.md` first.",
+    "- If a task matches a skill description, open its `SKILL.md` first with `Read`.",
   );
   lines.push(
     '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun ~/.stella/skills/<name>/scripts/program.ts" })`.',
@@ -204,8 +204,8 @@ const renderPlaceholderSkillCatalogBlock = (totalSkills: number): string =>
     `- The full skill catalog is omitted because it is over the inline limit (${INLINE_SKILL_CATALOG_THRESHOLD}).`,
     "- Automatic Explore fallback may surface the relevant skill paths before a General task starts.",
     "## How to use skills",
-    "- If automatic findings point to a skill, open its `SKILL.md` first.",
-    '- If you already know a likely skill path, inspect it directly with `exec_command`, for example `exec_command({ cmd: "sed -n \'1,220p\' ~/.stella/skills/<name>/SKILL.md" })`.',
+    "- If automatic findings point to a skill, open its `SKILL.md` first with `Read`.",
+    '- If you already know a likely skill path, load it directly with `Read`, for example `Read({ file_path: "~/.stella/skills/<name>/SKILL.md" })`.',
     '- If a skill tells you to run `scripts/program.ts`, do it as a plain shell command with `exec_command`, e.g. `exec_command({ cmd: "bun ~/.stella/skills/<name>/scripts/program.ts" })`.',
     "</skills>",
   ].join("\n");

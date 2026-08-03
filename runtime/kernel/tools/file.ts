@@ -22,6 +22,11 @@ import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
 import { withFileWriteLock, writeFileWithNulGuard } from "./file-write-lock.js";
 import { resolveImageMimeType } from "../shared/image-mime.js";
+import {
+  getSkillReadDedupStub,
+  isSkillInstructionPath,
+  recordFullSkillRead,
+} from "./skill-read-dedup.js";
 
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
   const relative = path.relative(root, candidate);
@@ -130,7 +135,7 @@ export const replaceTextInFile = async (
     replaceAll?: boolean;
   },
   context?: ToolContext,
-): Promise<{ path: string; replacements: number }> => {
+): Promise<{ path: string; replacements: number; noChange?: boolean }> => {
   const filePath = resolveFilePath(args.filePath, context);
   const replaceAll = Boolean(args.replaceAll ?? false);
 
@@ -155,6 +160,48 @@ export const replaceTextInFile = async (
     const normalizedOld = normalizeToLF(args.oldString);
     const normalizedNew = normalizeToLF(args.newString);
 
+    if (!normalizedOld.trim()) {
+      throw new Error(
+        "old_string is empty or only whitespace; provide non-blank text to match.",
+      );
+    }
+
+    const editAlreadyApplied =
+      normalizedNew.length >= 8 &&
+      normalizedContent.includes(normalizedNew) &&
+      (normalizedOld === normalizedNew ||
+        !normalizedContent.includes(normalizedOld));
+    if (editAlreadyApplied) {
+      return { path: filePath, replacements: 0, noChange: true };
+    }
+
+    const exactLocations: number[] = [];
+    let exactCursor = 0;
+    while (exactCursor <= normalizedContent.length - normalizedOld.length) {
+      const index = normalizedContent.indexOf(normalizedOld, exactCursor);
+      if (index === -1) break;
+      exactLocations.push(index);
+      exactCursor = index + Math.max(1, normalizedOld.length);
+    }
+
+    if (!replaceAll && exactLocations.length > 1) {
+      const lineAt = (index: number) =>
+        normalizedContent.slice(0, index).split("\n").length;
+      const snippets = exactLocations.slice(0, 5).map((index) => {
+        const lineNumber = lineAt(index);
+        const line = normalizedContent.split("\n")[lineNumber - 1] ?? "";
+        const snippet = line.trim().replace(/\s+/g, " ").slice(0, 100);
+        return `L${lineNumber}: ${snippet}`;
+      });
+      throw new Error(
+        `old_string matches ${exactLocations.length} locations. Add surrounding context or set replace_all=true.\nMatches:\n${snippets.join("\n")}${
+          exactLocations.length > snippets.length
+            ? `\n… and ${exactLocations.length - snippets.length} more.`
+            : ""
+        }`,
+      );
+    }
+
     if (replaceAll) {
       const occurrences = normalizedContent.split(normalizedOld).length - 1;
       if (occurrences === 0) {
@@ -170,7 +217,48 @@ export const replaceTextInFile = async (
 
     const matchResult = fuzzyFindText(normalizedContent, normalizedOld);
     if (!matchResult.found) {
-      throw new Error("old_string not found in file.");
+      const oldAnchor = normalizedOld
+        .split("\n")
+        .filter((line) => line.trim().length >= 4)
+        .sort((left, right) => right.trim().length - left.trim().length)[0];
+      const lines = normalizedContent.split("\n");
+      const matchingLines = oldAnchor
+        ? lines
+            .map((line, index) => ({ line, index }))
+            .filter(({ line }) => line.trim() === oldAnchor.trim())
+        : [];
+      const hintParts: string[] = [];
+      if (matchingLines.length > 0) {
+        hintParts.push(
+          `Matching anchor location${matchingLines.length === 1 ? "" : "s"}:\n${matchingLines
+            .slice(0, 5)
+            .map(
+              ({ line, index }) =>
+                `L${index + 1}: ${line.trim().replace(/\s+/g, " ").slice(0, 100)}`,
+            )
+            .join("\n")}`,
+        );
+        const whitespaceMatch = matchingLines.find(
+          ({ line }) => line !== oldAnchor,
+        );
+        if (whitespaceMatch) {
+          const visualize = (line: string) => {
+            const leading = line.match(/^[\t ]*/)?.[0] ?? "";
+            return `${leading.replaceAll("\t", "→").replaceAll(" ", "·")}${line.slice(leading.length)}`;
+          };
+          hintParts.push(
+            `Leading whitespace differs:\nfile has: ${visualize(whitespaceMatch.line)}\nyou sent: ${visualize(oldAnchor)}`,
+          );
+        }
+      }
+      hintParts.push(
+        matchingLines.length > 0
+          ? "Re-read around those lines and retry with unique surrounding context."
+          : "Re-read the file and retry with current, unique text.",
+      );
+      throw new Error(
+        `old_string not found in file.\n\n${hintParts.join("\n\n")}`,
+      );
     }
 
     const baseContent = matchResult.contentForReplacement;
@@ -223,6 +311,19 @@ export const handleRead = async (
       };
     }
 
+    const skillSignature = `${stat.mtimeMs}:${stat.size}`;
+    const skillDedupStub = getSkillReadDedupStub({
+      filePath,
+      signature: skillSignature,
+      ...(context ? { context } : {}),
+    });
+    if (skillDedupStub) {
+      return {
+        result: skillDedupStub,
+        details: { path: filePath, unchanged: true, dedup: true },
+      };
+    }
+
     const { path: textFilePath, content } = await readTextFile(
       args.file_path,
       context,
@@ -234,6 +335,20 @@ export const handleRead = async (
       offset,
       limit,
     );
+    const totalLines = content.split("\n").length;
+    const startLine = Math.max(1, Number.isFinite(offset) ? offset : 1);
+    const safeLimit = Math.max(0, Number.isFinite(limit) ? limit : 2000);
+    const servedEveryLine =
+      startLine === 1 &&
+      safeLimit >= totalLines &&
+      !content.split("\n").some((line) => line.length > 2000);
+    if (isSkillInstructionPath(textFilePath) && servedEveryLine) {
+      recordFullSkillRead({
+        filePath: textFilePath,
+        signature: skillSignature,
+        ...(context ? { context } : {}),
+      });
+    }
     return {
       result: `File: ${textFilePath}\n${formatted.header}\n\n${formatted.body}`,
     };
@@ -268,7 +383,11 @@ export const handleEdit = async (
   context?: ToolContext,
 ): Promise<ToolResult> => {
   try {
-    const { path: filePath, replacements } = await replaceTextInFile(
+    const {
+      path: filePath,
+      replacements,
+      noChange,
+    } = await replaceTextInFile(
       {
         filePath: args.file_path,
         oldString: String(args.old_string ?? ""),
@@ -277,6 +396,11 @@ export const handleEdit = async (
       },
       context,
     );
+    if (noChange) {
+      return {
+        result: `Edit already applied to ${filePath}; no write was needed.`,
+      };
+    }
     return {
       result: `Replaced ${replacements} occurrence(s) in ${filePath}`,
       fileChanges: [fileChange(filePath, { type: "update" })],

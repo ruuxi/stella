@@ -10,13 +10,20 @@ import {
   handleExecCommand,
   handleWriteStdin,
 } from "../../../../../runtime/kernel/tools/shell.js";
-import { handleRead } from "../../../../../runtime/kernel/tools/file.js";
+import {
+  handleEdit,
+  handleRead,
+} from "../../../../../runtime/kernel/tools/file.js";
+import { resetSkillReadDedup } from "../../../../../runtime/kernel/tools/skill-read-dedup.js";
 import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createAsyncTempDirTracker();
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 
-afterEach(() => tempDirs.cleanup());
+afterEach(async () => {
+  resetSkillReadDedup();
+  await tempDirs.cleanup();
+});
 
 const createTempDir = async () => {
   return await tempDirs.create("stella-general-tools-");
@@ -57,6 +64,31 @@ describe("general agent tools", () => {
       running: false,
       exit_code: 0,
       output: "ready",
+    });
+  });
+
+  it("exec_command adds one recovery hint for a known terminal failure", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "stella_definitely_missing_command",
+        yield_time_ms: 500,
+      },
+      {
+        conversationId: "c-hint",
+        deviceId: "d-hint",
+        requestId: "r-hint",
+        stellaAppDir: root,
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toMatchObject({
+      exit_code: expect.any(Number),
+      hint: expect.stringContaining("was not found"),
     });
   });
 
@@ -472,6 +504,75 @@ EOF`,
     );
   });
 
+  it("apply_patch treats an already-applied hunk as a successful no-op", async () => {
+    const root = await createTempDir();
+    const filePath = path.join(root, "already.txt");
+    await writeFile(filePath, "alpha\ndelta-value\n", "utf-8");
+
+    const result = await handleApplyPatch({
+      input: `*** Begin Patch
+*** Update File: ${filePath}
+@@
+-gamma-value
++delta-value
+*** End Patch`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toMatchObject({
+      results: [
+        expect.objectContaining({ kind: "noop", note: expect.any(String) }),
+      ],
+    });
+    expect(result.fileChanges).toBeUndefined();
+    expect(await readFile(filePath, "utf-8")).toBe("alpha\ndelta-value\n");
+  });
+
+  it("apply_patch miss errors point to matching anchors and visible whitespace", async () => {
+    const root = await createTempDir();
+    const filePath = path.join(root, "diagnose.txt");
+    await writeFile(filePath, "start\n\tshared-anchor\nend\n", "utf-8");
+
+    const result = await handleApplyPatch({
+      input: `*** Begin Patch
+*** Update File: ${filePath}
+@@
+- shared-anchor
+-missing-neighbor
++replacement
+*** End Patch`,
+    });
+
+    expect(result.error).toContain("Matching anchor location");
+    expect(result.error).toContain("L2: shared-anchor");
+    expect(result.error).toContain("Leading whitespace differs");
+    expect(result.error).toContain("file has: →shared-anchor");
+  });
+
+  it("Edit reports ambiguous locations and already-applied replacements", async () => {
+    const root = await createTempDir();
+    const filePath = path.join(root, "edit.txt");
+    await writeFile(filePath, "same-value\nother\nsame-value\n", "utf-8");
+
+    const ambiguous = await handleEdit({
+      file_path: filePath,
+      old_string: "same-value",
+      new_string: "new-value",
+    });
+    expect(ambiguous.error).toContain("matches 2 locations");
+    expect(ambiguous.error).toContain("L1: same-value");
+    expect(ambiguous.error).toContain("L3: same-value");
+
+    const alreadyApplied = await handleEdit({
+      file_path: filePath,
+      old_string: "missing-old-value",
+      new_string: "same-value",
+    });
+    expect(alreadyApplied.error).toBeUndefined();
+    expect(alreadyApplied.result).toContain("already applied");
+    expect(alreadyApplied.fileChanges).toBeUndefined();
+  });
+
   it("Read returns an attach marker for local images", async () => {
     const root = await createTempDir();
     const imagePath = path.join(root, "snap.png");
@@ -491,6 +592,60 @@ EOF`,
     expect(result.result).toBe(
       `[stella-attach-image] inline=image/png ${imagePath}`,
     );
+  });
+
+  it("Read deduplicates unchanged fully-loaded SKILL.md content", async () => {
+    const root = await createTempDir();
+    const skillPath = path.join(root, "skills", "demo", "SKILL.md");
+    await mkdir(path.dirname(skillPath), { recursive: true });
+    await writeFile(skillPath, "# Demo\n\nFull instructions.\n", "utf-8");
+    const context = {
+      conversationId: "skill-conversation",
+      deviceId: "skill-device",
+      requestId: "skill-read-1",
+      agentType: "general",
+      agentId: "skill-thread",
+    };
+
+    const first = await handleRead({ file_path: skillPath }, context);
+    const second = await handleRead(
+      { file_path: skillPath },
+      { ...context, requestId: "skill-read-2" },
+    );
+
+    expect(first.result).toContain("Full instructions");
+    expect(second.result).toContain("Skill content unchanged");
+    expect(second.details).toMatchObject({ unchanged: true, dedup: true });
+  });
+
+  it("Read serves SKILL.md fully again after a compaction reset or disk change", async () => {
+    const root = await createTempDir();
+    const skillPath = path.join(root, "skills", "demo", "SKILL.md");
+    await mkdir(path.dirname(skillPath), { recursive: true });
+    await writeFile(skillPath, "# Demo\n\nVersion one.\n", "utf-8");
+    const context = {
+      conversationId: "skill-conversation-reset",
+      deviceId: "skill-device",
+      requestId: "skill-read-1",
+      agentType: "general",
+      agentId: "skill-thread-reset",
+    };
+
+    await handleRead({ file_path: skillPath }, context);
+    resetSkillReadDedup("skill-thread-reset");
+    const afterReset = await handleRead(
+      { file_path: skillPath },
+      { ...context, requestId: "skill-read-2" },
+    );
+    expect(afterReset.result).toContain("Version one");
+
+    await writeFile(skillPath, "# Demo\n\nVersion two changed.\n", "utf-8");
+    const afterChange = await handleRead(
+      { file_path: skillPath },
+      { ...context, requestId: "skill-read-3" },
+    );
+    expect(afterChange.result).toContain("Version two changed");
+    expect(afterChange.result).not.toContain("Skill content unchanged");
   });
 
   it("Read labels images from bytes when extension is wrong", async () => {
