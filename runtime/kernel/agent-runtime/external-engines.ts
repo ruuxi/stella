@@ -182,9 +182,9 @@ export const persistExternalAssistantPreamble = (args: {
   });
 };
 
-/** Collect external-engine stream fragments until a tool boundary proves the
- * text is a complete authored interim message. Final-answer and interrupted
- * buffers are discarded by callers, so neither can be persisted as progress. */
+/** Collect external-engine stream fragments until a durable boundary. A tool
+ * boundary stores an authored interim message; a failed or interrupted turn
+ * stores the text accumulated before termination instead of losing it. */
 export const createExternalAssistantUpdateBuffer = (args: {
   store: BaseRunOptions["store"];
   threadKey: string;
@@ -203,6 +203,13 @@ export const createExternalAssistantUpdateBuffer = (args: {
       if (!preamble) return "";
       persistExternalAssistantPreamble({ ...args, preamble });
       return preamble;
+    },
+    flushOnTermination() {
+      const partial = text.trim();
+      text = "";
+      if (!partial) return "";
+      persistExternalAssistantPreamble({ ...args, preamble: partial });
+      return partial;
     },
     discard(): void {
       text = "";
@@ -1415,6 +1422,9 @@ const runClaudeHostedTurn = async (args: {
       });
     },
     executeTool: executeClaudeTool,
+  }).catch((error) => {
+    assistantUpdateBuffer.flushOnTermination();
+    throw error;
   });
   // The remaining buffer is this turn's final answer. It is persisted exactly
   // once below, never carried into a queued turn's next tool preamble.
@@ -1527,6 +1537,9 @@ const runClaudeHostedTurn = async (args: {
       onNativeToolStart: flushPreambleBeforeTool,
       executeTool: executeClaudeTool,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+    }).catch((error) => {
+      assistantUpdateBuffer.flushOnTermination();
+      throw error;
     });
     assistantUpdateBuffer.discard();
     collectTurnFileChanges(finalResult.fileChanges);
@@ -1872,6 +1885,9 @@ const runCodexHostedTurn = async (args: {
     executeTool: executeCodexTool,
     reuseAppServer: true,
     streamFinalAnswer: args.session.kind === "orchestrator",
+  }).catch((error) => {
+    assistantUpdateBuffer.flushOnTermination();
+    throw error;
   });
   assistantUpdateBuffer.discard();
   const collectedFileChanges: NonNullable<SubagentRunResult["fileChanges"]> =
@@ -1987,6 +2003,9 @@ const runCodexHostedTurn = async (args: {
       executeTool: executeCodexTool,
       reuseAppServer: true,
       streamFinalAnswer: args.session.kind === "orchestrator",
+    }).catch((error) => {
+      assistantUpdateBuffer.flushOnTermination();
+      throw error;
     });
     assistantUpdateBuffer.discard();
     collectTurnFileChanges(finalResult.fileChanges);

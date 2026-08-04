@@ -526,7 +526,13 @@ export const subscribeRuntimeAgentEvents = ({
     if (event.type === "message_end") {
       if (threadStore && threadKey) {
         const payload = toPersistedThreadPayload(event.message);
-        if (payload && payload.role !== "user") {
+        // Root user turns already live in the canonical chat message table.
+        // Subagent instructions do not, so retain them in the exact durable
+        // thread alongside assistant/tool messages.
+        if (
+          payload &&
+          (payload.role !== "user" || agentType !== "orchestrator")
+        ) {
           persistThreadPayloadMessage(threadStore, {
             threadKey,
             payload,

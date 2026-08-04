@@ -4687,6 +4687,8 @@ export class SessionStore {
         conversation_id,
         agent_type,
         description,
+        prompt,
+        prompt_created_at,
         agent_depth,
         max_agent_depth,
         parent_agent_id,
@@ -4702,11 +4704,13 @@ export class SessionStore {
         root_run_id,
         attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
         description = excluded.description,
+        prompt = COALESCE(runtime_agents.prompt, excluded.prompt),
+        prompt_created_at = COALESCE(runtime_agents.prompt_created_at, excluded.prompt_created_at),
         agent_depth = excluded.agent_depth,
         max_agent_depth = excluded.max_agent_depth,
         parent_agent_id = excluded.parent_agent_id,
@@ -4728,6 +4732,8 @@ export class SessionStore {
         record.conversationId,
         record.agentType,
         record.description,
+        Reflect.get(record, "prompt") ?? null,
+        Reflect.get(record, "promptCreatedAt") ?? null,
         record.agentDepth,
         record.maxAgentDepth ?? null,
         record.parentAgentId ?? null,
@@ -5071,6 +5077,8 @@ export class SessionStore {
         conversation_id,
         agent_type,
         description,
+        prompt,
+        prompt_created_at,
         agent_depth,
         max_agent_depth,
         parent_agent_id,
@@ -5124,28 +5132,41 @@ export class SessionStore {
     const modelConfigSnapshot = parseJsonValue<
       PersistedAgentRecord["modelConfigSnapshot"]
     >(row.model_config_json);
-    return {
-      threadId: row.thread_id,
-      conversationId: row.conversation_id,
-      agentType: normalizeRetiredAgentType(row.agent_type),
-      description: row.description,
-      agentDepth: row.agent_depth,
-      ...(row.max_agent_depth == null
-        ? {}
-        : { maxAgentDepth: row.max_agent_depth }),
-      ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-      ...(descendantBoundaryState ? { descendantBoundaryState } : {}),
-      ...(selfModMetadata ? { selfModMetadata } : {}),
-      ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
-      status: row.status,
-      attemptGeneration: row.attempt_generation,
-      ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
-      startedAt: row.started_at,
-      completedAt: row.completed_at,
-      ...(row.result ? { result: row.result } : {}),
-      ...(row.error ? { error: row.error } : {}),
-      updatedAt: row.updated_at,
-    };
+    const prompt = Reflect.get(row, "prompt");
+    const promptCreatedAt = Reflect.get(row, "prompt_created_at");
+    return Object.assign(
+      {
+        threadId: row.thread_id,
+        conversationId: row.conversation_id,
+        agentType: normalizeRetiredAgentType(row.agent_type),
+        description: row.description,
+        agentDepth: row.agent_depth,
+        ...(row.max_agent_depth == null
+          ? {}
+          : { maxAgentDepth: row.max_agent_depth }),
+        ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+        ...(descendantBoundaryState ? { descendantBoundaryState } : {}),
+        ...(selfModMetadata ? { selfModMetadata } : {}),
+        ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
+        status: row.status,
+        attemptGeneration: row.attempt_generation,
+        ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        ...(row.result ? { result: row.result } : {}),
+        ...(row.error ? { error: row.error } : {}),
+        updatedAt: row.updated_at,
+      },
+      typeof prompt === "string" && prompt
+        ? {
+            prompt,
+            promptCreatedAt:
+              typeof promptCreatedAt === "number"
+                ? promptCreatedAt
+                : row.started_at,
+          }
+        : {},
+    );
   }
 
   private claudeNativeThreadId(args: {

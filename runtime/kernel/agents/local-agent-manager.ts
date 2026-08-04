@@ -1076,35 +1076,45 @@ export class LocalAgentManager implements AgentToolApi {
               : {}),
           }
         : undefined;
-    this.opts.saveAgentRecord?.({
-      threadId: task.threadId,
-      conversationId: task.conversationId,
-      agentType: task.agentType,
-      description: task.description,
-      agentDepth: task.agentDepth,
-      ...(typeof task.maxAgentDepth === "number"
-        ? { maxAgentDepth: task.maxAgentDepth }
-        : {}),
-      ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
-      ...(boundaryState ? { descendantBoundaryState: boundaryState } : {}),
-      ...(task.selfModMetadata
-        ? { selfModMetadata: task.selfModMetadata }
-        : {}),
-      ...(task.modelConfigSnapshot
-        ? { modelConfigSnapshot: task.modelConfigSnapshot }
-        : {}),
-      status:
-        task.status === "pending" || isParked || completionPending
-          ? "running"
-          : task.status,
-      attemptGeneration: task.attemptGeneration,
-      ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
-      startedAt: task.startedAt,
-      completedAt: isParked || completionPending ? null : task.completedAt,
-      ...(typeof task.result === "string" ? { result: task.result } : {}),
-      ...(typeof task.error === "string" ? { error: task.error } : {}),
-      updatedAt: Date.now(),
-    });
+    this.opts.saveAgentRecord?.(
+      Object.assign(
+        {
+          threadId: task.threadId,
+          conversationId: task.conversationId,
+          agentType: task.agentType,
+          description: task.description,
+          agentDepth: task.agentDepth,
+          ...(typeof task.maxAgentDepth === "number"
+            ? { maxAgentDepth: task.maxAgentDepth }
+            : {}),
+          ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
+          ...(boundaryState ? { descendantBoundaryState: boundaryState } : {}),
+          ...(task.selfModMetadata
+            ? { selfModMetadata: task.selfModMetadata }
+            : {}),
+          ...(task.modelConfigSnapshot
+            ? { modelConfigSnapshot: task.modelConfigSnapshot }
+            : {}),
+          status:
+            task.status === "pending" || isParked || completionPending
+              ? "running"
+              : task.status,
+          attemptGeneration: task.attemptGeneration,
+          ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
+          startedAt: task.startedAt,
+          completedAt: isParked || completionPending ? null : task.completedAt,
+          ...(typeof task.result === "string" ? { result: task.result } : {}),
+          ...(typeof task.error === "string" ? { error: task.error } : {}),
+          updatedAt: Date.now(),
+        },
+        Reflect.get(task, "initialPrompt")
+          ? {
+              prompt: Reflect.get(task, "initialPrompt"),
+              promptCreatedAt: Reflect.get(task, "promptCreatedAt"),
+            }
+          : {},
+      ),
+    );
   }
 
   private buildTaskSnapshot(task: RuntimeAgentRecord): AgentToolSnapshot {
@@ -1351,7 +1361,7 @@ export class LocalAgentManager implements AgentToolApi {
     prompt: string,
     statusText = prompt,
   ): RuntimeAgentRecord {
-    return {
+    const task: RuntimeAgentRecord = {
       threadId: record.threadId,
       conversationId: record.conversationId,
       description: record.description,
@@ -1392,6 +1402,13 @@ export class LocalAgentManager implements AgentToolApi {
         ? Math.max(0, Math.floor(record.attemptGeneration))
         : 0,
     };
+    if (Reflect.get(record, "prompt")) {
+      Object.assign(task, {
+        initialPrompt: Reflect.get(record, "prompt"),
+        promptCreatedAt: Reflect.get(record, "promptCreatedAt"),
+      });
+    }
+    return task;
   }
 
   private enqueueTask(task: RuntimeAgentRecord, prioritize = false): void {
@@ -2143,6 +2160,7 @@ export class LocalAgentManager implements AgentToolApi {
     const threadId =
       resolvedThread?.threadId ?? request.threadId ?? `thread-${++this.nextId}`;
 
+    const createdAt = Date.now();
     const task: RuntimeAgentRecord = {
       threadId,
       conversationId: request.conversationId,
@@ -2167,7 +2185,7 @@ export class LocalAgentManager implements AgentToolApi {
           ? Math.max(1, Math.floor(request.maxAgentDepth))
           : undefined,
       status: "pending",
-      startedAt: Date.now(),
+      startedAt: createdAt,
       completedAt: null,
       controller,
       storageMode: request.storageMode,
@@ -2189,6 +2207,10 @@ export class LocalAgentManager implements AgentToolApi {
       terminalEventEmitted: false,
       attemptGeneration: 0,
     };
+    Object.assign(task, {
+      initialPrompt: request.prompt,
+      promptCreatedAt: createdAt,
+    });
     logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
       threadId,
       conversationId: request.conversationId,
