@@ -139,9 +139,16 @@ describe("orchestrator direct tool surface", () => {
     const orchestrator = agents.find((agent) => agent.id === "orchestrator");
 
     expect(orchestrator?.toolsAllowlist).toEqual(
-      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
+      expect.arrayContaining([
+        "exec_command",
+        "spawn_agent",
+        "send_input",
+        "pause_agent",
+      ]),
     );
     expect(orchestrator?.toolsAllowlist).not.toContain("spawn_manager");
+    expect(orchestrator?.toolsAllowlist).not.toContain("write_stdin");
+    expect(orchestrator?.toolsAllowlist).not.toContain("node_repl");
     expect(orchestrator?.maxAgentDepth).toBe(2);
   });
 
@@ -193,8 +200,15 @@ describe("orchestrator direct tool surface", () => {
       agents.find((agent) => agent.id === "orchestrator")?.systemPrompt,
     ).toBe("My customized orchestrator prompt.");
     expect(advertisedToolNames("orchestrator")).toEqual(
-      expect.arrayContaining(["spawn_agent", "send_input", "pause_agent"]),
+      expect.arrayContaining([
+        "exec_command",
+        "spawn_agent",
+        "send_input",
+        "pause_agent",
+      ]),
     );
+    expect(advertisedToolNames("orchestrator")).not.toContain("write_stdin");
+    expect(advertisedToolNames("orchestrator")).not.toContain("node_repl");
     // The customized home body is kept, but its stale/overly broad capability
     // frontmatter is replaced wholesale by the shipped metadata: General keeps
     // the real delegation tools, loses tools that no longer exist, and its
@@ -368,6 +382,8 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("DisplayGuidelines")).toBe(false);
     expect(orchestratorTools.has("image_gen")).toBe(true);
     expect(orchestratorTools.has("web")).toBe(true);
+    expect(orchestratorTools.has("exec_command")).toBe(true);
+    expect(orchestratorTools.has("node_repl")).toBe(false);
     expect(orchestratorTools.has("tool_search")).toBe(true);
     expect(orchestratorTools.has("linq_send_message")).toBe(false);
     expect(orchestratorTools.has("Memory")).toBe(false);
