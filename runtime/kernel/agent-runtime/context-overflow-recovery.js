@@ -16,6 +16,26 @@ const generatedContent = (message) =>
     return true;
   }) ?? false;
 
+const recoveryProgressMarker = (messages) => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message?.role === "assistant" &&
+      (message.stopReason === "error" || message.stopReason === "length") &&
+      !generatedContent(message)
+    ) {
+      continue;
+    }
+    return [
+      index,
+      message?.role ?? "unknown",
+      message?.timestamp ?? 0,
+      message?.toolCallId ?? "",
+    ].join(":");
+  }
+  return "empty";
+};
+
 const isSafePreGenerationOverflow = (execution, agent, contextWindow) => {
   if (!execution?.errorMessage) return false;
   const preflightRejected = execution.errorMessage.includes(
@@ -88,9 +108,10 @@ const buildRecoverableHandoff = (args) => {
   });
 
   return [
-    "Automatic context-overflow recovery could not produce a safe compacted checkpoint; no provider retry or tool replay was attempted.",
+    "Automatic context-overflow recovery could not produce a safe compacted checkpoint; no further provider retry or tool replay was attempted.",
     `thread_id: ${args.threadKey}`,
     `model: ${args.resolvedLlm.model.provider}/${args.resolvedLlm.model.id}`,
+    ...(args.reason ? [`reason: ${args.reason}`] : []),
     "Recovery: resume in a fresh General thread using the durable thread and child records below as source of truth.",
     "",
     "Latest user instruction:",
@@ -133,6 +154,18 @@ export const recoverContextOverflow = async (args) => {
   const contextWindow = Number(args.resolvedLlm.model.contextWindow);
   if (!isSafePreGenerationOverflow(args.execution, args.agent, contextWindow)) {
     return { kind: "not-overflow" };
+  }
+
+  const progressMarker = recoveryProgressMarker(args.agent.state.messages);
+  if (
+    args.previousRecoveryProgressMarker !== undefined &&
+    args.previousRecoveryProgressMarker === progressMarker
+  ) {
+    return persistRecoverableHandoff({
+      ...args,
+      reason:
+        "the compacted retry overflowed again before any new model output or tool result",
+    });
   }
 
   const failedAssistant = args.agent.state.messages.at(-1);
@@ -189,33 +222,72 @@ export const recoverContextOverflow = async (args) => {
     return persistRecoverableHandoff(args);
   }
   args.agent.state.messages = refreshed;
-  return { kind: "compacted" };
+  return {
+    kind: "compacted",
+    progressMarker: recoveryProgressMarker(refreshed),
+  };
 };
 
 export const executeWithContextOverflowRecovery = async (args) => {
   let execution = await args.execute();
-  const overflowRecovery = await recoverContextOverflow({
-    execution,
-    agent: args.agent,
-    store: args.opts.store,
-    threadKey: args.threadKey,
-    conversationId: args.opts.conversationId,
-    resolvedLlm: args.opts.resolvedLlm,
-    compactionScheduler: args.opts.compactionScheduler,
-    opts: args.opts,
-    runId: args.runId,
-    session: args.session,
-  });
-  if (overflowRecovery.kind === "compacted") {
-    args.opts.callbacks?.onStatus?.(
-      args.runEvents.recordStatus(
-        "Context compacted before overflow; retrying once",
-        "compacting",
-      ),
-    );
-    execution = await args.execute(true);
-  } else if (overflowRecovery.kind === "handoff") {
-    execution = { finalText: overflowRecovery.text };
+  let previousRecoveryProgressMarker;
+  while (true) {
+    let overflowRecovery;
+    try {
+      overflowRecovery = await recoverContextOverflow({
+        execution,
+        agent: args.agent,
+        store: args.opts.store,
+        threadKey: args.threadKey,
+        conversationId: args.opts.conversationId,
+        resolvedLlm: args.opts.resolvedLlm,
+        compactionScheduler: args.opts.compactionScheduler,
+        opts: args.opts,
+        runId: args.runId,
+        session: args.session,
+        ...(previousRecoveryProgressMarker !== undefined
+          ? { previousRecoveryProgressMarker }
+          : {}),
+      });
+    } catch (error) {
+      overflowRecovery = persistRecoverableHandoff({
+        store: args.opts.store,
+        threadKey: args.threadKey,
+        conversationId: args.opts.conversationId,
+        resolvedLlm: args.opts.resolvedLlm,
+        runId: args.runId,
+        reason: `forced compaction failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+    if (overflowRecovery.kind === "compacted") {
+      previousRecoveryProgressMarker = overflowRecovery.progressMarker;
+      args.opts.callbacks?.onStatus?.(
+        args.runEvents.recordStatus(
+          "Context compacted before overflow; retrying once",
+          "compacting",
+        ),
+      );
+      try {
+        execution = await args.execute(true);
+      } catch (error) {
+        if (args.opts.abortSignal?.aborted) throw error;
+        const handoff = persistRecoverableHandoff({
+          store: args.opts.store,
+          threadKey: args.threadKey,
+          conversationId: args.opts.conversationId,
+          resolvedLlm: args.opts.resolvedLlm,
+          runId: args.runId,
+          reason: `the compacted retry could not start: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        execution = { finalText: handoff.text };
+        break;
+      }
+      continue;
+    }
+    if (overflowRecovery.kind === "handoff") {
+      execution = { finalText: overflowRecovery.text };
+    }
+    break;
   }
   return execution;
 };
