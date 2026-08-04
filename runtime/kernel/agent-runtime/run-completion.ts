@@ -302,7 +302,7 @@ type CompactableAgentState = {
  * the call site). Hooks that need a precise pre-compaction count should
  * read from the SQLite store directly via the threadKey.
  */
-const runCompactionWithHooks = async (args: {
+export const runCompactionWithHooks = async (args: {
   opts: Pick<
     OrchestratorRunOptions,
     | "agentType"

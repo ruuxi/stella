@@ -11,6 +11,8 @@ import {
 import { isOrchestratorAgentType } from "../../contracts/agent-runtime.js";
 import { formatAgentTerminalStateSystemReminder } from "../../contracts/system-reminders.js";
 import { readHomePrompt } from "../prompts/home-prompts.js";
+// @ts-expect-error JavaScript runtime module intentionally has no declarations.
+import { boundParentAgentReport } from "./agent-report-bounds.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -92,11 +94,7 @@ export const buildAgentEventPrompt = (
     return null;
   }
   if (event.type === "agent-completed" && event.result) {
-    // Relay the sub-agent's full final report to the orchestrator without a
-    // length cap. Truncating here silently drops the tail of the agent's
-    // end-of-task report (the "what changed / outcome / blockers" section),
-    // which makes the orchestrator relay false "done" summaries to the user.
-    lines.push(`result: ${event.result}`);
+    lines.push(`result: ${boundParentAgentReport(event.result, event.agentId)}`);
   }
   if (event.type === "agent-completed" && event.fileChanges?.length) {
     lines.push("explicit file changes:");

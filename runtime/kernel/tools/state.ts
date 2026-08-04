@@ -496,9 +496,10 @@ export const handleSpawnAgent = async (
       // errors the model can act on, not as runner-level crashes.
       return { error: (error as Error).message };
     }
-    const otherThreads = created.activeThreads
-      ? buildOtherThreadsResult(created.activeThreads, created.threadId)
-      : [];
+    const otherThreads =
+      context.agentType === AGENT_IDS.ORCHESTRATOR && created.activeThreads
+        ? buildOtherThreadsResult(created.activeThreads, created.threadId)
+        : [];
     return {
       result: {
         thread_id: created.threadId,
@@ -527,7 +528,10 @@ export const handleSpawnAgent = async (
     lastUsedAt: task.completedAt ?? task.startedAt,
     agentStatus: task.status,
   }));
-  const otherThreads = buildOtherThreadsResult(activeThreads, id);
+  const otherThreads =
+    context.agentType === AGENT_IDS.ORCHESTRATOR
+      ? buildOtherThreadsResult(activeThreads, id)
+      : [];
   return {
     result: {
       thread_id: id,

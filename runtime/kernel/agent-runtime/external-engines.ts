@@ -505,14 +505,10 @@ const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
  * advances the watermark past the delivered batch and the next turn picks up
  * the remainder.
  *
- * Reports are delivered WHOLE: buildAgentEventPrompt deliberately preserves
- * full child final reports because the TAIL carries outcomes and blockers —
- * cutting it could make a parent agent act on a false completion with no way to
- * retrieve the omitted end. A report too large for the normal block budget
- * gets its own dedicated single-row batch (the contiguous-prefix watermark
- * semantics permit a 1-row batch) sized up to the engine's practical input
- * capacity; only a report exceeding even that is elided, and then from the
- * MIDDLE with an explicit marker so head and tail both survive.
+ * Child final reports are already head+tail bounded by buildAgentEventPrompt;
+ * the full result remains durable on the child thread. A report larger than the
+ * normal block budget still gets its own single-row batch so the parent sees
+ * that useful bounded report atomically rather than splitting it across turns.
  *
  * Budgets bound the SERIALIZED output — wrapper tags, markers, and the
  * envelope count, not just report text — and a row-count cap keeps a flood

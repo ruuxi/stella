@@ -1,9 +1,12 @@
 import { isContextOverflow } from "../../ai/utils/overflow.js";
 import {
   buildHistorySource,
-  compactRuntimeThreadHistory,
+  persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { withForcedThreadCompaction } from "./context-budget.js";
+import { runCompactionWithHooks } from "./run-completion.js";
+import { getThreadTokenEstimate } from "../thread-runtime.js";
+import { resetSkillReadDedup } from "../tools/skill-read-dedup.js";
 
 const generatedContent = (message) =>
   message.content?.some((block) => {
@@ -23,7 +26,7 @@ const isSafePreGenerationOverflow = (execution, agent, contextWindow) => {
   if (
     !last ||
     last.role !== "assistant" ||
-    last.stopReason !== "error" ||
+    (last.stopReason !== "error" && last.stopReason !== "length") ||
     generatedContent(last)
   ) {
     return false;
@@ -110,6 +113,22 @@ const buildRecoverableHandoff = (args) => {
   ].join("\n");
 };
 
+const persistRecoverableHandoff = (args) => {
+  let text = buildRecoverableHandoff(args);
+  try {
+    persistThreadCustomMessage(args.store, {
+      threadKey: args.threadKey,
+      customType: "context-overflow.recovery-handoff",
+      content: [{ type: "text", text }],
+      display: true,
+      eventId: `context-overflow-recovery:${args.runId}`,
+    });
+  } catch (error) {
+    text += `\n\nDurable handoff persistence failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return { kind: "handoff", text };
+};
+
 export const recoverContextOverflow = async (args) => {
   const contextWindow = Number(args.resolvedLlm.model.contextWindow);
   if (!isSafePreGenerationOverflow(args.execution, args.agent, contextWindow)) {
@@ -119,7 +138,8 @@ export const recoverContextOverflow = async (args) => {
   const failedAssistant = args.agent.state.messages.at(-1);
   if (
     failedAssistant?.role === "assistant" &&
-    failedAssistant.stopReason === "error" &&
+    (failedAssistant.stopReason === "error" ||
+      failedAssistant.stopReason === "length") &&
     !generatedContent(failedAssistant)
   ) {
     args.agent.state.messages.pop();
@@ -127,30 +147,32 @@ export const recoverContextOverflow = async (args) => {
   while (args.compactionScheduler?.pending(args.threadKey)) {
     await args.compactionScheduler.pending(args.threadKey);
   }
+  let threadTokenEstimate;
+  try {
+    threadTokenEstimate = getThreadTokenEstimate(
+      args.store.loadThreadMessages(args.threadKey),
+    );
+  } catch {
+    threadTokenEstimate = undefined;
+  }
   const runCompaction = () =>
     withForcedThreadCompaction(args.threadKey, () =>
-      compactRuntimeThreadHistory({
-        store: args.store,
+      runCompactionWithHooks({
+        opts: args.opts,
         threadKey: args.threadKey,
-        resolvedLlm: args.resolvedLlm,
-        agentType: args.agentType,
-        stellaDataDir: args.stellaDataDir,
+        runId: args.runId,
+        messageCount: args.agent.state.messages.length,
+        ...(threadTokenEstimate !== undefined
+          ? { orchestratorTokenEstimate: threadTokenEstimate }
+          : {}),
       }),
     );
-  let result = { compacted: false };
-  if (args.compactionScheduler) {
-    await args.compactionScheduler.schedule({
-      threadKey: args.threadKey,
-      run: async () => {
-        result = await runCompaction();
-      },
-    });
-  } else {
-    result = await runCompaction();
-  }
+  const result = await runCompaction();
   if (!result.compacted) {
-    return { kind: "handoff", text: buildRecoverableHandoff(args) };
+    return persistRecoverableHandoff(args);
   }
+  resetSkillReadDedup(args.threadKey);
+  args.session?.notifyCompacted();
 
   const refreshed = buildHistorySource({
     threadHistory: args.store.loadThreadMessages(args.threadKey),
@@ -158,14 +180,42 @@ export const recoverContextOverflow = async (args) => {
   const failedTail = refreshed.at(-1);
   if (
     failedTail?.role === "assistant" &&
-    failedTail.stopReason === "error" &&
+    (failedTail.stopReason === "error" || failedTail.stopReason === "length") &&
     !generatedContent(failedTail)
   ) {
     refreshed.pop();
   }
   if (refreshed.length === 0 || refreshed.at(-1)?.role === "assistant") {
-    return { kind: "handoff", text: buildRecoverableHandoff(args) };
+    return persistRecoverableHandoff(args);
   }
   args.agent.state.messages = refreshed;
   return { kind: "compacted" };
+};
+
+export const executeWithContextOverflowRecovery = async (args) => {
+  let execution = await args.execute();
+  const overflowRecovery = await recoverContextOverflow({
+    execution,
+    agent: args.agent,
+    store: args.opts.store,
+    threadKey: args.threadKey,
+    conversationId: args.opts.conversationId,
+    resolvedLlm: args.opts.resolvedLlm,
+    compactionScheduler: args.opts.compactionScheduler,
+    opts: args.opts,
+    runId: args.runId,
+    session: args.session,
+  });
+  if (overflowRecovery.kind === "compacted") {
+    args.opts.callbacks?.onStatus?.(
+      args.runEvents.recordStatus(
+        "Context compacted before overflow; retrying once",
+        "compacting",
+      ),
+    );
+    execution = await args.execute(true);
+  } else if (overflowRecovery.kind === "handoff") {
+    execution = { finalText: overflowRecovery.text };
+  }
+  return execution;
 };
