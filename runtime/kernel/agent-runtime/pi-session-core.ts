@@ -17,6 +17,8 @@ import {
 import { createRuntimeAgent, resolveAgentThinkingLevel } from "./shared.js";
 import { buildHistorySource } from "./thread-memory.js";
 import type { AgentRunFailure } from "./agent-run-retry.js";
+// @ts-expect-error JavaScript runtime module intentionally has no declarations.
+import * as contextBudget from "./context-budget.js";
 
 type CreateRuntimeAgentArgs = Parameters<typeof createRuntimeAgent>[0];
 
@@ -94,6 +96,10 @@ export class PiSessionCore {
 
   protected setResolvedLlm(resolvedLlm: ResolvedLlmRoute): void {
     this.currentResolvedLlm = resolvedLlm;
+    contextBudget.setProviderContextWindow(
+      this.threadKey,
+      resolvedLlm.model.contextWindow,
+    );
   }
 
   protected historyForToolActivation(
@@ -427,6 +433,7 @@ export class PiSessionCore {
     this.agent = null;
     this.currentResolvedLlm = null;
     this.pendingHistoryRefresh = false;
+    contextBudget.clearProviderContextWindow(this.threadKey);
     // Release per-session provider resources keyed by the same id used as the
     // AI cache session id (the thread key), e.g. Codex WebSocket connections
     // and their transport/fallback bookkeeping.

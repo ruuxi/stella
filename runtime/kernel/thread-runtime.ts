@@ -15,6 +15,8 @@ import {
   stripInjectedHtmlComments,
 } from "./memory/resident-docs.js";
 import { readHomePrompt } from "./prompts/home-prompts.js";
+// @ts-expect-error JavaScript runtime module intentionally has no declarations.
+import { isThreadCompactionForced } from "./agent-runtime/context-budget.js";
 
 const logger = createRuntimeLogger("thread-runtime");
 
@@ -791,6 +793,7 @@ const buildSummaryGuidelines = (hasDurableMemoryReference: boolean): string =>
     "Guidelines:",
     '- Thread ids: delegated/background work appears in the conversation as spawn_agent / send_input / check-status tool calls and results carrying a `thread_id`. Name that exact thread_id alongside every workstream you mention (e.g. "shell redesign polish — thread_id: shell-redesign-v2-full-polish") so follow-ups after this checkpoint route to the existing thread instead of spawning a duplicate.',
     "- Pending user decisions: any question posed to the user that was not yet answered by the end of the conversation goes under Open Items with the exact question quoted verbatim; if the user gave a partial or nuanced answer, quote the user's exact relevant words too. Never paraphrase half-answered decisions — quote them.",
+    "- Resume-critical state: preserve the task objective and constraints; every working path, branch, and commit SHA; every child thread id with its status and concrete result; completed and unresolved work; and the latest user instruction. Quote the latest user instruction verbatim when its wording affects how work must resume.",
     "- Never return an empty or near-empty summary. After compaction this summary is the only carrier of the compacted span's thread-specific context, so it must stand alone: even if most of the conversation is already covered by durable memory or the previous summary, restate the thread-specific workstreams, decisions, current state, and open items. A bare heading or a one-line fragment is never an acceptable summary.",
     // The durable-memory rule only applies when the always-loaded docs are
     // actually injected for this agent (orchestrator); for other agents the
@@ -1128,7 +1131,10 @@ export const maybeCompactRuntimeThread = async (args: {
   }
 
   const totalTokens = getThreadTokenEstimate(storedMessages);
-  if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm)) {
+  if (
+    !isThreadCompactionForced(args.threadKey) &&
+    totalTokens < getCompactionTriggerTokens(args.resolvedLlm)
+  ) {
     return { compacted: false };
   }
 

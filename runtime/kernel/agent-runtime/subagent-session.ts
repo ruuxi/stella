@@ -42,6 +42,8 @@ import {
   hasAgentRunAttemptBudget,
   type AgentTurnExecution,
 } from "./agent-run-retry.js";
+// @ts-expect-error JavaScript runtime module intentionally has no declarations.
+import { recoverContextOverflow } from "./context-overflow-recovery.js";
 
 export class SubagentSession extends PiSessionCore {
   private currentRetryStatusContext: {
@@ -298,6 +300,29 @@ export class SubagentSession extends PiSessionCore {
           },
         });
       let execution: AgentTurnExecution = await executeWithTransientRetry();
+
+      const overflowRecovery = await recoverContextOverflow({
+        execution,
+        agent,
+        store: opts.store,
+        threadKey: this.threadKey,
+        conversationId: opts.conversationId,
+        resolvedLlm: opts.resolvedLlm,
+        agentType: opts.agentType,
+        stellaDataDir: opts.stellaDataDir,
+        compactionScheduler: opts.compactionScheduler,
+      });
+      if (overflowRecovery.kind === "compacted") {
+        opts.callbacks?.onStatus?.(
+          runEvents.recordStatus(
+            "Context compacted before overflow; retrying once",
+            "compacting",
+          ),
+        );
+        execution = await executeWithTransientRetry(true);
+      } else if (overflowRecovery.kind === "handoff") {
+        execution = { finalText: overflowRecovery.text };
+      }
 
       // Safety containment: a fable-5 refusal/safety abort first gets
       // retried on the configured model — refusals are often transient — up

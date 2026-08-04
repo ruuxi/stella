@@ -12,6 +12,8 @@ import type {
 import type { Message, ServiceTier } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
+// @ts-expect-error JavaScript runtime module intentionally has no declarations.
+import { preflightProviderPayload } from "./context-budget.js";
 import {
   getAgentFollowUpMode,
   getAgentSteeringMode,
@@ -615,10 +617,20 @@ export const createRuntimeAgent = (args: {
     // versa). The inner `?.()` returns `undefined` when the route lacks
     // one, which the agent loop already handles.
     refreshApiKey: () => resolveLlm().refreshApiKey?.(),
-    onPayload: createBeforeProviderPayloadTransform(
-      args.hookEmitter,
-      args.agentType,
-    ),
+    onPayload: async (payload, model) => {
+      const transform = createBeforeProviderPayloadTransform(
+        args.hookEmitter,
+        args.agentType,
+      );
+      const transformed = await transform?.(payload, model);
+      const finalPayload = transformed ?? payload;
+      preflightProviderPayload(
+        args.cacheSessionId ?? args.agentType,
+        finalPayload,
+        model,
+      );
+      return transformed;
+    },
     onProviderRetry: args.onProviderRetry,
     // The runtime's four-attempt policy owns empty completions. Leaving the
     // Agent core's default one-shot enabled here would allow every outer
