@@ -12,12 +12,14 @@ import {
 import { writePrivateFile } from "./shared/private-fs.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import {
+  findRegistryModel,
   getEngineNativeStellaModelAlternative,
   getStellaVerbatimUpstreamModel,
 } from "./model-routing-matching.js";
 import {
   STELLA_PROVIDER,
   createStellaRoute,
+  getManagedStellaRegistryLookup,
   resolveOfflineStellaModelId,
   type StellaSiteConfig,
 } from "./model-routing-stella.js";
@@ -492,11 +494,20 @@ export const withStellaModelCatalogMetadata = async (args: {
     return args.route;
   }
 
+  const lookup = getManagedStellaRegistryLookup(resolvedModelId);
+  const { modelRuntime } = await import("../ai/model-runtime.js");
+  const registryModel =
+    findRegistryModel(lookup.provider, lookup.candidates) ??
+    (await modelRuntime
+      .ensureProviderModel(lookup.provider, lookup.candidates)
+      .catch(() => undefined));
+
   const resolvedRoute = createStellaRoute({
     site: args.site,
     agentType: args.agentType,
     modelId: args.route.model.id,
     resolvedModelId,
+    registryModel,
   });
 
   return {

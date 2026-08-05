@@ -190,22 +190,40 @@ const apiForRelay = (
   provider: ManagedGatewayProvider,
   registryModel: Model<Api> | null,
 ): Api => {
-  if (registryModel?.api) return registryModel.api;
   switch (provider) {
     case "anthropic":
       return "anthropic-messages";
     case "google":
       return "google-generative-ai";
-    case "openai":
     case "fireworks":
       return "openai-responses";
     case "openrouter":
       return "openai-completions";
+    case "openai":
+      return registryModel?.api ?? "openai-responses";
     default: {
       const _exhaustive: never = provider;
       return _exhaustive;
     }
   }
+};
+
+export const getManagedStellaRegistryLookup = (
+  resolvedModelId: string,
+): {
+  provider: ManagedGatewayProvider;
+  candidates: string[];
+} => {
+  const provider = inferManagedGatewayProviderFromModel(resolvedModelId);
+  const nativeId = providerNativeModelId(resolvedModelId, provider);
+  return {
+    provider,
+    candidates: uniqueModelCandidates([
+      resolvedModelId,
+      nativeId,
+      nativeId.replace(/\./g, "-"),
+    ]),
+  };
 };
 
 const createRelayModel = (args: {
@@ -215,16 +233,16 @@ const createRelayModel = (args: {
   provider: ManagedGatewayProvider;
   agentType: string;
   authToken: string;
+  registryModel?: Model<Api> | null;
 }): Model<Api> => {
+  const lookup = getManagedStellaRegistryLookup(args.resolvedModelId);
   const nativeId = providerNativeModelId(args.resolvedModelId, args.provider);
-  const registryModel = findRegistryModel(
-    registryProviderForRelay(args.provider),
-    uniqueModelCandidates([
-      args.resolvedModelId,
-      nativeId,
-      nativeId.replace(/\./g, "-"),
-    ]),
-  );
+  const registryModel =
+    args.registryModel ??
+    findRegistryModel(
+      registryProviderForRelay(args.provider),
+      lookup.candidates,
+    );
 
   const model = {
     ...(registryModel ?? {
@@ -273,6 +291,7 @@ export const createStellaRoute = (args: {
   agentType: string;
   modelId: string;
   resolvedModelId?: string;
+  registryModel?: Model<Api> | null;
 }): ResolvedLlmRoute | null => {
   const siteBaseUrl = normalizeStellaBase(args.site.baseUrl);
   const authToken = args.site.getAuthToken()?.trim();
@@ -310,6 +329,7 @@ export const createStellaRoute = (args: {
       provider: relayProvider,
       agentType: args.agentType,
       authToken: authToken || "",
+      registryModel: args.registryModel,
     }),
     getApiKey,
     refreshApiKey: args.site.refreshAuthToken ? refreshApiKey : undefined,

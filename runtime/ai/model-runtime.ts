@@ -13,6 +13,7 @@ import {
   type ModelsJsonProvider,
 } from "./model-config.js";
 import type { Api, Model } from "./types.js";
+import { STELLA_RELAY_PROVIDERS } from "../contracts/stella-api.js";
 import {
   ensurePrivateDirSync,
   writePrivateFileSync,
@@ -55,7 +56,6 @@ const describeCatalogFetchFailure = (
   }
   return error instanceof Error ? error : new Error(String(error));
 };
-
 
 type StoredCatalogEntry = {
   models: Model<Api>[];
@@ -117,7 +117,8 @@ const hasStaticAuthHeader = (
   headers: Record<string, string> | undefined,
 ): boolean =>
   Object.entries(headers ?? {}).some(
-    ([name, value]) => AUTH_HEADER_NAMES.has(name.toLowerCase()) && Boolean(value),
+    ([name, value]) =>
+      AUTH_HEADER_NAMES.has(name.toLowerCase()) && Boolean(value),
   );
 
 const cloneModel = (model: Model<Api>): Model<Api> => structuredClone(model);
@@ -188,9 +189,7 @@ const mergeModelCompat = (
   override: Model<Api>["compat"] | ModelsJsonModelOverride["compat"],
 ): Model<Api>["compat"] => {
   if (!override) return base;
-  const merged = { ...base, ...override } as NonNullable<
-    Model<Api>["compat"]
-  >;
+  const merged = { ...base, ...override } as NonNullable<Model<Api>["compat"]>;
   const baseNested = base as Record<string, unknown> | undefined;
   const overrideNested = override as Record<string, unknown>;
   const mergedNested = merged as Record<string, unknown>;
@@ -261,14 +260,19 @@ const createConfiguredModel = (
     baseUrl,
     reasoning: definition.reasoning ?? metadataDefaults?.reasoning ?? false,
     thinkingLevelMap: definition.thinkingLevelMap
-      ? { ...metadataDefaults?.thinkingLevelMap, ...definition.thinkingLevelMap }
+      ? {
+          ...metadataDefaults?.thinkingLevelMap,
+          ...definition.thinkingLevelMap,
+        }
       : metadataDefaults?.thinkingLevelMap,
     input: definition.input ?? metadataDefaults?.input ?? ["text"],
     cost: {
       input: definition.cost?.input ?? metadataDefaults?.cost.input ?? 0,
       output: definition.cost?.output ?? metadataDefaults?.cost.output ?? 0,
-      cacheRead: definition.cost?.cacheRead ?? metadataDefaults?.cost.cacheRead ?? 0,
-      cacheWrite: definition.cost?.cacheWrite ?? metadataDefaults?.cost.cacheWrite ?? 0,
+      cacheRead:
+        definition.cost?.cacheRead ?? metadataDefaults?.cost.cacheRead ?? 0,
+      cacheWrite:
+        definition.cost?.cacheWrite ?? metadataDefaults?.cost.cacheWrite ?? 0,
     },
     contextWindow:
       definition.contextWindow ?? metadataDefaults?.contextWindow ?? 128_000,
@@ -313,10 +317,7 @@ const extensionModels = (provider: RuntimeProviderDefinition): Model<Api>[] =>
 export class ModelRuntime {
   private readonly builtins = new Map<string, Model<Api>[]>();
   private readonly dynamicCatalogs = new Map<string, StoredCatalogEntry>();
-  private readonly persistedCatalogs = new Map<
-    string,
-    PersistedCatalogEntry
-  >();
+  private readonly persistedCatalogs = new Map<string, PersistedCatalogEntry>();
   private readonly extensionProviders = new Map<
     string,
     RuntimeProviderDefinition
@@ -332,6 +333,10 @@ export class ModelRuntime {
   private storePath?: string;
   private refreshPromise?: Promise<void>;
   private refreshIsForce = false;
+  private readonly providerRefreshes = new Map<
+    string,
+    { promise: Promise<void>; force: boolean }
+  >();
   private refreshedAt: number | null = null;
   private compositionErrors: string[] = [];
   private compositionFailedProviders = new Set<string>();
@@ -596,7 +601,7 @@ export class ModelRuntime {
     this.recompose();
   }
 
-  private async refreshProvider(
+  private async refreshProviderOnce(
     providerId: string,
     options: { force?: boolean; lifecycleSignal?: AbortSignal },
   ): Promise<void> {
@@ -640,7 +645,9 @@ export class ModelRuntime {
       });
       this.persistedCatalogs.set(providerId, {
         models: structuredClone(
-          this.persistedCatalogs.get(providerId)?.models ?? stored?.models ?? [],
+          this.persistedCatalogs.get(providerId)?.models ??
+            stored?.models ??
+            [],
         ),
         checkedAt,
       });
@@ -679,6 +686,86 @@ export class ModelRuntime {
       models: validation.models.map(cloneModel),
       checkedAt,
     });
+  }
+
+  private refreshProvider(
+    providerId: string,
+    options: { force?: boolean; lifecycleSignal?: AbortSignal },
+  ): Promise<void> {
+    const existing = this.providerRefreshes.get(providerId);
+    if (existing) {
+      if (options.force && !existing.force) {
+        return existing.promise.then(
+          () => this.refreshProvider(providerId, options),
+          () => this.refreshProvider(providerId, options),
+        );
+      }
+      return existing.promise;
+    }
+
+    const promise = this.refreshProviderOnce(providerId, options).finally(
+      () => {
+        if (this.providerRefreshes.get(providerId)?.promise === promise) {
+          this.providerRefreshes.delete(providerId);
+        }
+      },
+    );
+    this.providerRefreshes.set(providerId, {
+      promise,
+      force: options.force === true,
+    });
+    return promise;
+  }
+
+  /**
+   * Resolve one model from a provider catalog, fetching that provider only
+   * when the requested model is absent. This is used on the model-selection
+   * path so a cold first turn cannot race the broader startup catalog warm.
+   */
+  async ensureProviderModel(
+    providerId: string,
+    modelIds: readonly string[],
+  ): Promise<Model<Api> | undefined> {
+    const candidates = Array.from(
+      new Set(modelIds.map((id) => id.trim()).filter(Boolean)),
+    );
+    const findCandidate = (): Model<Api> | undefined => {
+      for (const modelId of candidates) {
+        const model = this.getModel(providerId, modelId);
+        if (model) return model;
+      }
+      return undefined;
+    };
+
+    const cached = findCandidate();
+    if (cached) return cached;
+
+    // The backend only resolves Stella routes through this explicit provider
+    // allowlist. Do not turn pi.dev's open provider directory into additional
+    // selectable/routable namespaces as a side effect of enrichment.
+    if (!(STELLA_RELAY_PROVIDERS as readonly string[]).includes(providerId)) {
+      return undefined;
+    }
+
+    const activeRefresh = this.providerRefreshes.get(providerId);
+    if (activeRefresh) {
+      await activeRefresh.promise;
+      // A startup batch recomposes after every provider has settled. This
+      // targeted caller needs the selected provider immediately, so publish
+      // that provider's completed result now instead of waiting for the batch.
+      this.recompose();
+      const refreshedByActiveRequest = findCandidate();
+      if (refreshedByActiveRequest) return refreshedByActiveRequest;
+    }
+
+    // Missing exact metadata must bypass the normal four-hour freshness gate:
+    // a provider snapshot fetched just before a model launch is still stale
+    // for this model even though the provider-level timestamp is recent.
+    await this.refreshProvider(providerId, { force: true });
+    this.refreshedAt = Date.now();
+    this.writeStoredCatalogs();
+    this.recompose();
+    return findCandidate();
   }
 
   /**
@@ -738,9 +825,9 @@ export class ModelRuntime {
     this.refreshIsForce = options.force === true;
     this.refreshPromise = (async () => {
       if (options.allowNetwork !== false) {
-        const providerIds = [...this.builtins.keys()].filter(
-          (providerId) => providerId !== "local",
-        );
+        const providerIds = Array.from(
+          new Set<string>([...this.builtins.keys(), ...STELLA_RELAY_PROVIDERS]),
+        ).filter((providerId) => providerId !== "local");
         const failures = await this.refreshProviders(providerIds, options);
         // A torn-down refresh is not a catalog failure. Report nothing rather
         // than one scary line per provider that never got its turn, and leave
@@ -768,9 +855,11 @@ export class ModelRuntime {
     return this.refreshPromise;
   }
 
-  async getSnapshotForListing(options: {
-    forceRefresh?: boolean;
-  } = {}): Promise<ModelRuntimeSnapshot> {
+  async getSnapshotForListing(
+    options: {
+      forceRefresh?: boolean;
+    } = {},
+  ): Promise<ModelRuntimeSnapshot> {
     await this.reloadConfig();
     if (options.forceRefresh) {
       await this.refresh({ allowNetwork: true, force: true });
@@ -941,8 +1030,7 @@ export class ModelRuntime {
           ...this.config
             .getProviderIds()
             .filter(
-              (providerId) =>
-                !this.compositionFailedProviders.has(providerId),
+              (providerId) => !this.compositionFailedProviders.has(providerId),
             ),
           ...this.extensionProviders.keys(),
           ...this.registeredModels.keys(),
@@ -951,14 +1039,14 @@ export class ModelRuntime {
         .sort()
         .map((id) => ({
           id,
-          authManaged:
-            this.hasRuntimeManagedAuth(id),
+          authManaged: this.hasRuntimeManagedAuth(id),
           credentialless: this.allowsCredentiallessRouting(id),
         })),
       refreshedAt: this.refreshedAt,
-      configError: [this.config.getError(), ...this.compositionErrors]
-        .filter((error): error is string => Boolean(error))
-        .join("\n") || undefined,
+      configError:
+        [this.config.getError(), ...this.compositionErrors]
+          .filter((error): error is string => Boolean(error))
+          .join("\n") || undefined,
       catalogError: this.catalogError,
     };
   }

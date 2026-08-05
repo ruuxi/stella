@@ -1,5 +1,10 @@
 import { isTransientProviderStreamAnomalyMessage } from "../../ai/utils/provider-stop.js";
 
+const isLocalContextPreflight = (message: string): boolean =>
+  message.includes(
+    "Context preflight context_length_exceeded before provider dispatch",
+  );
+
 export const AGENT_RUN_MAX_ATTEMPTS = 4;
 export const AGENT_RUN_RETRY_DELAYS_MS = [1_000, 2_500, 6_000] as const;
 export const AGENT_RUN_RETRY_JITTER_RATIO = 0.1;
@@ -273,6 +278,17 @@ export const executeAgentTurnWithRetry = async (args: {
 
     const failure = thrownFailure ?? classifyExecution(execution, args.signal);
     if (!failure) return { ...execution, attempts: state.attemptsUsed };
+    // This rejection is raised locally before a provider request is sent. The
+    // outer context-overflow recovery loop owns compaction and resumption, so
+    // it must not consume the provider/transient retry budget.
+    if (isLocalContextPreflight(failure.message)) {
+      state.attemptsUsed = Math.max(0, state.attemptsUsed - 1);
+      return {
+        finalText: execution.finalText,
+        errorMessage: failure.message,
+        attempts: state.attemptsUsed,
+      };
+    }
     if (!failure.retryable) {
       return {
         finalText: execution.finalText,

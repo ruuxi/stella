@@ -17,6 +17,7 @@ import {
 } from "../../../../../runtime/kernel/agent-runtime/context-budget.js";
 // @ts-expect-error JavaScript runtime module intentionally has no declarations.
 import { executeWithContextOverflowRecovery } from "../../../../../runtime/kernel/agent-runtime/context-overflow-recovery.js";
+import { getCompactionTriggerTokens } from "../../../../../runtime/kernel/thread-runtime.js";
 
 const CONTEXT_WINDOW = 272_000;
 const THREAD_KEY = "general-parent";
@@ -80,9 +81,9 @@ const createStore = (
 };
 
 /**
- * Mirrors the live failure's single 230-provider-turn tool loop. The strings
- * are deliberately sized so 229 records fit under the 82% provider-input
- * budget while the 230th crosses it.
+ * Mirrors the live failure's large provider-visible tool loop. The strings are
+ * deliberately sized so 170 records fit under the 70% provider-input budget
+ * while 230 records cross it.
  */
 const buildToolLoopPayload = (count: number) => ({
   input: Array.from({ length: count }, (_, index) => ({
@@ -95,6 +96,7 @@ const buildToolLoopPayload = (count: number) => ({
 const createHarness = (args: {
   store: FakeStore;
   threadKey?: string;
+  contextWindow?: number;
   execute: (resume?: boolean) => Promise<{
     finalText: string;
     errorMessage?: string;
@@ -123,7 +125,7 @@ const createHarness = (args: {
       model: {
         provider: "openai-codex",
         id: "gpt-5.6-sol",
-        contextWindow: CONTEXT_WINDOW,
+        contextWindow: args.contextWindow ?? CONTEXT_WINDOW,
       },
     },
     callbacks: { onStatus },
@@ -151,9 +153,9 @@ describe("Pi-loop context overflow recovery", () => {
     runCompactionWithHooksMock.mockReset();
   });
 
-  it("preflights a 230-tool-call single attempt before provider dispatch", () => {
+  it("preflights a large tool loop at 70% before provider dispatch", () => {
     expect(() =>
-      preflightProviderPayload(THREAD_KEY, buildToolLoopPayload(229), {
+      preflightProviderPayload(THREAD_KEY, buildToolLoopPayload(170), {
         contextWindow: CONTEXT_WINDOW,
       }),
     ).not.toThrow();
@@ -165,6 +167,52 @@ describe("Pi-loop context overflow recovery", () => {
         contextWindow: CONTEXT_WINDOW,
       }),
     ).toThrow(/Context preflight context_length_exceeded/);
+  });
+
+  it("uses the real one-million-token model window and a 70% full-payload boundary", () => {
+    const contextWindow = 1_048_576;
+    const route = {
+      model: { contextWindow },
+    } as never;
+
+    expect(getCompactionTriggerTokens(route)).toBe(734_003);
+    expect(
+      getCompactionTriggerTokens({
+        model: { contextWindow: 80_000 },
+      } as never),
+    ).toBe(56_000);
+
+    expect(() =>
+      preflightProviderPayload(
+        THREAD_KEY,
+        { input: "x".repeat(2_100_000) },
+        { contextWindow },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      preflightProviderPayload(
+        THREAD_KEY,
+        { input: "x".repeat(2_250_000) },
+        { provider: "fireworks", id: "deepseek-v4-flash-0731", contextWindow },
+      ),
+    ).toThrow(/734003-token safe input budget/);
+  });
+
+  it("uses a uniform 70% full-payload boundary for the 80K fallback", () => {
+    expect(() =>
+      preflightProviderPayload(
+        THREAD_KEY,
+        { input: "x".repeat(167_000) },
+        { contextWindow: 80_000 },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      preflightProviderPayload(
+        THREAD_KEY,
+        { input: "x".repeat(168_000) },
+        { contextWindow: 80_000 },
+      ),
+    ).toThrow(/56000-token safe input budget/);
   });
 
   it("catches a thrown preflight, forces compaction, rebuilds history, and retries", async () => {
@@ -215,7 +263,7 @@ describe("Pi-loop context overflow recovery", () => {
     expect(store.handoffs).toHaveLength(0);
   });
 
-  it("hands off when the compacted retry is still over budget without a third provider attempt", async () => {
+  it("hands off when the compacted retry overflows again without new progress", async () => {
     const stillOversized = storedUser(
       THREAD_KEY,
       JSON.stringify(buildToolLoopPayload(230)),
@@ -241,7 +289,7 @@ describe("Pi-loop context overflow recovery", () => {
     const result = await harness.run();
 
     expect(result.finalText).toContain(
-      "the compacted retry grew beyond the model's safe input budget again",
+      "the compacted retry overflowed again before any new model output or tool result",
     );
     expect(execute).toHaveBeenCalledTimes(2);
     expect(runCompactionWithHooksMock).toHaveBeenCalledTimes(1);
@@ -251,6 +299,81 @@ describe("Pi-loop context overflow recovery", () => {
       customType: "context-overflow.recovery-handoff",
       eventId: `context-overflow-recovery:run-${THREAD_KEY}`,
     });
+  });
+
+  it("compacts again after a fallback-80K retry makes real progress and refills the window", async () => {
+    const compactedTail = storedUser(THREAD_KEY, "Compacted durable tail.");
+    const store = createStore(
+      { [THREAD_KEY]: [storedUser(THREAD_KEY, "Large durable history.")] },
+      { [THREAD_KEY]: [compactedTail] },
+    );
+    runCompactionWithHooksMock.mockImplementation(
+      async ({ threadKey }: { threadKey: string }) => {
+        store.applyCompaction(threadKey);
+        return { compacted: true };
+      },
+    );
+
+    let liveState: { messages: Array<Record<string, unknown>> };
+    const execute = vi
+      .fn<(resume?: boolean) => Promise<{ finalText: string }>>()
+      .mockImplementationOnce(async () => {
+        preflightProviderPayload(THREAD_KEY, buildToolLoopPayload(230), {
+          contextWindow: 80_000,
+        });
+        return { finalText: "unreachable" };
+      })
+      .mockImplementationOnce(async (resume) => {
+        expect(resume).toBe(true);
+        for (let index = 0; index < 15; index += 1) {
+          liveState.messages.push(
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: `progress-call-${index}`,
+                  name: "exec_command",
+                  arguments: { command: `inspect-${index}` },
+                },
+              ],
+              stopReason: "toolUse",
+              timestamp: index * 2 + 2,
+            },
+            {
+              role: "toolResult",
+              toolCallId: `progress-call-${index}`,
+              content: [{ type: "text", text: "x".repeat(5_000) }],
+              timestamp: index * 2 + 3,
+            },
+          );
+        }
+        preflightProviderPayload(THREAD_KEY, buildToolLoopPayload(230), {
+          contextWindow: 80_000,
+        });
+        return { finalText: "unreachable" };
+      })
+      .mockImplementationOnce(async (resume) => {
+        expect(resume).toBe(true);
+        return { finalText: "Recovered after the second compaction." };
+      });
+    const harness = createHarness({
+      store,
+      contextWindow: 80_000,
+      execute,
+    });
+    liveState = harness.agent.state as {
+      messages: Array<Record<string, unknown>>;
+    };
+
+    await expect(harness.run()).resolves.toEqual({
+      finalText: "Recovered after the second compaction.",
+    });
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(runCompactionWithHooksMock).toHaveBeenCalledTimes(2);
+    expect(harness.notifyCompacted).toHaveBeenCalledTimes(2);
+    expect(harness.onStatus).toHaveBeenCalledTimes(2);
+    expect(store.handoffs).toHaveLength(0);
   });
 
   it("keeps forced recovery and rebuilt histories isolated across nested threads", async () => {

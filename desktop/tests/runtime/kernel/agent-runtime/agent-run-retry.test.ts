@@ -8,6 +8,7 @@ import {
   executeAgentTurnWithRetry,
   type AgentRunFailure,
   type AgentRunRetryInfo,
+  type AgentRunRetryState,
 } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 import {
   anomalousStreamStopError,
@@ -185,6 +186,45 @@ describe("agent run transient retry policy", () => {
     expect(result.errorMessage).toContain(
       "Automatic recovery exhausted after 4 attempts (transport)",
     );
+  });
+
+  it("does not spend provider retry attempts on local context preflight rejections", async () => {
+    const state: AgentRunRetryState = { attemptsUsed: 0, retriesUsed: 0 };
+    const prepareRetry = vi.fn(() => true);
+    const preflight =
+      "Context preflight context_length_exceeded before provider dispatch: estimated 734004 model-visible tokens against a 1048576-token window (734003-token safe input budget).";
+
+    for (let index = 0; index < AGENT_RUN_MAX_ATTEMPTS + 2; index += 1) {
+      const throws = index % 2 === 0;
+      const result = await executeAgentTurnWithRetry({
+        state,
+        maxAttempts: 1,
+        execute: async () => {
+          if (throws) throw new Error(preflight);
+          return { finalText: "", errorMessage: preflight };
+        },
+        prepareRetry,
+        sleep: noWait,
+      });
+      expect(result).toMatchObject({
+        finalText: "",
+        errorMessage: preflight,
+        attempts: 0,
+      });
+    }
+
+    expect(state).toEqual({ attemptsUsed: 0, retriesUsed: 0 });
+    expect(prepareRetry).not.toHaveBeenCalled();
+
+    await expect(
+      executeAgentTurnWithRetry({
+        state,
+        maxAttempts: 1,
+        execute: async () => ({ finalText: "provider dispatched" }),
+        prepareRetry,
+        sleep: noWait,
+      }),
+    ).resolves.toEqual({ finalText: "provider dispatched", attempts: 1 });
   });
 
   it.each([
