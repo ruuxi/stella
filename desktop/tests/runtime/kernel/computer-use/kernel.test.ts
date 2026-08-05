@@ -3,6 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 
 import {
   isBunNodeReplRuntime,
+  nodeReplChildUsesElectronRuntime,
   NodeReplKernelRegistry,
   type ComputerUseSessionFactory,
   type ComputerUseSessionFactoryOptions,
@@ -115,6 +116,26 @@ describe("persistent Node REPL kernels", () => {
       }),
     ).toBe(true);
     expect(isBunNodeReplRuntime({ ...process.versions })).toBe(false);
+  });
+
+  it("runs the host Electron executable as Node for Bun child kernels", () => {
+    expect(
+      nodeReplChildUsesElectronRuntime({
+        STELLA_HOST_EXECUTABLE_PATH: "/Applications/Stella.app/Electron",
+      }),
+    ).toBe(true);
+    expect(
+      nodeReplChildUsesElectronRuntime({
+        STELLA_NODE_BIN: "/opt/homebrew/bin/node",
+        STELLA_HOST_EXECUTABLE_PATH: "/Applications/Stella.app/Electron",
+      }),
+    ).toBe(false);
+    expect(
+      nodeReplChildUsesElectronRuntime({
+        STELLA_NODE_BIN: "/Applications/Stella.app/Electron",
+        STELLA_NODE_IS_ELECTRON: "1",
+      }),
+    ).toBe(true);
   });
 
   it("supports top-level await and preserves lexical bindings", async () => {

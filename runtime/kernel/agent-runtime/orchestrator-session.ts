@@ -116,6 +116,7 @@ export class OrchestratorSession extends PiSessionCore {
   constructor(public readonly conversationId: string) {
     super({
       loggerName: "orchestrator-session",
+      promptCacheKey: conversationId,
       threadKey: buildRunThreadKey({
         conversationId,
         agentType: "orchestrator",

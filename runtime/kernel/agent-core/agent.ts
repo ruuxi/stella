@@ -89,6 +89,9 @@ export interface AgentOptions {
 	 */
 	sessionId?: string;
 
+	/** Prompt-cache affinity independent from per-agent transport resources. */
+	promptCacheKey?: string;
+
 	/**
 	 * Resolves an API key dynamically for each LLM call.
 	 * Useful for expiring tokens (e.g., GitHub Copilot OAuth).
@@ -177,6 +180,7 @@ export class Agent {
 	private followUpMode: "all" | "one-at-a-time";
 	public streamFn: StreamFn;
 	private _sessionId?: string;
+	private _promptCacheKey?: string;
 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	public refreshApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	private _onPayload?: SimpleStreamOptions["onPayload"];
@@ -207,6 +211,7 @@ export class Agent {
 		this.followUpMode = opts.followUpMode || "one-at-a-time";
 		this.streamFn = opts.streamFn || streamSimple;
 		this._sessionId = opts.sessionId;
+		this._promptCacheKey = opts.promptCacheKey;
 		this.getApiKey = opts.getApiKey;
 		this.refreshApiKey = opts.refreshApiKey;
 		this._onPayload = opts.onPayload;
@@ -595,6 +600,7 @@ export class Agent {
 			onProviderRetry: this._onProviderRetry,
 			transport: this._transport,
 			serviceTier: this._serviceTier,
+			promptCacheKey: this._promptCacheKey,
 			thinkingBudgets: this._thinkingBudgets,
 			maxRetryDelayMs: this._maxRetryDelayMs,
 			toolExecution: this._toolExecution,

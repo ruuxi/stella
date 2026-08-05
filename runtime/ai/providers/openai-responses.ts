@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { ResponseCreateParamsStreaming, ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { clampThinkingLevel } from "../models.js";
 import type {
@@ -18,30 +18,12 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { splitDeferredTools } from "../utils/deferred-tools.js";
 import { anomalousStreamStopError } from "../utils/provider-stop.js";
-import { resilientEventStream } from "../utils/resilient-event-stream.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions } from "./simple-options.js";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
-const STELLA_RELAY_RESUME_HEADER = "x-stella-relay-resume";
-const STELLA_RELAY_REQUEST_ID_HEADER = "x-stella-relay-request-id";
-const STELLA_RELAY_RESUME_VERSION = "1";
-
-const isManagedStellaRelayBaseUrl = (baseUrl: string): boolean => {
-	try {
-		return new URL(baseUrl).pathname.replace(/\/+$/u, "").endsWith("/api/stella/relay");
-	} catch {
-		return false;
-	}
-};
-
-const newRelayRequestId = (): string =>
-	`stella-relay-${
-		globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-	}`;
-
 /**
  * Resolve cache retention preference.
  * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
@@ -92,7 +74,6 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 
 	// Start async processing
 	(async () => {
-		let detachRelayAbortListener = () => {};
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
@@ -116,121 +97,38 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
-			const client = createClient(model, context, apiKey, options?.headers, cacheSessionId);
+			const promptCacheKey =
+				cacheRetention === "none"
+					? undefined
+					: (options?.promptCacheKey ?? options?.sessionId);
+			const client = createClient(
+				model,
+				context,
+				apiKey,
+				options?.headers,
+				cacheSessionId,
+				promptCacheKey,
+			);
 			let params = buildParams(model, context, options);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
-			// Keep SDK retries out of this path: they do not cover body-stream
-			// closures and their independent deadline can exceed Stella's bounded
-			// reconnect window. The resilience wrapper below owns both phases.
-			const idempotencyKey = `stella-response-${
-				globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-			}`;
-			const proposedRelayRequestId = isManagedStellaRelayBaseUrl(model.baseUrl) ? newRelayRequestId() : undefined;
-			const requestOptions = (signal?: AbortSignal, initializeRelay = false) => ({
-				...(signal ? { signal } : {}),
+			// A failed stream is a failed model round. The agent runtime retries
+			// from the last stable user/tool-result boundary, preserving completed
+			// tool work without requiring a server-side response buffer.
+			const requestOptions = {
+				...(options?.signal ? { signal: options.signal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
-				headers: {
-					"Idempotency-Key": idempotencyKey,
-					...(initializeRelay && proposedRelayRequestId
-						? { [STELLA_RELAY_REQUEST_ID_HEADER]: proposedRelayRequestId }
-						: {}),
-				},
-			});
-			let relayRequestId = proposedRelayRequestId;
-			let relayResumeCapable = false;
-			let relayAbortListenerAttached = false;
-			const providerDurableResumeEnabled = params.background === true && params.store !== false;
-			const attachRelayAbortListener = (requestId: string) => {
-				if (!options?.signal || relayAbortListenerAttached) return;
-				relayAbortListenerAttached = true;
-				const cancelRelayResponse = () => {
-					void (async () => {
-						for (const delayMs of [0, 100, 250, 500, 1_000]) {
-							if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-							try {
-								await client.delete<void>(`/responses/${encodeURIComponent(requestId)}`, {
-									maxRetries: 0,
-									timeout: options.timeoutMs ?? 10_000,
-								});
-								return;
-							} catch (error) {
-								if ((error as { status?: unknown })?.status !== 404) return;
-							}
-						}
-					})();
-				};
-				if (options.signal.aborted) cancelRelayResponse();
-				else options.signal.addEventListener("abort", cancelRelayResponse, { once: true });
-				detachRelayAbortListener = () => options.signal?.removeEventListener("abort", cancelRelayResponse);
 			};
-			if (proposedRelayRequestId) attachRelayAbortListener(proposedRelayRequestId);
-			const noteResponse = async (response: Response): Promise<void> => {
-				const headers = headersToRecord(response.headers);
-				const advertisedVersion = response.headers.get(STELLA_RELAY_RESUME_HEADER)?.trim();
-				const advertisedRequestId = response.headers.get(STELLA_RELAY_REQUEST_ID_HEADER)?.trim();
-				if (advertisedVersion === STELLA_RELAY_RESUME_VERSION && advertisedRequestId) {
-					if (proposedRelayRequestId && advertisedRequestId !== proposedRelayRequestId) {
-						throw new Error("Stella relay returned a mismatched resume request id");
-					}
-					relayResumeCapable = true;
-					relayRequestId = advertisedRequestId;
-					attachRelayAbortListener(advertisedRequestId);
-				}
-				await options?.onResponse?.({ status: response.status, headers }, model);
-			};
-			const connect = async (signal?: AbortSignal): Promise<AsyncIterable<ResponseStreamEvent>> => {
-				const { data, response } = await client.responses
-					.create(params, requestOptions(signal, true))
-					.withResponse();
-				await noteResponse(response);
-				return data;
-			};
-			const resume = async ({ runId, cursor, signal }: { runId: string; cursor: number; signal?: AbortSignal }) => {
-				const { data, response } = await client.responses
-					.retrieve(runId, { stream: true, starting_after: cursor }, requestOptions(signal))
-					.withResponse();
-				await noteResponse(response);
-				return data;
-			};
-			const openaiStream = resilientEventStream<ResponseStreamEvent>({
-				connect,
-				resume,
-				// A managed relay client proposes the id before POST. Seed cursor 0
-				// even if an older backend omits capability headers: GET may fail
-				// closed, but the original POST is never replayed. New backends return
-				// the same id and serve the durable cursor.
-				getInitialResumeState: () =>
-					proposedRelayRequestId
-						? { runId: proposedRelayRequestId, cursor: 0 }
-						: relayResumeCapable && relayRequestId
-							? { runId: relayRequestId, cursor: 0 }
-							: undefined,
-				getRunId: (event) => {
-					if (relayResumeCapable) return relayRequestId;
-					return providerDurableResumeEnabled && "response" in event && event.response?.id
-						? event.response.id
-						: undefined;
-				},
-				getSequence: (event) => {
-					const relaySequence = (event as ResponseStreamEvent & { stella_relay_sequence?: unknown })
-						.stella_relay_sequence;
-					if (relayResumeCapable) {
-						return typeof relaySequence === "number" ? relaySequence : undefined;
-					}
-					return typeof event.sequence_number === "number" ? event.sequence_number : undefined;
-				},
-				isTerminal: (event) =>
-					event.type === "response.completed" ||
-					event.type === "response.incomplete" ||
-					event.type === "response.failed" ||
-					event.type === "error",
-				...(options?.signal ? { signal: options.signal } : {}),
-				onReconnect: ({ attempt, delayMs, reason }) => options?.onProviderRetry?.({ attempt, delayMs, reason }),
-			});
+			const { data: openaiStream, response } = await client.responses
+				.create(params, requestOptions)
+				.withResponse();
+			await options?.onResponse?.(
+				{ status: response.status, headers: headersToRecord(response.headers) },
+				model,
+			);
 			stream.push({ type: "start", partial: output });
 
 			await processResponsesStream(openaiStream, output, stream, model, {
@@ -247,10 +145,8 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
-			detachRelayAbortListener();
 			stream.end();
 		} catch (error) {
-			detachRelayAbortListener();
 			for (const block of output.content) {
 				delete (block as { index?: number }).index;
 				// partialJson is only a streaming scratch buffer; never persist it.
@@ -296,6 +192,7 @@ function createClient(
 	apiKey?: string,
 	optionsHeaders?: Record<string, string>,
 	sessionId?: string,
+	promptCacheKey?: string,
 ) {
 	if (!apiKey) {
 		if (!process.env.OPENAI_API_KEY) {
@@ -326,6 +223,12 @@ function createClient(
 			headers.session_id = sessionId;
 		}
 		headers["x-client-request-id"] = sessionId;
+	}
+	if (
+		promptCacheKey &&
+		(model.provider === "fireworks" || model.baseUrl.includes("fireworks.ai"))
+	) {
+		headers["x-session-affinity"] = promptCacheKey;
 	}
 
 	// Merge options headers last so they can override defaults
@@ -362,9 +265,12 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		model: model.id,
 		input: messages,
 		stream: true,
-		prompt_cache_key: cacheRetention === "none" ? undefined : options?.sessionId,
+		prompt_cache_key:
+			cacheRetention === "none"
+				? undefined
+				: (options?.promptCacheKey ?? options?.sessionId),
 		prompt_cache_retention: getPromptCacheRetention(compat, cacheRetention),
-		store: false,
+		store: true,
 	};
 
 	if (options?.maxTokens) {

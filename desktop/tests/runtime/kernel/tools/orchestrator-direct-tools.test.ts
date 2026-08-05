@@ -140,12 +140,12 @@ describe("orchestrator direct tool surface", () => {
 
     expect(orchestrator?.toolsAllowlist).toEqual(
       expect.arrayContaining([
-        "exec_command",
         "spawn_agent",
         "send_input",
         "pause_agent",
       ]),
     );
+    expect(orchestrator?.toolsAllowlist).not.toContain("exec_command");
     expect(orchestrator?.toolsAllowlist).not.toContain("spawn_manager");
     expect(orchestrator?.toolsAllowlist).not.toContain("write_stdin");
     expect(orchestrator?.toolsAllowlist).not.toContain("node_repl");
@@ -201,12 +201,12 @@ describe("orchestrator direct tool surface", () => {
     ).toBe("My customized orchestrator prompt.");
     expect(advertisedToolNames("orchestrator")).toEqual(
       expect.arrayContaining([
-        "exec_command",
         "spawn_agent",
         "send_input",
         "pause_agent",
       ]),
     );
+    expect(advertisedToolNames("orchestrator")).not.toContain("exec_command");
     expect(advertisedToolNames("orchestrator")).not.toContain("write_stdin");
     expect(advertisedToolNames("orchestrator")).not.toContain("node_repl");
     // The customized home body is kept, but its stale/overly broad capability

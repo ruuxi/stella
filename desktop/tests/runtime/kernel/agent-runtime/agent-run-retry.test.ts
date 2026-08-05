@@ -29,7 +29,7 @@ describe("agent run transient retry policy", () => {
     {
       name: "Codex streamed server error",
       error: new Error(
-        'Codex error (server_error): An error occurred while processing your request.',
+        "Codex error (server_error): An error occurred while processing your request.",
       ),
       category: "http_5xx",
     },
@@ -41,25 +41,9 @@ describe("agent run transient retry policy", () => {
       category: "http_5xx",
     },
     {
-      name: "429 relay buffer quota",
-      error: Object.assign(new Error("Transient relay buffer quota exceeded"), {
-        status: 429,
-      }),
+      name: "429 provider rate limit",
+      error: Object.assign(new Error("Too many requests"), { status: 429 }),
       category: "rate_limit",
-    },
-    {
-      name: "relay_stream_lost",
-      error: new Error(
-        "relay_stream_lost: upstream response lost before a terminal event",
-      ),
-      category: "relay_stream_lost",
-    },
-    {
-      name: "missing relay response",
-      error: Object.assign(new Error("404 Relay response not found"), {
-        status: 404,
-      }),
-      category: "relay_response_missing",
     },
     {
       name: "transport EOF",
@@ -181,7 +165,7 @@ describe("agent run transient retry policy", () => {
     const result = await executeAgentTurnWithRetry({
       execute: async (resume) => {
         calls.push(resume);
-        return { finalText: "", errorMessage: "relay_stream_lost" };
+        return { finalText: "", errorMessage: "unexpected EOF" };
       },
       prepareRetry: (failure) => {
         prepared.push(failure);
@@ -199,7 +183,7 @@ describe("agent run transient retry policy", () => {
     expect(result.attempts).toBe(4);
     expect(result.finalText).toBe("");
     expect(result.errorMessage).toContain(
-      "Automatic recovery exhausted after 4 attempts (relay_stream_lost)",
+      "Automatic recovery exhausted after 4 attempts (transport)",
     );
   });
 

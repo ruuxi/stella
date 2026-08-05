@@ -265,7 +265,7 @@ export const executeWithContextOverflowRecovery = async (args) => {
       resolvedLlm: args.opts.resolvedLlm,
       runId: args.runId,
       reason:
-        "the compacted retry overflowed again before any new model output or tool result",
+        "the compacted retry grew beyond the model's safe input budget again",
     });
     return { finalText: handoff.text };
   }

@@ -10,10 +10,6 @@ import {
   buildHistorySource,
   buildStartupPromptMessages,
 } from "../../../../../runtime/kernel/agent-runtime/thread-memory.js";
-import {
-  buildDefaultTransformContext,
-  normalizeModelVisibleToolResults,
-} from "../../../../../runtime/kernel/agent-runtime/shared.js";
 import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 
 describe("buildSystemPrompt", () => {
@@ -434,6 +430,52 @@ describe("buildSubagentPromptMessages", () => {
 });
 
 describe("buildHistorySource", () => {
+  it("preserves persisted assistant text byte-for-byte", () => {
+    const assistantText = "  exact assistant text\n";
+    const [message] = buildHistorySource({
+      systemPrompt: "system",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      threadHistory: [
+        {
+          role: "assistant",
+          content: assistantText,
+          timestamp: 1,
+          payload: {
+            role: "assistant",
+            content: [{ type: "text", text: assistantText }],
+            api: "openai-responses",
+            provider: "test",
+            model: "test-model",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+            stopReason: "stop",
+            timestamp: 1,
+          },
+        },
+      ],
+    });
+
+    expect(message?.role).toBe("assistant");
+    expect(
+      message?.role === "assistant" && message.content[0]?.type === "text"
+        ? message.content[0].text
+        : null,
+    ).toBe(assistantText);
+  });
+
   // Retaining older bootstrap entries keeps the prompt-cache prefix stable.
   it("retains all persisted memory bundle entries in chronological order", () => {
     const history = buildHistorySource({
@@ -531,204 +573,5 @@ describe("buildHistorySource", () => {
     expect(replayedText.indexOf("old user")).toBeLessThan(
       replayedText.indexOf("new memory"),
     );
-  });
-});
-
-describe("buildDefaultTransformContext", () => {
-  it("normalizes generic tool text using the active model policy without mutating durable content", () => {
-    const rawText = `HEAD-${"x".repeat(2_000)}-TAIL`;
-    const rawMessage: AgentMessage = {
-      role: "toolResult",
-      toolCallId: "call-generic",
-      toolName: "Read",
-      content: [{ type: "text", text: rawText }],
-      isError: false,
-      timestamp: 1,
-    };
-
-    const durableMessages = [rawMessage];
-    const normalized = normalizeModelVisibleToolResults(durableMessages, {
-      model: {
-        contextWindow: 128_000,
-        toolOutputTokenLimit: 100,
-      },
-    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
-
-    expect(normalized).not.toBe(durableMessages);
-    expect(normalized[0]).not.toBe(rawMessage);
-    const normalizedText = (
-      normalized[0] as Extract<AgentMessage, { role: "toolResult" }>
-    ).content[0];
-    expect(normalizedText?.type).toBe("text");
-    expect(
-      normalizedText?.type === "text" ? normalizedText.text.length : 0,
-    ).toBeLessThanOrEqual(480);
-    expect(
-      normalizedText?.type === "text" ? normalizedText.text : "",
-    ).toContain("Tool output truncated");
-    expect(normalizedText?.type === "text" ? normalizedText.text : "").toMatch(
-      /^HEAD-/,
-    );
-    expect(normalizedText?.type === "text" ? normalizedText.text : "").toMatch(
-      /-TAIL$/,
-    );
-    expect(
-      (rawMessage as Extract<AgentMessage, { role: "toolResult" }>).content[0],
-    ).toEqual({
-      type: "text",
-      text: rawText,
-    });
-  });
-
-  it("applies shell max_output_tokens to the output body before generic serialization", () => {
-    const rawOutput = `HEAD-${"x".repeat(2_000)}-TAIL`;
-    const rawText = JSON.stringify(
-      {
-        output: rawOutput,
-        exit_code: 0,
-        original_token_count: 503,
-      },
-      null,
-      2,
-    );
-    const rawMessage: AgentMessage = {
-      role: "toolResult",
-      toolCallId: "call-shell",
-      toolName: "exec_command",
-      content: [{ type: "text", text: rawText }],
-      modelOutputTokens: 100,
-      isError: false,
-      timestamp: 1,
-    };
-
-    const [normalized] = normalizeModelVisibleToolResults([rawMessage], {
-      model: {
-        contextWindow: 128_000,
-        toolOutputTokenLimit: 10_000,
-      },
-    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
-    const block = (normalized as Extract<AgentMessage, { role: "toolResult" }>)
-      .content[0];
-    expect(block?.type).toBe("text");
-    const parsed = JSON.parse(
-      block?.type === "text" ? block.text : "",
-    ) as Record<string, unknown>;
-
-    expect((parsed.output as string).length).toBeLessThanOrEqual(400);
-    expect(parsed.output).toContain("Tool output truncated");
-    expect(parsed.original_token_count).toBe(503);
-    expect(
-      (
-        JSON.parse(rawText) as {
-          output: string;
-        }
-      ).output,
-    ).toBe(rawOutput);
-  });
-
-  it("caps a larger shell request at the active model policy", () => {
-    const rawText = JSON.stringify({
-      output: `HEAD-${"x".repeat(2_000)}-TAIL`,
-    });
-    const rawMessage: AgentMessage = {
-      role: "toolResult",
-      toolCallId: "call-shell-policy",
-      toolName: "exec_command",
-      content: [{ type: "text", text: rawText }],
-      modelOutputTokens: 1_000,
-      isError: false,
-      timestamp: 1,
-    };
-
-    const [normalized] = normalizeModelVisibleToolResults([rawMessage], {
-      model: {
-        contextWindow: 128_000,
-        toolOutputTokenLimit: 200,
-      },
-    } as Parameters<typeof normalizeModelVisibleToolResults>[1]);
-    const block = (normalized as Extract<AgentMessage, { role: "toolResult" }>)
-      .content[0];
-    const parsed = JSON.parse(
-      block?.type === "text" ? block.text : "",
-    ) as Record<string, unknown>;
-
-    expect((parsed.output as string).length).toBeLessThanOrEqual(800);
-    expect(parsed.output).toContain("Tool output truncated");
-  });
-
-  it("preserves tool-result images in the request projection", async () => {
-    const transform = buildDefaultTransformContext({
-      model: { contextWindow: 128_000 },
-    } as Parameters<typeof buildDefaultTransformContext>[0]);
-    const messages: AgentMessage[] = Array.from({ length: 10 }, (_, index) => ({
-      role: "toolResult",
-      toolCallId: `call-${index}`,
-      toolName: "Read",
-      content: [
-        {
-          type: "image",
-          data: "a".repeat(1024),
-          mimeType: "image/png",
-        },
-      ],
-      isError: false,
-      timestamp: index,
-    }));
-
-    const transformed = await transform(messages);
-
-    expect(transformed).toBe(messages);
-    expect(
-      transformed.flatMap((message) =>
-        Array.isArray(message.content)
-          ? message.content.filter((block) => block.type === "image")
-          : [],
-      ),
-    ).toHaveLength(10);
-  });
-
-  it("does not prune oversized context at request time", async () => {
-    const transform = buildDefaultTransformContext({
-      model: { contextWindow: 20_000 },
-    } as Parameters<typeof buildDefaultTransformContext>[0]);
-    const personality: AgentMessage = {
-      role: "runtimeInternal",
-      content: [
-        {
-          type: "text",
-          text: '<startup_doc path="~/.stella/PERSONALITY.md">\nWarm and concise.\n</startup_doc>',
-        },
-      ],
-      timestamp: 1,
-      customType: "bootstrap.startup_doc",
-    };
-    const oldContext: AgentMessage = {
-      role: "user",
-      content: [{ type: "text", text: "old context ".repeat(20_000) }],
-      timestamp: 2,
-    };
-    const currentPrompt: AgentMessage = {
-      role: "user",
-      content: [{ type: "text", text: "current user prompt" }],
-      timestamp: 3,
-    };
-
-    const messages = [personality, oldContext, currentPrompt];
-    const projected = await transform(messages);
-    const projectedText = projected
-      .flatMap((message) =>
-        Array.isArray(message.content)
-          ? message.content.map((block) =>
-              block.type === "text" ? block.text : "",
-            )
-          : [message.content],
-      )
-      .join("\n");
-
-    expect(projected).toBe(messages);
-    expect(projected).toEqual([personality, oldContext, currentPrompt]);
-    expect(projectedText).toContain("Warm and concise.");
-    expect(projectedText).toContain("old context");
-    expect(projectedText).toContain("current user prompt");
   });
 });

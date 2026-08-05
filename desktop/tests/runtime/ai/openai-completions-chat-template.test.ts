@@ -39,6 +39,19 @@ const makeModel = (
   },
 });
 
+const fireworksModel: Model<"openai-completions"> = {
+  id: "stella/accounts/fireworks/models/deepseek-v4-flash-0731",
+  name: "DeepSeek V4 Flash 0731",
+  api: "openai-completions",
+  provider: "fireworks",
+  baseUrl: "https://stella.example.test/api/stella/relay",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 1_000_000,
+  maxTokens: 65_536,
+};
+
 describe("openai-completions chat template kwargs", () => {
   it("resolves scalar and thinking-derived kwargs without undefined values", () => {
     const model = makeModel("chat-template");
@@ -97,5 +110,26 @@ describe("openai-completions chat template kwargs", () => {
       enable_thinking: true,
       preserve_thinking: true,
     });
+  });
+});
+
+describe("openai-completions prompt cache affinity", () => {
+  it("uses the broader prompt cache key for Fireworks relay requests", () => {
+    const params = buildOpenAICompletionsParams(fireworksModel, context, {
+      sessionId: "general-thread-1",
+      promptCacheKey: "conversation-1",
+    }) as unknown as { prompt_cache_key?: string };
+
+    expect(params.prompt_cache_key).toBe("conversation-1");
+  });
+
+  it("omits Fireworks cache affinity when retention is disabled", () => {
+    const params = buildOpenAICompletionsParams(fireworksModel, context, {
+      sessionId: "general-thread-1",
+      promptCacheKey: "conversation-1",
+      cacheRetention: "none",
+    }) as unknown as { prompt_cache_key?: string };
+
+    expect(params.prompt_cache_key).toBeUndefined();
   });
 });

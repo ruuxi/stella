@@ -49,7 +49,6 @@ import {
   resolveRunnerRecallLlmRoute,
 } from "./model-selection.js";
 import type { BackgroundExitWake } from "./background-exit-wake.js";
-import { acquireRepoMutationEpoch } from "../self-mod/mutation-epoch.js";
 
 /**
  * Hand a finished run's still-running `exec_command` sessions to the
@@ -488,11 +487,6 @@ export const createAgentOrchestration = (
     attemptTeardownTimeoutMs?: number;
   },
 ) => {
-  // A send_input continuation is a new engine attempt but the same logical
-  // self-mod run. Keep its checkout lease in this map until that logical run
-  // is finalized/canceled so no other author can write into the gap.
-  const mutationEpochReleases = new Map<string, () => Promise<void>>();
-
   const handleAgentLifecycleEvent = (event: AgentLifecycleEvent) => {
     const installedManager = context.state.localAgentManager;
     const parentOwner = installedManager
@@ -795,29 +789,6 @@ export const createAgentOrchestration = (
         context.state.conversationCallbacks.get(conversationId) ??
         null;
 
-      // Every self-mod author participates in the same checkout-wide epoch.
-      // Claude's vanilla Bash/MCP/Task writes cannot be fenced per tool, so a
-      // narrower Claude-only lease would still let Pi/Codex writes leak into
-      // Claude's final worktree snapshot and Apply commit.
-      let releaseMutationEpoch = mutationEpochReleases.get(lifecycleRunId);
-      if (
-        !releaseMutationEpoch &&
-        shouldAttachSelfModLifecycle &&
-        context.stellaAppDir
-      ) {
-        releaseMutationEpoch = await acquireRepoMutationEpoch(
-          context.stellaAppDir,
-          abortSignal,
-        );
-        mutationEpochReleases.set(lifecycleRunId, releaseMutationEpoch);
-      }
-      const closeMutationEpoch = async (): Promise<void> => {
-        const release = mutationEpochReleases.get(lifecycleRunId);
-        if (!release) return;
-        mutationEpochReleases.delete(lifecycleRunId);
-        await release();
-      };
-
       let exploreFindingsBlock = "";
       let selfModRunBegan = false;
       try {
@@ -894,7 +865,6 @@ export const createAgentOrchestration = (
           }
           onSelfModRunClosed?.(lifecycleRunId);
         }
-        await closeMutationEpoch();
         throw error;
       }
 
@@ -1384,96 +1354,88 @@ export const createAgentOrchestration = (
             ? { backgroundExitWake: context.state.backgroundExitWake }
             : {}),
         });
-        const shouldKeepMutationEpoch = Boolean(
+        const shouldKeepSelfModRun = Boolean(
           shouldAttachSelfModLifecycle &&
           subagentInterrupted &&
           shouldContinueSelfModLifecycleAfterInterrupt?.(),
         );
         if (shouldAttachSelfModLifecycle) {
-          try {
-            // The finalize/cancel hooks below own the entire apply pipeline
-            // (contention tracker drain, Vite overlay swap, runtime restart,
-            // morph cover). The renderer no longer participates in the
-            // resume-flush dance — it just observes self-mod-hmr state events
-            // emitted by the worker server.
-            if (subagentSucceeded) {
-              // The commit subject is one line of derived text, so it runs as
-              // a single stateless completion on the engine-aware light tier —
-              // no session, no thread history, no tools, no run events. The
-              // prompt already carries everything that decides the subject
-              // (task, changed files, truncated diff), so re-sending this
-              // thread's transcript would buy nothing. A failure here is not
-              // fatal: the finalizer falls back to the task description.
-              const commitMessageProvider = createCommitSubjectProvider(
-                async (prompt) => {
-                  const route = await resolveRunnerRecallLlmRoute(
-                    context,
-                    agentType,
-                    agentContext.modelConfigSnapshot,
-                  );
-                  return await runLightTextCompletion({
-                    route,
-                    userPrompt: prompt,
-                    agentType,
-                    stellaAppDir: context.stellaAppDir,
-                    stellaDataDir: context.stellaDataDir,
-                    maxOutputTokens: COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
-                    ...(abortSignal ? { signal: abortSignal } : {}),
-                  });
-                },
-              );
+          // The finalize/cancel hooks below own the entire apply pipeline
+          // (contention tracker drain, Vite overlay swap, runtime restart,
+          // morph cover). The renderer no longer participates in the
+          // resume-flush dance — it just observes self-mod-hmr state events
+          // emitted by the worker server.
+          if (subagentSucceeded) {
+            // The commit subject is one line of derived text, so it runs as
+            // a single stateless completion on the engine-aware light tier —
+            // no session, no thread history, no tools, no run events. The
+            // prompt already carries everything that decides the subject
+            // (task, changed files, truncated diff), so re-sending this
+            // thread's transcript would buy nothing. A failure here is not
+            // fatal: the finalizer falls back to the task description.
+            const commitMessageProvider = createCommitSubjectProvider(
+              async (prompt) => {
+                const route = await resolveRunnerRecallLlmRoute(
+                  context,
+                  agentType,
+                  agentContext.modelConfigSnapshot,
+                );
+                return await runLightTextCompletion({
+                  route,
+                  userPrompt: prompt,
+                  agentType,
+                  stellaAppDir: context.stellaAppDir,
+                  stellaDataDir: context.stellaDataDir,
+                  maxOutputTokens: COMMIT_SUBJECT_MAX_OUTPUT_TOKENS,
+                  ...(abortSignal ? { signal: abortSignal } : {}),
+                });
+              },
+            );
 
-              // Durable feature identity, decided at write time: an explicit
-              // identity from the caller, else the authoring thread key, so a
-              // thread resumed later keeps extending the same feature.
-              const threadName =
-                !selfModFeature && agentId
-                  ? context.runtimeStore.getThreadName?.(agentId)
-                  : undefined;
-              const featureId = selfModFeature?.featureId ?? agentId;
-              const featureTitle =
-                selfModFeature?.featureTitle ??
-                (threadName && threadName !== agentId
-                  ? threadName
-                  : taskDescription);
+            // Durable feature identity, decided at write time: an explicit
+            // identity from the caller, else the authoring thread key, so a
+            // thread resumed later keeps extending the same feature.
+            const threadName =
+              !selfModFeature && agentId
+                ? context.runtimeStore.getThreadName?.(agentId)
+                : undefined;
+            const featureId = selfModFeature?.featureId ?? agentId;
+            const featureTitle =
+              selfModFeature?.featureTitle ??
+              (threadName && threadName !== agentId
+                ? threadName
+                : taskDescription);
 
-              await Promise.resolve(
-                context.selfModLifecycle!.finalizeRun({
-                  runId: lifecycleRunId,
-                  ...(rootRunId ? { rootRunId } : {}),
-                  taskDescription,
-                  taskPrompt,
-                  conversationId,
-                  ...(agentId ? { threadKey: agentId } : {}),
-                  ...((agentContext.parentAgentId ?? agentId)
-                    ? { ownerThreadId: agentContext.parentAgentId ?? agentId }
-                    : {}),
-                  ...(featureId ? { featureId } : {}),
-                  ...(featureTitle ? { featureTitle } : {}),
-                  succeeded: true,
-                  commitMessageProvider,
-                }),
-              );
-              onSelfModRunClosed?.(lifecycleRunId);
-            } else if (shouldKeepMutationEpoch) {
-              // This interrupt is a continuation boundary, not terminal
-              // cancellation. Keep the self-mod run open so writes before and
-              // after the boundary apply as one batch when the task finishes.
-            } else if (
-              typeof context.selfModLifecycle!.cancelRun === "function"
-            ) {
-              await Promise.resolve(
-                context.selfModLifecycle!.cancelRun(lifecycleRunId),
-              );
-              onSelfModRunClosed?.(lifecycleRunId);
-            }
-          } finally {
-            if (!shouldKeepMutationEpoch) {
-              await closeMutationEpoch();
-            }
+            await Promise.resolve(
+              context.selfModLifecycle!.finalizeRun({
+                runId: lifecycleRunId,
+                ...(rootRunId ? { rootRunId } : {}),
+                taskDescription,
+                taskPrompt,
+                conversationId,
+                ...(agentId ? { threadKey: agentId } : {}),
+                ...((agentContext.parentAgentId ?? agentId)
+                  ? { ownerThreadId: agentContext.parentAgentId ?? agentId }
+                  : {}),
+                ...(featureId ? { featureId } : {}),
+                ...(featureTitle ? { featureTitle } : {}),
+                succeeded: true,
+                commitMessageProvider,
+              }),
+            );
+            onSelfModRunClosed?.(lifecycleRunId);
+          } else if (shouldKeepSelfModRun) {
+            // This interrupt is a continuation boundary, not terminal
+            // cancellation. Keep the self-mod run open so writes before and
+            // after the boundary apply as one batch when the task finishes.
+          } else if (
+            typeof context.selfModLifecycle!.cancelRun === "function"
+          ) {
+            await Promise.resolve(
+              context.selfModLifecycle!.cancelRun(lifecycleRunId),
+            );
+            onSelfModRunClosed?.(lifecycleRunId);
           }
-        } else {
-          await closeMutationEpoch();
         }
       }
     },

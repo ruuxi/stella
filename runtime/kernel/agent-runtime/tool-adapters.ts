@@ -147,10 +147,8 @@ const formatToolResult = (
   };
 };
 
-// Final native Pi tool results bypass this legacy cap and are normalized
-// request-only in shared.ts. Keep this bound for live partial updates and
-// external-engine dynamic-tool adapters, which do not use the Pi context
-// transform.
+// Model-visible tool text is bounded once, before the tool-result message is
+// appended to history. That exact content is then reused until compaction.
 export const MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS = 30_000;
 
 export const truncateModelVisibleToolText = (
@@ -810,15 +808,16 @@ export const createPiTools = (opts: {
         // the screenshot on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text, opts.imageCapTarget);
+        const truncatedText = truncateModelVisibleToolText(forwardedText).text;
         const content: Array<TextContent | ImageBlock> = [];
         const screenshotNote =
           legacyImages.length > 0
             ? "\n\n[Image attached below. Inspect it directly. If it is a UI screenshot and the accessibility tree is sparse or missing a visible control, use screenshot x/y coordinates.]"
             : "";
-        if (forwardedText || legacyImages.length === 0) {
+        if (truncatedText || legacyImages.length === 0) {
           content.push({
             type: "text" as const,
-            text: `${forwardedText}${screenshotNote}`,
+            text: `${truncatedText}${screenshotNote}`,
           });
         } else if (screenshotNote) {
           content.push({

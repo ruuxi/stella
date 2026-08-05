@@ -10,8 +10,6 @@ export const EMPTY_AGENT_RUN_ERROR =
 export type AgentRunFailureCategory =
   | "http_5xx"
   | "rate_limit"
-  | "relay_stream_lost"
-  | "relay_response_missing"
   | "transport"
   | "empty_response"
   | "auth"
@@ -96,20 +94,9 @@ const isInvalidModelOrRoute = (message: string): boolean =>
     message,
   );
 
-const isRelayResponseMissing = (message: string, status?: number): boolean =>
-  /\brelay response (?:was )?not found\b/i.test(message) ||
-  (status === 404 &&
-    /\brelay\b[^\n]*\bresponse\b[^\n]*\bnot found\b/i.test(message));
-
-const isRelayStreamLost = (message: string, code?: string): boolean =>
-  code === "RELAY_STREAM_LOST" ||
-  /\brelay[_ -]stream[_ -]lost\b|\bupstream response (?:was )?lost before a terminal event\b/i.test(
-    message,
-  );
-
 const isRateLimit = (message: string, status?: number): boolean =>
   status === 429 ||
-  /\b(?:http(?: status)?\s*[:=]?\s*)?429\b|\btoo many requests\b|\brate limit(?:ed|ing)?\b|\brelay buffer quota exceeded\b|\btransient relay[^\n]*quota exceeded\b/i.test(
+  /\b(?:http(?: status)?\s*[:=]?\s*)?429\b|\btoo many requests\b|\brate limit(?:ed|ing)?\b/i.test(
     message,
   );
 
@@ -158,12 +145,6 @@ export const classifyAgentRunFailure = (
   }
   if (/run truncated:[^\n]*no visible reply was produced/i.test(message)) {
     return { category: "empty_response", message, retryable: true };
-  }
-  if (isRelayStreamLost(message, code)) {
-    return { category: "relay_stream_lost", message, retryable: true };
-  }
-  if (isRelayResponseMissing(message, status)) {
-    return { category: "relay_response_missing", message, retryable: true };
   }
   if (isRateLimit(message, status)) {
     return { category: "rate_limit", message, retryable: true };

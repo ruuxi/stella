@@ -42,10 +42,6 @@ import type { SelfModCommitAppliedPayload } from "../../contracts/local-chat.js"
 import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
 const logger = createRuntimeLogger("agent-runtime.events");
-type PersistedAssistantContent = Extract<
-  PersistedRuntimeThreadPayload,
-  { role: "assistant" }
->["content"];
 
 type RuntimeAgentLike = {
   state: {
@@ -164,7 +160,9 @@ export const createRunEventRecorder = ({
       };
     },
 
-    recordAssistantMessageEnd(message: AgentMessage): RuntimeAssistantMessageEvent | null {
+    recordAssistantMessageEnd(
+      message: AgentMessage,
+    ): RuntimeAssistantMessageEvent | null {
       const text = extractAssistantText(message).trim();
       const event = recordAssistantTextEnd(text, message.timestamp);
       if (event && assistantMessageHasToolCall(message)) {
@@ -245,9 +243,10 @@ export const createRunEventRecorder = ({
       const seq = nextSeq();
       const toolCallId = redactSensitiveText(args.toolCallId);
       const toolName = redactSensitiveText(args.toolName);
-      const sanitizedArgs = sanitizeSensitiveData(
-        args.toolArgs,
-      ) as Record<string, unknown>;
+      const sanitizedArgs = sanitizeSensitiveData(args.toolArgs) as Record<
+        string,
+        unknown
+      >;
       store.recordRunEvent({
         timestamp: now(),
         runId,
@@ -735,27 +734,16 @@ const toPersistedThreadPayload = (
   message: AgentMessage,
 ): PersistedRuntimeThreadPayload | null => {
   if (message.role === "assistant") {
-    const trimmedContent: PersistedAssistantContent = [];
-    for (const block of message.content) {
-      if (block.type !== "text") {
-        trimmedContent.push(block);
-        continue;
-      }
-      const trimmed = block.text.trim();
-      if (trimmed) {
-        trimmedContent.push({ ...block, text: trimmed });
-      }
-    }
-    if (trimmedContent.length === 0) {
+    if (message.content.length === 0) {
       if (message.stopReason !== "error" && message.stopReason !== "aborted") {
         return null;
       }
-      trimmedContent.push({ type: "text", text: "" });
+      return {
+        ...message,
+        content: [{ type: "text", text: "" }],
+      };
     }
-    return {
-      ...message,
-      content: trimmedContent,
-    };
+    return message;
   }
   if (message.role === "toolResult") {
     return {

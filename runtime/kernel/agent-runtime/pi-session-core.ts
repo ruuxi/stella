@@ -1,5 +1,6 @@
 import { cleanupSessionResources } from "../../ai/session-resources.js";
 import type { Agent } from "../agent-core/agent.js";
+import type { AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
@@ -24,6 +25,7 @@ type CreateRuntimeAgentArgs = Parameters<typeof createRuntimeAgent>[0];
 
 type PiSessionCoreOptions = {
   threadKey: string;
+  promptCacheKey: string;
   loggerName: string;
 };
 
@@ -66,14 +68,31 @@ export class PiSessionCore {
    */
   protected readonly abortContainment = new ProviderAbortContainment();
   readonly threadKey: string;
+  private readonly promptCacheKey: string;
 
   constructor(opts: PiSessionCoreOptions) {
     this.threadKey = opts.threadKey;
+    this.promptCacheKey = opts.promptCacheKey;
     this.logger = createRuntimeLogger(opts.loggerName);
   }
 
   get hasAgent(): boolean {
     return this.agent !== null;
+  }
+
+  protected get canSteerLiveAgent(): boolean {
+    return this.agent?.state.isStreaming === true;
+  }
+
+  /**
+   * Inject a user message into an actively streaming Pi agent. The agent loop
+   * consumes it at the next safe boundary, after the current response/tool
+   * work, without aborting the provider request or rebuilding its prefix.
+   */
+  protected steerLiveAgent(message: AgentMessage): boolean {
+    if (!this.canSteerLiveAgent || !this.agent) return false;
+    this.agent.steer(message);
+    return true;
   }
 
   /**
@@ -387,6 +406,7 @@ export class PiSessionCore {
         tools: args.tools,
         historySource,
         cacheSessionId: this.threadKey,
+        promptCacheKey: this.promptCacheKey,
         ...(serviceTier ? { serviceTier } : {}),
         ...(args.afterToolCall ? { afterToolCall: args.afterToolCall } : {}),
         ...(args.onProviderRetry

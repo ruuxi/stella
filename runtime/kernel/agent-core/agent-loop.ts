@@ -425,6 +425,31 @@ async function executeToolCalls(
 	return executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit);
 }
 
+const canonicalizeToolCallValue = (value: unknown): unknown => {
+	if (Array.isArray(value)) return value.map(canonicalizeToolCallValue);
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>)
+				.sort(([left], [right]) => left.localeCompare(right))
+				.map(([key, nested]) => [key, canonicalizeToolCallValue(nested)]),
+		);
+	}
+	return value;
+};
+
+const toolCallExecutionKey = (toolCall: AgentToolCall): string =>
+	`${toolCall.name}\u0000${JSON.stringify(canonicalizeToolCallValue(toolCall.arguments))}`;
+
+const createDuplicateToolCallResult = (original: ToolResultMessage): AgentToolResult<unknown> => ({
+	content: [
+		{
+			type: "text",
+			text: `[Exact duplicate skipped. Reused the result from tool call ${original.toolCallId}; do not run this identical call again.]`,
+		},
+	],
+	details: { deduplicated: true, reusedToolCallId: original.toolCallId },
+});
+
 async function executeToolCallsSequential(
 	currentContext: AgentContext,
 	assistantMessage: AssistantMessage,
@@ -434,10 +459,12 @@ async function executeToolCallsSequential(
 	emit: AgentEventSink,
 ): Promise<{ toolResults: ToolResultMessage[]; steeringMessages?: AgentMessage[] }> {
 	const results: ToolResultMessage[] = [];
+	const resultByExecutionKey = new Map<string, ToolResultMessage>();
 	let steeringMessages: AgentMessage[] | undefined;
 
 	for (let index = 0; index < toolCalls.length; index++) {
 		const toolCall = toolCalls[index];
+		const executionKey = toolCallExecutionKey(toolCall);
 		const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
 		await emit({
 			type: "tool_execution_start",
@@ -447,22 +474,37 @@ async function executeToolCallsSequential(
 			args: toolCall.arguments,
 		});
 
-		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
-		if (preparation.kind === "immediate") {
-			results.push(await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit));
-		} else {
-			const executed = await executePreparedToolCall(preparation, signal, emit, config.toolInactivityTimeoutMs);
+		const originalResult = resultByExecutionKey.get(executionKey);
+		if (originalResult) {
 			results.push(
-				await finalizeExecutedToolCall(
-					currentContext,
-					assistantMessage,
-					preparation,
-					executed,
-					config,
-					signal,
+				await emitToolCallOutcome(
+					toolCall,
+					createDuplicateToolCallResult(originalResult),
+					originalResult.isError,
 					emit,
 				),
 			);
+			continue;
+		}
+
+		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
+		if (preparation.kind === "immediate") {
+			const result = await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit);
+			results.push(result);
+			resultByExecutionKey.set(executionKey, result);
+		} else {
+			const executed = await executePreparedToolCall(preparation, signal, emit, config.toolInactivityTimeoutMs);
+			const result = await finalizeExecutedToolCall(
+				currentContext,
+				assistantMessage,
+				preparation,
+				executed,
+				config,
+				signal,
+				emit,
+			);
+			results.push(result);
+			resultByExecutionKey.set(executionKey, result);
 		}
 	}
 
@@ -484,12 +526,15 @@ async function executeToolCallsParallel(
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
 ): Promise<{ toolResults: ToolResultMessage[]; steeringMessages?: AgentMessage[] }> {
-	const results: ToolResultMessage[] = [];
 	const runnableCalls: PreparedToolCall[] = [];
+	const originalCallByExecutionKey = new Map<string, AgentToolCall>();
+	const duplicateOriginalByCall = new Map<AgentToolCall, AgentToolCall>();
+	const resultByCall = new Map<AgentToolCall, ToolResultMessage>();
 	let steeringMessages: AgentMessage[] | undefined;
 
 	for (let index = 0; index < toolCalls.length; index++) {
 		const toolCall = toolCalls[index];
+		const executionKey = toolCallExecutionKey(toolCall);
 		const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
 		await emit({
 			type: "tool_execution_start",
@@ -499,9 +544,17 @@ async function executeToolCallsParallel(
 			args: toolCall.arguments,
 		});
 
+		const originalCall = originalCallByExecutionKey.get(executionKey);
+		if (originalCall) {
+			duplicateOriginalByCall.set(toolCall, originalCall);
+			continue;
+		}
+		originalCallByExecutionKey.set(executionKey, toolCall);
+
 		const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
 		if (preparation.kind === "immediate") {
-			results.push(await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit));
+			const result = await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit);
+			resultByCall.set(toolCall, result);
 		} else {
 			runnableCalls.push(preparation);
 		}
@@ -514,17 +567,30 @@ async function executeToolCallsParallel(
 
 	for (const running of runningCalls) {
 		const executed = await running.execution;
-		results.push(
-			await finalizeExecutedToolCall(
-				currentContext,
-				assistantMessage,
-				running.prepared,
-				executed,
-				config,
-				signal,
-				emit,
-			),
+		const result = await finalizeExecutedToolCall(
+			currentContext,
+			assistantMessage,
+			running.prepared,
+			executed,
+			config,
+			signal,
+			emit,
 		);
+		resultByCall.set(running.prepared.toolCall, result);
+	}
+
+	for (const toolCall of toolCalls) {
+		const originalCall = duplicateOriginalByCall.get(toolCall);
+		if (!originalCall) continue;
+		const originalResult = resultByCall.get(originalCall);
+		if (!originalResult) continue;
+		const result = await emitToolCallOutcome(
+			toolCall,
+			createDuplicateToolCallResult(originalResult),
+			originalResult.isError,
+			emit,
+		);
+		resultByCall.set(toolCall, result);
 	}
 
 	if (!steeringMessages && config.getSteeringMessages) {
@@ -534,7 +600,13 @@ async function executeToolCallsParallel(
 		}
 	}
 
-	return { toolResults: results, steeringMessages };
+	return {
+		toolResults: toolCalls.flatMap((toolCall) => {
+			const result = resultByCall.get(toolCall);
+			return result ? [result] : [];
+		}),
+		steeringMessages,
+	};
 }
 
 export type PreparedToolCall = {

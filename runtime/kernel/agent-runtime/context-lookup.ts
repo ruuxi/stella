@@ -52,7 +52,7 @@ const MAX_RECALL_STEPS = 4;
 /**
  * Transport-failure retries per model completion (attempts = retries + 1).
  * A recall completion is a read-only lookup, so replaying the identical
- * request is side-effect free; relay streams dropping mid-flight otherwise
+ * request is side-effect free; provider streams dropping mid-flight otherwise
  * fail the whole lookup on the first hiccup (observed in the field as runs
  * of "Recall failed: the model produced no usable output").
  */

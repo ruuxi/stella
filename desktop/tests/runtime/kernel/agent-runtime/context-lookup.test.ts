@@ -1034,7 +1034,7 @@ describe("runRecall", () => {
     const completions = vi.mocked(completeSimple);
     completions.mockReset();
     completions.mockResolvedValue(
-      assistantFailure("error", "relay stream reset by peer"),
+      assistantFailure("error", "provider stream reset by peer"),
     );
 
     const out = await runRecall(await makeRunArgs(rootPath));

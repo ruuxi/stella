@@ -170,7 +170,19 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 			const compat = getCompat(model);
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
-			const client = createClient(model, context, apiKey, options?.headers, cacheSessionId, compat);
+			const promptCacheKey =
+				cacheRetention === "none"
+					? undefined
+					: (options?.promptCacheKey ?? options?.sessionId);
+			const client = createClient(
+				model,
+				context,
+				apiKey,
+				options?.headers,
+				cacheSessionId,
+				promptCacheKey,
+				compat,
+			);
 			let params = buildOpenAICompletionsParams(model, context, options, compat, cacheRetention);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
@@ -465,6 +477,7 @@ function createClient(
 	apiKey?: string,
 	optionsHeaders?: Record<string, string>,
 	sessionId?: string,
+	promptCacheKey?: string,
 	compat: ResolvedOpenAICompletionsCompat = getCompat(model),
 ) {
 	if (!apiKey) {
@@ -492,10 +505,14 @@ function createClient(
 		Object.assign(headers, copilotHeaders);
 	}
 
-	if (sessionId && compat.sendSessionAffinityHeaders) {
-		headers.session_id = sessionId;
-		headers["x-client-request-id"] = sessionId;
-		headers["x-session-affinity"] = sessionId;
+	if (compat.sendSessionAffinityHeaders) {
+		if (sessionId) {
+			headers.session_id = sessionId;
+			headers["x-client-request-id"] = sessionId;
+		}
+		if (promptCacheKey ?? sessionId) {
+			headers["x-session-affinity"] = promptCacheKey ?? sessionId!;
+		}
 	}
 
 	// Merge options headers last so they can override defaults
@@ -529,15 +546,19 @@ export function buildOpenAICompletionsParams(
 ) {
 	const messages = convertMessages(model, context, compat);
 	const cacheControl = getCompatCacheControl(compat, cacheRetention);
+	const promptCacheKey = options?.promptCacheKey ?? options?.sessionId;
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: model.id,
 		messages,
 		stream: true,
 		prompt_cache_key:
-			(model.baseUrl.includes("api.openai.com") && cacheRetention !== "none") ||
+			((model.baseUrl.includes("api.openai.com") ||
+				model.provider === "fireworks" ||
+				model.baseUrl.includes("fireworks.ai")) &&
+				cacheRetention !== "none") ||
 			(cacheRetention === "long" && compat.supportsLongCacheRetention)
-				? options?.sessionId
+				? promptCacheKey
 				: undefined,
 		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
 	};
@@ -1225,6 +1246,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
+	const isFireworks =
+		provider === "fireworks" || baseUrl.includes("fireworks.ai");
 	// Local/self-hosted OpenAI-compatible servers (llama.cpp, gpt-oss) are the
 	// only endpoints that expect their prior reasoning replayed back as a
 	// plaintext field. Cloud providers reject it.
@@ -1255,7 +1278,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		zaiToolStream: false,
 		supportsStrictMode: !isMoonshot && !isCloudflareAiGateway,
 		cacheControlFormat,
-		sendSessionAffinityHeaders: false,
+		sendSessionAffinityHeaders: isFireworks,
 		supportsLongCacheRetention: !(isCloudflareWorkersAI || isCloudflareAiGateway),
 		deferredToolsMode: isMoonshot ? "kimi" : undefined,
 	};

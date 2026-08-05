@@ -147,6 +147,48 @@ describe("state tools", () => {
     expect(created[0]?.spawnEngine).toBeUndefined();
   });
 
+  it("captures the configured General snapshot for an unqualified Orchestrator spawn", async () => {
+    const created: AgentToolRequest[] = [];
+    const generalSnapshot = {
+      engine: "default" as const,
+      routeModel:
+        "stella/accounts/fireworks/models/deepseek-v4-flash-0731",
+      reasoningEffort: "xhigh" as const,
+    };
+    const captured: Array<Record<string, unknown>> = [];
+    const ctx = createStateContext(
+      "/tmp",
+      {
+        createAgent: async (request) => {
+          created.push(request);
+          return { threadId: "thread-1" };
+        },
+        getAgent: async () => null,
+        cancelAgent: async () => ({ canceled: false }),
+      },
+      undefined,
+      undefined,
+      async (args) => {
+        captured.push(args);
+        return generalSnapshot;
+      },
+    );
+
+    await handleSpawnAgent(
+      ctx,
+      { description: "Do work", prompt: "Do the work." },
+      orchestratorToolContext,
+    );
+
+    expect(captured).toEqual([
+      { agentType: AGENT_IDS.GENERAL, spawnEngine: { engine: "default" } },
+    ]);
+    expect(created[0]?.modelConfigSnapshot).toEqual(generalSnapshot);
+    expect(created[0]?.modelConfigSnapshot).not.toEqual(
+      orchestratorToolContext.modelConfigSnapshot,
+    );
+  });
+
   it("keeps every no-suffix parse result byte-for-byte compatible", () => {
     expect(parseSpawnAgentModel(undefined)).toEqual({ kind: "default" });
     expect(parseSpawnAgentModel("default")).toEqual({ kind: "default" });

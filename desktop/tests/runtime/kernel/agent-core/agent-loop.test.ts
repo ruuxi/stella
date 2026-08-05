@@ -114,6 +114,100 @@ describe("standalone Agent degenerate response recovery", () => {
 
     expect(streamFn.mock.calls[0]?.[2]?.serviceTier).toBe("priority");
   });
+
+  it("keeps prompt-cache affinity separate from the agent session", async () => {
+    const streamFn = vi.fn(() => {
+      const stream = createAssistantMessageEventStream();
+      const message = assistantMessage("done");
+      stream.push({ type: "start", partial: message });
+      stream.push({ type: "done", message });
+      return stream;
+    });
+    const agent = new Agent({
+      initialState: { model },
+      sessionId: "agent-thread-1",
+      promptCacheKey: "conversation-1",
+      streamFn,
+    });
+
+    await agent.prompt("Use the shared conversation cache.");
+
+    expect(streamFn.mock.calls[0]?.[2]).toMatchObject({
+      sessionId: "agent-thread-1",
+      promptCacheKey: "conversation-1",
+    });
+  });
+});
+
+describe("duplicate tool-call execution", () => {
+  it.each(["sequential", "parallel"] as const)(
+    "executes semantically identical calls once in %s mode and preserves an output for every call id",
+    async (toolExecution) => {
+      const execute = vi.fn(async () => okResult);
+      const tool = {
+        name: "web",
+        label: "Web",
+        description: "test web tool",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: true,
+        } as never,
+        execute,
+      } as AgentTool;
+      const toolMessage: AssistantMessage = {
+        ...assistantMessage(""),
+        content: [
+          {
+            type: "toolCall",
+            id: "web-call-1",
+            name: "web",
+            arguments: { query: "Express 5", options: { limit: 5 } },
+          },
+          {
+            type: "toolCall",
+            id: "web-call-2",
+            name: "web",
+            arguments: { options: { limit: 5 }, query: "Express 5" },
+          },
+        ],
+        stopReason: "toolUse",
+      };
+      const responses = [toolMessage, assistantMessage("done")];
+      const streamFn = vi.fn(() => {
+        const stream = createAssistantMessageEventStream();
+        const message = responses[streamFn.mock.calls.length - 1]!;
+        stream.push({ type: "start", partial: message });
+        stream.push({
+          type: "done",
+          reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
+          message,
+        });
+        return stream;
+      });
+      const agent = new Agent({
+        initialState: { model, tools: [tool] },
+        streamFn,
+        toolExecution,
+      });
+
+      await agent.prompt("Check the release notes.");
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      const results = agent.state.messages.filter(
+        (message) => message.role === "toolResult",
+      );
+      expect(results.map((message) => message.toolCallId)).toEqual([
+        "web-call-1",
+        "web-call-2",
+      ]);
+      expect(results[0]?.content).toEqual(okResult.content);
+      expect(results[1]?.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringContaining("Exact duplicate skipped"),
+      });
+    },
+  );
 });
 
 describe("executePreparedToolCall inactivity bound", () => {

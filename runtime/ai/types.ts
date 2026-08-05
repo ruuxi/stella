@@ -130,6 +130,12 @@ export interface StreamOptions {
    */
   sessionId?: string;
   /**
+   * Optional prompt-cache routing key. This can be broader than sessionId so
+   * sibling agents share one provider cache shard without sharing transport
+   * sessions or other per-agent resources.
+   */
+  promptCacheKey?: string;
+  /**
    * Optional callback for inspecting or replacing provider payloads before sending.
    * Return undefined to keep the payload unchanged.
    */

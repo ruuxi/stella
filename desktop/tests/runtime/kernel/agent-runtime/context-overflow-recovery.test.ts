@@ -241,7 +241,7 @@ describe("Pi-loop context overflow recovery", () => {
     const result = await harness.run();
 
     expect(result.finalText).toContain(
-      "the compacted retry overflowed again before any new model output or tool result",
+      "the compacted retry grew beyond the model's safe input budget again",
     );
     expect(execute).toHaveBeenCalledTimes(2);
     expect(runCompactionWithHooksMock).toHaveBeenCalledTimes(1);

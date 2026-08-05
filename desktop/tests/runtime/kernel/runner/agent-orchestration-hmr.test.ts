@@ -112,6 +112,10 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         }) => void;
       };
       abortSignal?: AbortSignal;
+      subagentSession?: {
+        canSteer: boolean;
+        steer: (text: string) => boolean;
+      };
     }) => {
       const runtime = getMockRuntime();
       const runCount = runtime.runCount + 1;
@@ -156,6 +160,42 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
           runtime.mode === "pause_resume_self_mod") &&
         runCount === 1
       ) {
+        let releaseSteeredRun: (() => void) | undefined;
+        const steeredRun = new Promise<void>((resolve) => {
+          releaseSteeredRun = resolve;
+        });
+        if (
+          runtime.mode === "send_input_then_apply_patch" &&
+          opts.subagentSession
+        ) {
+          Object.defineProperty(opts.subagentSession, "canSteer", {
+            configurable: true,
+            get: () => true,
+          });
+          Object.defineProperty(opts.subagentSession, "steer", {
+            configurable: true,
+            value: () => {
+              void (async () => {
+                const steeredResult = await opts.toolExecutor(
+                  "apply_patch",
+                  { input: runtime.patch },
+                  context,
+                );
+                opts.callbacks?.onToolEnd?.({
+                  runId: "subagent-run-1",
+                  seq: 2,
+                  toolCallId: "tool-2",
+                  toolName: "apply_patch",
+                  resultPreview: steeredResult.error ?? "ok",
+                  fileChanges: steeredResult.fileChanges,
+                  producedFiles: steeredResult.producedFiles,
+                });
+                releaseSteeredRun?.();
+              })();
+              return true;
+            },
+          });
+        }
         const result = await opts.toolExecutor(
           "apply_patch",
           { input: runtime.firstPatch ?? runtime.patch },
@@ -171,6 +211,13 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
           producedFiles: result.producedFiles,
         });
         runtime.onFirstWrite?.();
+        if (runtime.mode === "send_input_then_apply_patch") {
+          await steeredRun;
+          return {
+            runId: "subagent-run-1",
+            result: "done",
+          };
+        }
         await new Promise<void>((resolve) => {
           if (opts.abortSignal?.aborted) {
             resolve();
@@ -1011,7 +1058,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
   });
 
-  it("does not finalize self-mod HMR for the run interrupted by send_input", async () => {
+  it("finalizes live-steered self-mod HMR as one run", async () => {
     const root = await makeTempRoot();
     const srcDir = path.join(root, "desktop/src");
     await mkdir(srcDir, { recursive: true });

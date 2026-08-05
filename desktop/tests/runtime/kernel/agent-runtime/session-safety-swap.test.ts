@@ -420,7 +420,7 @@ describe("transient run retry resume flow", () => {
       .mockImplementationOnce(async () => {
         messages.push(
           assistantMessage(400, "error", {
-            errorMessage: "429 relay buffer quota exceeded",
+            errorMessage: "429 provider rate limit exceeded",
           }),
         );
       });
@@ -489,7 +489,7 @@ describe("transient run retry resume flow", () => {
       });
       messages.push(
         assistantMessage(100, "error", {
-          errorMessage: "relay_stream_lost",
+          errorMessage: "unexpected EOF",
         }),
       );
     });

@@ -341,7 +341,7 @@ describe("truncateModelVisibleToolText", () => {
 });
 
 describe("native tool-result persistence boundary", () => {
-  it("returns full tool text from the adapter for durable history", async () => {
+  it("truncates tool text once before it enters durable history", async () => {
     const rawText = `HEAD-${"x".repeat(40_000)}-TAIL`;
     const [tool] = createPiTools({
       runId: "run-raw-tool-output",
@@ -363,9 +363,11 @@ describe("native tool-result persistence boundary", () => {
     const text = result.content[0];
 
     expect(text?.type).toBe("text");
-    expect(text?.type === "text" ? text.text : "").toBe(rawText);
-    expect(text?.type === "text" ? text.text.length : 0).toBeGreaterThan(
-      30_000,
-    );
+    const persistedText = text?.type === "text" ? text.text : "";
+    expect(persistedText).not.toBe(rawText);
+    expect(persistedText.length).toBeLessThanOrEqual(30_000);
+    expect(persistedText).toContain("Tool output truncated");
+    expect(persistedText.startsWith("HEAD-")).toBe(true);
+    expect(persistedText.endsWith("-TAIL")).toBe(true);
   });
 });

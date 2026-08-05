@@ -268,6 +268,14 @@ export const isBunNodeReplRuntime = (
   versions: NodeJS.ProcessVersions & { bun?: string } = process.versions,
 ) => Boolean(versions.bun);
 
+export const nodeReplChildUsesElectronRuntime = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean => {
+  if (env.STELLA_NODE_IS_ELECTRON?.trim() === "1") return true;
+  if (env.STELLA_NODE_BIN?.trim()) return false;
+  return Boolean(env.STELLA_HOST_EXECUTABLE_PATH?.trim());
+};
+
 const createNodeReplTransport = (
   source: string,
   workerData: NodeReplWorkerData,
@@ -284,7 +292,7 @@ const createNodeReplTransport = (
   const child = spawn(executable, ["-"], {
     env: {
       ...process.env,
-      ...(process.env.STELLA_NODE_IS_ELECTRON === "1"
+      ...(nodeReplChildUsesElectronRuntime()
         ? { ELECTRON_RUN_AS_NODE: "1" }
         : {}),
       STELLA_NODE_REPL_WORKER_DATA: JSON.stringify(workerData),

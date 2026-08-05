@@ -658,9 +658,12 @@ describe("LocalAgentManager Exec fs locking", () => {
     __privateTaskDecorationStore.resetForTests();
   });
 
-  it("emits an interjected turn's real finish immediately — no deferral, no audience split", async () => {
+  it("steers a live Pi turn without aborting or starting a replacement run", async () => {
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
+    let firstRunWasAborted = false;
+    let steeringPrompt = "";
+    let releaseFirstRun: (() => void) | null = null;
     let firstRunStarted: (() => void) | null = null;
     const firstRunStartedPromise = new Promise<void>((resolve) => {
       firstRunStarted = resolve;
@@ -685,17 +688,23 @@ describe("LocalAgentManager Exec fs locking", () => {
       runSubagent: async (args) => {
         runCount += 1;
         if (runCount === 1) {
+          Object.defineProperty(args.subagentSession, "canSteer", {
+            configurable: true,
+            get: () => true,
+          });
+          Object.defineProperty(args.subagentSession, "steer", {
+            configurable: true,
+            value: (text: string) => {
+              steeringPrompt = text;
+              releaseFirstRun?.();
+              return true;
+            },
+          });
           firstRunStarted?.();
           await new Promise<void>((resolve) => {
-            if (args.abortSignal.aborted) {
-              resolve();
-              return;
-            }
-            args.abortSignal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
+            releaseFirstRun = resolve;
           });
-          return { runId: args.runId, result: "", interrupted: true };
+          firstRunWasAborted = args.abortSignal.aborted;
         }
         return { runId: args.runId, result: `done-${runCount}` };
       },
@@ -719,11 +728,6 @@ describe("LocalAgentManager Exec fs locking", () => {
     });
     await firstRunStartedPromise;
 
-    // User message relayed mid-task: hard-cut interjection. The follow-up
-    // turn runs, and when it finishes the thread is idle with no pending
-    // follow-up — that IS the real finish, so the full completion (chat
-    // card included) emits immediately. State-based rule: no grace timer,
-    // no orchestrator-only/display-only split.
     await manager.sendAgentMessage(
       task.threadId,
       "how is it going?",
@@ -732,9 +736,26 @@ describe("LocalAgentManager Exec fs locking", () => {
     );
     await waitForCompletions(1);
 
+    expect(firstRunWasAborted).toBe(false);
+    expect(runCount).toBe(1);
+    expect(steeringPrompt).toContain("how is it going?");
+    expect(steeringPrompt).not.toContain("paused");
     expect(completions()).toHaveLength(1);
-    expect(completions()[0]).toMatchObject({ result: "done-2" });
+    expect(completions()[0]).toMatchObject({ result: "done-1" });
     expect(completions()[0]?.audience).toBeUndefined();
+    const startedEvents = events.filter(
+      (event) => event.type === "agent-started",
+    );
+    expect(startedEvents).toHaveLength(2);
+    expect(startedEvents[1]).toMatchObject({
+      rootRunId: "root-2",
+      agentId: task.threadId,
+      statusText: "how is it going?",
+      isFollowUp: true,
+      // A steering receipt is a new UI occurrence on the same live attempt,
+      // not evidence of an engine restart.
+      attemptGeneration: startedEvents[0]?.attemptGeneration,
+    });
     // Fully finished — nothing pending keeps the thread "active".
     expect(manager.getActiveAgentCount()).toBe(0);
 
@@ -750,7 +771,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     await waitForCompletions(2);
 
     expect(completions()).toHaveLength(2);
-    expect(completions()[1]).toMatchObject({ result: "done-3" });
+    expect(completions()[1]).toMatchObject({ result: "done-2" });
     expect(completions()[1]?.audience).toBeUndefined();
     expect(
       events.every(
@@ -762,15 +783,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(manager.getActiveAgentCount()).toBe(0);
   });
 
-  it("classifies a send_input racing turn completion atomically: pre-dispatch = busy, no boundary card", async () => {
-    // The dangerous window: `runSubagent` has resolved but the completion
-    // dispatch hasn't run yet. A send_input landing there sees the task
-    // still "running" and queues a follow-up; the dispatch then
-    // short-circuits into the follow-up delivery WITHOUT emitting a
-    // completion for that internal boundary. Exactly one completion — the
-    // continued turn's real finish — ever emits. (Single-threaded state:
-    // there is no await between runSubagent resolving and the emit, so the
-    // classification can never straddle the boundary.)
+  it("queues input when no live Pi loop can steer, then continues after natural completion", async () => {
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
     let releaseFirstRun: (() => void) | null = null;
@@ -799,10 +812,8 @@ describe("LocalAgentManager Exec fs locking", () => {
         runCount += 1;
         if (runCount === 1) {
           firstRunStarted?.();
-          // Hold the turn open until the racing send_input has been
-          // classified, then complete NORMALLY (ignore the abort signal —
-          // models the turn finishing at the same instant the input
-          // arrives).
+          // This mock does not create a live Pi Agent, so send_input must
+          // stay queued while the current engine run finishes naturally.
           await new Promise<void>((resolve) => {
             releaseFirstRun = resolve;
           });
@@ -830,8 +841,6 @@ describe("LocalAgentManager Exec fs locking", () => {
     });
     await firstRunStartedPromise;
 
-    // send_input while the turn is still in flight → busy classification
-    // (queued follow-up), even though the turn completes immediately after.
     await manager.sendAgentMessage(
       task.threadId,
       "one more thing",
@@ -841,8 +850,8 @@ describe("LocalAgentManager Exec fs locking", () => {
     releaseFirstRun?.();
 
     await waitForCompletions(1);
-    // Exactly one completion: the continued turn's. The interjected
-    // boundary (done-1) never emitted a completion/card.
+    // Exactly one completion: the queued continuation's. The naturally
+    // finished internal boundary (done-1) never emitted a completion card.
     expect(completions()).toHaveLength(1);
     expect(completions()[0]).toMatchObject({ result: "done-2" });
     expect(completions()[0]?.audience).toBeUndefined();
@@ -1093,10 +1102,11 @@ describe("LocalAgentManager Exec fs locking", () => {
   });
 });
 
-describe("LocalAgentManager file records across send_input re-runs", () => {
-  it("banks a send_input-interrupted run's files into the eventual completion rollup, then drains", async () => {
+describe("LocalAgentManager file records across queued send_input turns", () => {
+  it("banks a naturally finished internal boundary into the eventual completion rollup, then drains", async () => {
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
+    let releaseFirstRun: (() => void) | null = null;
     let firstRunStarted: (() => void) | null = null;
     const firstRunStartedPromise = new Promise<void>((resolve) => {
       firstRunStarted = resolve;
@@ -1123,20 +1133,13 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
         if (runCount === 1) {
           firstRunStarted?.();
           await new Promise<void>((resolve) => {
-            if (args.abortSignal.aborted) {
-              resolve();
-              return;
-            }
-            args.abortSignal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
+            releaseFirstRun = resolve;
           });
-          // The interrupted run DID produce real files (e.g. rendered
-          // videos in ~/.stella/outputs) before the send_input cut it off.
+          // This mock has no live Pi Agent, so the current engine run
+          // finishes naturally before the queued update becomes turn 2.
           return {
             runId: args.runId,
-            result: "",
-            interrupted: true,
+            result: "done-1",
             fileChanges: [
               {
                 path: "/home/u/.stella/outputs/demos/review.html",
@@ -1201,14 +1204,15 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
     });
     await firstRunStartedPromise;
 
-    // send_input mid-run: aborts run 1 (its completion is never emitted)
-    // and delivers the follow-up as the next turn on the same session.
+    // No live Pi loop is available in this mock. The update queues without
+    // aborting run 1, then becomes the next turn once run 1 finishes.
     await manager.sendAgentMessage(
       task.threadId,
       "add music to the videos",
       "orchestrator",
       { rootRunId: "root-2" },
     );
+    releaseFirstRun?.();
     await waitForCompletions(1);
 
     // The first EMITTED completion must carry run 1's banked files merged
@@ -1447,6 +1451,7 @@ describe("send_input follow-up description and run rebind", () => {
     // not the original spawn text frozen forever.
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
+    let releaseFirstRun: (() => void) | null = null;
     let firstRunStarted: (() => void) | null = null;
     const firstRunStartedPromise = new Promise<void>((resolve) => {
       firstRunStarted = resolve;
@@ -1464,15 +1469,9 @@ describe("send_input follow-up description and run rebind", () => {
         if (runCount === 1) {
           firstRunStarted?.();
           await new Promise<void>((resolve) => {
-            if (args.abortSignal.aborted) {
-              resolve();
-              return;
-            }
-            args.abortSignal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
+            releaseFirstRun = resolve;
           });
-          return { runId: args.runId, result: "", interrupted: true };
+          return { runId: args.runId, result: "done-1" };
         }
         return { runId: args.runId, result: `done-${runCount}` };
       },
@@ -1505,6 +1504,7 @@ describe("send_input follow-up description and run rebind", () => {
         rootRunId: "root-2",
       },
     );
+    releaseFirstRun?.();
     await waitForAgentSettled(manager, task.threadId);
 
     const followUpStarted = events.find(

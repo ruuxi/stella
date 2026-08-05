@@ -437,15 +437,21 @@ export const handleSpawnAgent = async (
       promptPreview: prompt.slice(0, 160),
       rootRunId: context.rootRunId,
     });
-    let explicitModelConfig: AgentModelConfigSnapshot | undefined;
-    if (modelSelection.kind !== "default" && ctx.captureSpawnModelConfig) {
+    let capturedModelConfig: AgentModelConfigSnapshot | undefined;
+    if (
+      ctx.captureSpawnModelConfig &&
+      (modelSelection.kind !== "default" ||
+        context.agentType === AGENT_IDS.ORCHESTRATOR)
+    ) {
       try {
-        explicitModelConfig = await ctx.captureSpawnModelConfig({
+        capturedModelConfig = await ctx.captureSpawnModelConfig({
           agentType,
           spawnEngine:
             modelSelection.kind === "model"
               ? { engine: "default" }
-              : modelSelection.engine,
+              : modelSelection.kind === "engine"
+                ? modelSelection.engine
+                : { engine: "default" },
           ...(modelSelection.kind === "model"
             ? { model: modelSelection.model }
             : {}),
@@ -476,14 +482,14 @@ export const handleSpawnAgent = async (
         ...(modelSelection.reasoningEffort
           ? { spawnReasoningEffort: modelSelection.reasoningEffort }
           : {}),
-        // An unqualified child inherits the caller's durable engine/model
-        // execution snapshot, including subscription-harness mode. Explicit
-        // Stella/Codex/Claude selections intentionally start a fresh snapshot
-        // so the requested engine can be resolved for that new run.
-        ...(modelSelection.kind === "default" && context.modelConfigSnapshot
-          ? { modelConfigSnapshot: context.modelConfigSnapshot }
-          : explicitModelConfig
-            ? { modelConfigSnapshot: explicitModelConfig }
+        // The Orchestrator's unqualified child is the configured General role,
+        // so freeze a fresh General snapshot instead of copying the
+        // Orchestrator's model. General descendants still inherit their owner
+        // snapshot, preserving a stable execution boundary within that tree.
+        ...(capturedModelConfig
+          ? { modelConfigSnapshot: capturedModelConfig }
+          : modelSelection.kind === "default" && context.modelConfigSnapshot
+            ? { modelConfigSnapshot: context.modelConfigSnapshot }
             : {}),
         rootRunId: context.rootRunId,
         agentDepth: nextAgentDepth,

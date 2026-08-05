@@ -195,11 +195,16 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     await waitForAgentSettled(manager, created.threadId);
   });
 
-  it("continues with send_input as the next user turn after interrupting", async () => {
+  it("continues queued send_input as the next turn after natural completion", async () => {
     const prompts: string[] = [];
     let startedFirst: (() => void) | null = null;
+    let finishFirst: (() => void) | null = null;
+    let firstWasAborted = false;
     const startedFirstPromise = new Promise<void>((resolve) => {
       startedFirst = resolve;
+    });
+    const finishFirstPromise = new Promise<void>((resolve) => {
+      finishFirst = resolve;
     });
 
     const manager = new LocalAgentManager({
@@ -213,11 +218,8 @@ describe("LocalAgentManager pause_agent cancellation", () => {
         prompts.push(args.taskPrompt);
         if (prompts.length === 1) {
           startedFirst?.();
-          await new Promise<void>((resolve) => {
-            args.abortSignal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
-          });
+          await finishFirstPromise;
+          firstWasAborted = args.abortSignal.aborted;
         }
         return { runId: args.runId, result: `done-${prompts.length}` };
       },
@@ -242,14 +244,17 @@ describe("LocalAgentManager pause_agent cancellation", () => {
       "follow-up",
       "orchestrator",
     );
+    expect(prompts).toHaveLength(1);
+    finishFirst?.();
 
     await waitFor(
       () => prompts.length === 2,
-      "send_input did not start a follow-up run.",
+      "queued send_input did not start after natural completion.",
     );
     await waitForAgentSettled(manager, created.threadId);
 
     expect(prompts[0]).toBe("initial prompt");
+    expect(firstWasAborted).toBe(false);
     expect(prompts[1]).toContain("Task update from orchestrator:");
     expect(prompts[1]).toContain("follow-up");
     expect(prompts[1]).toContain(

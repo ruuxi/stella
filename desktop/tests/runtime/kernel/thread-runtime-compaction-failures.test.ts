@@ -178,7 +178,7 @@ describe("orchestrator thread compaction failure handling", () => {
         },
       ],
       stopReason: "error",
-      errorMessage: "managed relay stream terminated: quota exceeded",
+      errorMessage: "managed provider stream terminated: quota exceeded",
     });
 
     const result = await maybeCompactRuntimeThread({

@@ -20,14 +20,13 @@
  * follow-up user]` — i.e. the same conversation continuing with a new
  * user turn. The cached prefix doesn't change, prompt cache is preserved.
  *
- * The reason we have to exit and re-enter `executeTask` at all is that
- * `runSubagent` owns the agent loop for the duration of one user turn;
- * there is no way to splice an extra user message into the middle of an
- * in-flight assistant turn. So `send_input` aborts the current
- * `runSubagent` (ending the in-flight assistant turn early) and re-enters
- * with the follow-up as the next user message. The path funnels through
- * `deliverFollowUpAsNextTurn` → `tryStartNext` → `executeTask` →
- * `runSubagent`.
+ * `send_input` steers a live native Pi agent at its next safe boundary. The
+ * current provider response and any issued tools finish first, then the new
+ * user message is appended and the same loop continues. This preserves the
+ * fully warmed prompt prefix instead of aborting an expensive in-flight
+ * prefill. If input lands before a live Pi agent exists (or an external
+ * engine owns the run), it remains queued and is delivered as the next turn
+ * after the current run finishes naturally.
  */
 
 import path from "path";
@@ -159,9 +158,9 @@ type RuntimeAgentRecord = {
   producedFiles?: ProducedFileRecord[];
   /**
    * File records banked across runs whose terminal `agent-completed` was
-   * never emitted. A `send_input` follow-up aborts the in-flight
-   * `runSubagent` before its completion rollup fires, and without banking,
-   * everything that run wrote (e.g. rendered videos in
+   * never emitted. A queued follow-up can arrive after the live agent loop
+   * has ended but before its completion rollup fires; without banking,
+   * everything that finished run wrote (e.g. rendered videos in
    * `~/.stella/outputs/`) would never surface on any completion card.
    * Merged into `task.fileChanges` / `task.producedFiles` when a completion
    * finally lands, then drained at emission so a later re-run's completion
@@ -233,18 +232,6 @@ type RuntimeAgentRecord = {
    * across the re-entry.
    */
   turnCount: number;
-  /**
-   * Set by `send_input` when the current `runSubagent` call has been
-   * aborted so we can deliver the queued follow-up as the next user turn
-   * on the same session. The post-run branch in `executeTask` checks
-   * this to decide whether to fall through into
-   * `deliverFollowUpAsNextTurn` (treat as continuation) vs. treating the
-   * abort as a real cancellation.
-   *
-   * Not "restart" — the long-lived `subagentSession` is reused; only
-   * the outer `executeTask` invocation re-enters.
-   */
-  interruptedForFollowUp: boolean;
   activeSelfModRunId?: string;
   terminalEventEmitted: boolean;
   pendingStartStatusText?: string;
@@ -710,7 +697,6 @@ const getFsLockKey = (
 const isSpawnAgentTool = (toolName: string): boolean =>
   toolName === "spawn_agent";
 
-const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 
 export const AGENT_SHUTDOWN_CANCEL_REASON =
   "Canceled because Stella closed or restarted.";
@@ -971,8 +957,11 @@ export class LocalAgentManager implements AgentToolApi {
     return out;
   }
 
-  private buildTaskPrompt(task: RuntimeAgentRecord): string {
-    const updates = this.consumeTaskMessages(task, "subagent");
+  private formatTaskPrompt(
+    task: RuntimeAgentRecord,
+    updates: string[],
+    delivery: "next-turn" | "steering",
+  ): string {
     if (updates.length === 0) {
       return task.prompt;
     }
@@ -994,12 +983,18 @@ export class LocalAgentManager implements AgentToolApi {
     return [
       "Task update from orchestrator:",
       updateBlock,
-      `Your previous turn was paused so you can apply this update now. ${updateInstruction}`,
+      delivery === "steering"
+        ? updateInstruction
+        : `Your previous turn finished before this queued update was delivered. ${updateInstruction}`,
     ].join("\n\n");
   }
 
-  private shouldDeliverFollowUp(task: RuntimeAgentRecord): boolean {
-    return task.interruptedForFollowUp && task.status !== "canceled";
+  private buildTaskPrompt(task: RuntimeAgentRecord): string {
+    return this.formatTaskPrompt(
+      task,
+      this.consumeTaskMessages(task, "subagent"),
+      "next-turn",
+    );
   }
 
   /**
@@ -1342,7 +1337,6 @@ export class LocalAgentManager implements AgentToolApi {
     task.toSubagentQueue.length = 0;
     task.toOrchestratorQueue.length = 0;
     task.controller = new AbortController();
-    task.interruptedForFollowUp = false;
     task.terminalEventEmitted = false;
     task.pendingStartStatusText = undefined;
     // Cleared here so a bare reset reads as a spawn; the follow-up callers
@@ -1392,7 +1386,6 @@ export class LocalAgentManager implements AgentToolApi {
       toOrchestratorQueue: [],
       messageLog: [],
       turnCount: 0,
-      interruptedForFollowUp: false,
       terminalEventEmitted: false,
       pendingStartStatusText: formatTaskUpdateStatusText(statusText),
       // Resuming an evicted/persisted thread is always a `send_input`
@@ -1431,9 +1424,8 @@ export class LocalAgentManager implements AgentToolApi {
    * and the synthesized "Task update from orchestrator: …" string is
    * just the next user message that gets appended on top.
    *
-   * Reached when `send_input` aborted the in-flight `runSubagent` and
-   * we want to deliver the follow-up immediately (`shouldDeliverFollowUp`
-   * true).
+   * Reached when input could not be steered into a live native Pi loop and
+   * remained queued until the current run finished naturally.
    */
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
     const pendingStartStatusText = task.pendingStartStatusText;
@@ -1743,8 +1735,6 @@ export class LocalAgentManager implements AgentToolApi {
             task.activeSelfModRunId = undefined;
           }
         },
-        shouldContinueSelfModLifecycleAfterInterrupt: () =>
-          isCurrentAttempt() && this.shouldDeliverFollowUp(task),
         onProgress: (chunk) => {
           if (
             !isCurrentAttempt() ||
@@ -1861,11 +1851,9 @@ export class LocalAgentManager implements AgentToolApi {
           });
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
-          const canFinishInterruptedTool = () =>
-            this.shouldDeliverFollowUp(task);
           if (
             !isCurrentAttempt() ||
-            (attempt.controller.signal.aborted && !canFinishInterruptedTool())
+            attempt.controller.signal.aborted
           ) {
             return { error: "Agent attempt was superseded." };
           }
@@ -1896,7 +1884,7 @@ export class LocalAgentManager implements AgentToolApi {
           try {
             if (
               !isCurrentAttempt() ||
-              (attempt.controller.signal.aborted && !canFinishInterruptedTool())
+              attempt.controller.signal.aborted
             ) {
               return { error: "Agent attempt was superseded." };
             }
@@ -1928,9 +1916,9 @@ export class LocalAgentManager implements AgentToolApi {
 
       task.completedAt = Date.now();
       // Bank this run's collected file records immediately, before any
-      // branch below decides the run's fate. A `send_input` follow-up
-      // aborts the run without emitting its completion; banking is what
-      // lets those files survive into the eventual rollup.
+      // branch below decides the run's fate. If a queued follow-up arrived
+      // too late to steer, this run's completion card is suppressed and the
+      // records survive into the eventual rollup.
       task.bankedFileChanges = mergeUniqueFileRecords(
         task.bankedFileChanges,
         result.fileChanges,
@@ -1939,16 +1927,7 @@ export class LocalAgentManager implements AgentToolApi {
         task.bankedProducedFiles,
         result.producedFiles,
       );
-      if (this.shouldDeliverFollowUp(task)) {
-        // `send_input` aborted the current `runSubagent` on purpose so
-        // we can deliver the queued follow-up as the next user turn on
-        // the same session. The dispatch at the end of this method calls
-        // `deliverFollowUpAsNextTurn`; status stays in its current state
-        // so the dispatch can read `interruptedForFollowUp`.
-      } else if (
-        attempt.controller.signal.aborted ||
-        task.status === "canceled"
-      ) {
+      if (attempt.controller.signal.aborted || task.status === "canceled") {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else if (result.interrupted) {
@@ -1960,8 +1939,8 @@ export class LocalAgentManager implements AgentToolApi {
       } else {
         task.status = "completed";
         task.result = result.result;
-        // Completion rollup = banked records from send_input-interrupted
-        // runs + this run's (already merged into the bank above). Drained
+        // Completion rollup = banked records from any queued-follow-up
+        // boundary + this run's (already merged into the bank above). Drained
         // when the `agent-completed` event is actually emitted, so files
         // are never re-revealed across rollups but survive completions
         // that get skipped (e.g. a queued follow-up re-entering the loop).
@@ -1971,10 +1950,7 @@ export class LocalAgentManager implements AgentToolApi {
     } catch (error) {
       if (!isCurrentAttempt()) return;
       task.completedAt = Date.now();
-      if (this.shouldDeliverFollowUp(task)) {
-        // `send_input` aborted the current `runSubagent` on purpose; see
-        // comment above.
-      } else if (attempt.controller.signal.aborted) {
+      if (attempt.controller.signal.aborted) {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else {
@@ -1994,10 +1970,7 @@ export class LocalAgentManager implements AgentToolApi {
       task.result = undefined;
     }
 
-    if (
-      this.shouldDeliverFollowUp(task) ||
-      (task.toSubagentQueue.length > 0 && task.status === "completed")
-    ) {
+    if (task.toSubagentQueue.length > 0 && task.status === "completed") {
       this.deliverFollowUpAsNextTurn(task);
       return;
     }
@@ -2203,7 +2176,6 @@ export class LocalAgentManager implements AgentToolApi {
       toOrchestratorQueue: [],
       messageLog: [],
       turnCount: 0,
-      interruptedForFollowUp: false,
       terminalEventEmitted: false,
       attemptGeneration: 0,
     };
@@ -2463,7 +2435,6 @@ export class LocalAgentManager implements AgentToolApi {
       local.descendantFinalParked = false;
       local.descendantWakePending = false;
       local.completedAt = Date.now();
-      local.interruptedForFollowUp = false;
       local.pendingStartStatusText = undefined;
       local.pendingStartIsFollowUp = undefined;
       this.opts.onAgentEvent?.({
@@ -2856,17 +2827,53 @@ export class LocalAgentManager implements AgentToolApi {
       });
 
       if (task.status === "running" && !task.controller.signal.aborted) {
-        // The follow-up is already in `toSubagentQueue` above. Aborting the
-        // in-flight `runSubagent` ends the current assistant turn early so
-        // `executeTask`'s post-run dispatch can re-enter via
-        // `deliverFollowUpAsNextTurn`, which builds the next user message
-        // from the queue. We deliberately do NOT touch `task.prompt` here:
-        // it stores the original user goal that gets persisted and is read
-        // back on cold rehydration. The long-lived `subagentSession` keeps
-        // the actual conversation history, so the LLM's cached prefix is
-        // preserved across the re-entry.
-        task.interruptedForFollowUp = true;
-        task.controller.abort(new Error(AGENT_INPUT_INTERRUPT_ERROR));
+        // Native Pi sessions accept steering at the next safe model/tool
+        // boundary. Do not abort the active provider request: on a long
+        // thread that would discard its in-progress cache prefill and make
+        // the replacement pay for the whole uncached suffix again.
+        const session = this.subagentSessions.get(task.threadId);
+        if (session?.canSteer) {
+          const updates = [...task.toSubagentQueue];
+          const steeringPrompt = this.formatTaskPrompt(
+            task,
+            updates,
+            "steering",
+          );
+          if (session.steer(steeringPrompt)) {
+            task.toSubagentQueue.splice(0, updates.length);
+            task.pendingStartStatusText = undefined;
+            // A live steer does not re-enter tryStartNext(), but the chat UI
+            // still needs the same durable follow-up occurrence that queued
+            // and terminal-thread send_input deliveries emit there. This is
+            // a display/lifecycle receipt only: it deliberately reuses the
+            // current attempt generation and does not start another engine
+            // run or touch the controller.
+            this.opts.onAgentEvent?.({
+              type: "agent-started",
+              conversationId: task.conversationId,
+              rootRunId: task.rootRunId,
+              agentId: task.threadId,
+              agentType: task.agentType,
+              description: task.description,
+              parentAgentId: task.parentAgentId,
+              attemptGeneration: task.attemptGeneration,
+              statusText: updateStatusText,
+              isFollowUp: true,
+            });
+            logWorkingIndicatorTrace(
+              "[stella:working-indicator:agent-started]",
+              {
+                threadId: task.threadId,
+                conversationId: task.conversationId,
+                rootRunId: task.rootRunId,
+                description: task.description,
+                statusText: updateStatusText,
+                isFollowUp: true,
+                steered: true,
+              },
+            );
+          }
+        }
       }
     }
 

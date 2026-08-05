@@ -5,17 +5,17 @@ import {
   TERMS_OF_SERVICE,
 } from "../../src/global/legal/legal-text.js";
 
-describe("relay recovery privacy disclosure", () => {
-  it("prominently discloses transient response content and physical deletion limits", () => {
+describe("managed inference privacy disclosure", () => {
+  it("describes transit-only inference without claiming a recovery buffer", () => {
     for (const document of [TERMS_OF_SERVICE, PRIVACY_POLICY]) {
-      expect(document).toContain("tool-call arguments");
-      expect(document).toContain("1 MiB");
-      expect(document).toContain("two minutes");
-      expect(document).toContain("ten minutes");
-      expect(document).toContain("not end-to-end encrypted");
-      expect(document).toContain("absolute physical-deletion");
+      expect(document).toContain("in transit");
+      expect(document).not.toContain("recovery buffer");
+      expect(document).not.toContain("1 MiB");
+      expect(document).not.toContain("resume API");
     }
     expect(PRIVACY_POLICY).toContain("US East (Northern Virginia)");
-    expect(PRIVACY_POLICY).toContain("provider-managed backups");
+    expect(PRIVACY_POLICY).toContain(
+      "does not persist an in-progress response",
+    );
   });
 });

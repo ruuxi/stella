@@ -297,6 +297,7 @@ describe("Stella relay auth (baseUrl-based detection)", () => {
       `Bearer ${STELLA_TOKEN}`,
     );
   });
+
 });
 
 describe("transformMessages: orphan tool_result filter", () => {
