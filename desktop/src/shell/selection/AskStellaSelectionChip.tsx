@@ -351,7 +351,7 @@ export function AskStellaSelectionChip() {
         title="Ask Stella about this selection"
       >
         <img
-          src="stella-logo.svg"
+          src="stella-logo.png"
           alt=""
           aria-hidden="true"
           className="floating-selection-chip__logo ask-stella-selection-chip__logo"

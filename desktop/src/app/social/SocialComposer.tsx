@@ -36,7 +36,7 @@ export function SocialComposer({
         {armed && (
           <span className="social-composer-stella-chip">
             <img
-              src="stella-logo.svg"
+              src="stella-logo.png"
               alt=""
               className="social-composer-stella-chip-logo"
             />

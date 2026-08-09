@@ -15,7 +15,7 @@ export function StellaLogoIcon({
 }: StellaLogoIconProps) {
   return (
     <img
-      src="stella-logo.svg"
+      src="stella-logo.png"
       alt={alt}
       width={size}
       height={size}
